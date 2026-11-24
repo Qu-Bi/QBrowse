@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import { useTranslation } from '../../i18n/index';
+import { pathToSafeFileUrl } from '../../utils/fileUrlHelpers';
 
 function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -223,8 +224,8 @@ export default function LocalDirectoryPage({ url, onNavigate }) {
                                     <button
                                         onClick={() => {
                                             if (!crumb.isLast && onNavigate) {
-                                                const url = 'file:///' + crumb.path.replace(/\\/g, '/').replace(/^\/+/, '');
-                                                onNavigate(url, crumb.name);
+                                                const crumbUrl = pathToSafeFileUrl(crumb.path);
+                                                onNavigate(crumbUrl, crumb.name);
                                             }
                                         }}
                                         disabled={crumb.isLast}

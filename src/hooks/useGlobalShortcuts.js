@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import useUIStore from '../store/useUIStore';
 import useTabStore from '../store/useTabStore';
 import useTorStore from '../store/useTorStore';
-import { isTabForPin } from '../components/layout/PinnedStackPopup';
+import { isTabForPin, getFocusedSplitTab } from '../utils/pinnedAppHelpers';
 import { t } from '../i18n/index';
+import { resolveActionForEvent } from '../utils/shortcutRegistry';
 
 export const handleEscapeDismissal = () => {
     const uiStore = useUIStore.getState();
@@ -27,6 +28,12 @@ export const handleEscapeDismissal = () => {
     // 2b. Active Pinned Stack Picker
     if (uiStore.activePinnedStack) {
         uiStore.closePinnedStack();
+        return true;
+    }
+
+    // 2c. Multi-tab selection
+    if (tabStore.selectedTabIds && tabStore.selectedTabIds.length > 0) {
+        tabStore.clearTabSelection();
         return true;
     }
 
@@ -160,6 +167,351 @@ export const handleEscapeDismissal = () => {
 
 let lastTabShortcutTime = 0;
 
+function closeActiveTabOrWindow(uiStore, tabStore) {
+    if (uiStore.isFindOpen) {
+        uiStore.setIsFindOpen(false);
+    }
+    if (uiStore.isReaderOpen || uiStore.isReaderClosing) {
+        uiStore.closeReaderMode(true);
+    }
+    uiStore.setIsReaderAvailable(false);
+
+    const activeList = tabStore.getActiveList() || [];
+    const pinnedTabs = tabStore.getPinnedTabsForSpace ? tabStore.getPinnedTabsForSpace(tabStore.activeSpace) : (tabStore.pinnedTabs || []);
+    const allPersistedPins = tabStore.pinnedTabs || [];
+    const shouldCloseWindowOnEmpty = uiStore.settings?.closeWindowOnLastTab !== false;
+
+    const focusedTab = getFocusedSplitTab({
+        spaceTabs: activeList,
+        isSplitView: uiStore.isSplitView,
+        splitOrientation: uiStore.splitOrientation,
+        splitPaneTabIds: uiStore.splitPaneTabIds,
+        splitRightTabId: uiStore.splitRightTabId,
+        focusedPane: uiStore.focusedPane
+    });
+
+    const isTabWithContent = (tab) => {
+        if (!tab || tab.isClosing) return false;
+        const url = typeof tab.url === 'string' ? tab.url.trim() : '';
+        if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://newtab')) {
+            return false;
+        }
+        return true;
+    };
+
+    const isAnyPinnedTabOpen = (tabs, pins) => {
+        if (!Array.isArray(pins) || pins.length === 0 || !Array.isArray(tabs) || tabs.length === 0) return false;
+        return tabs.some(t => isTabWithContent(t) && pins.some(p => isTabForPin(t, p)));
+    };
+
+    const isAnyRegularTabOpen = (tabs, pins) => {
+        if (!Array.isArray(tabs) || tabs.length === 0) return false;
+        return tabs.some(t => isTabWithContent(t) && !(Array.isArray(pins) && pins.some(p => isTabForPin(t, p))));
+    };
+
+    const allTabs = [
+        ...(tabStore.privateTabs || []),
+        ...(tabStore.workTabs || []),
+        ...(tabStore.ghostTabs || []),
+        ...(tabStore.torTabs || [])
+    ];
+
+    const hasRegularTabOpen = isAnyRegularTabOpen(allTabs, allPersistedPins);
+    const hasPinnedTabOpen = isAnyPinnedTabOpen(allTabs, allPersistedPins);
+    const hasMultipleTabs = activeList.length > 1;
+
+    if (!focusedTab?.pinnedId && shouldCloseWindowOnEmpty && !hasRegularTabOpen && !hasPinnedTabOpen && !hasMultipleTabs) {
+        if (window.electronAPI && typeof window.electronAPI.close === 'function') {
+            window.electronAPI.close();
+        } else if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
+            window.electronAPI.closeCurrentWindow();
+        } else {
+            window.close();
+        }
+        return;
+    }
+
+    if (focusedTab) {
+        tabStore.handleCloseTab(focusedTab.id);
+    }
+}
+
+function hasActiveTextSelection() {
+    const activeEl = document.activeElement;
+    const hasDomSelection = Boolean(window.getSelection()?.toString());
+    const hasInputSelection = Boolean(
+        activeEl &&
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+        activeEl.selectionStart !== activeEl.selectionEnd
+    );
+    return hasDomSelection || hasInputSelection;
+}
+
+export const executeAction = (actionId) => {
+    const uiStore = useUIStore.getState();
+    const tabStore = useTabStore.getState();
+
+    switch (actionId) {
+        case 'newTab':
+            tabStore.handleNewTab();
+            break;
+        case 'closeTab':
+            closeActiveTabOrWindow(uiStore, tabStore);
+            break;
+        case 'reopenClosedTab':
+            tabStore.restoreRecentlyClosedTab();
+            break;
+        case 'toggleMuteTab': {
+            const activeTab = getFocusedSplitTab({
+                spaceTabs: tabStore.getActiveList() || [],
+                isSplitView: uiStore.isSplitView,
+                splitOrientation: uiStore.splitOrientation,
+                splitPaneTabIds: uiStore.splitPaneTabIds,
+                splitRightTabId: uiStore.splitRightTabId,
+                focusedPane: uiStore.focusedPane
+            });
+            if (activeTab && typeof tabStore.handleToggleMute === 'function') {
+                tabStore.handleToggleMute(activeTab.id, tabStore.activeSpace);
+            }
+            break;
+        }
+        case 'openTabMap':
+            if (uiStore.isTabMapOpen) uiStore.closeTabMap();
+            else uiStore.openTabMap();
+            break;
+        case 'pinOrBookmarkTab':
+            if (uiStore.activeModal === 'addPin') uiStore.closeModal();
+            else uiStore.openModal('addPin');
+            break;
+        case 'openOmnibox':
+            if (uiStore.isTopBarOmniboxActive) uiStore.setIsTopBarOmniboxActive(false);
+            if (uiStore.isOmniboxOpen) {
+                uiStore.closeOmnibox();
+            } else {
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
+                const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
+                uiStore.openOmnibox(activeUrl);
+            }
+            break;
+        case 'focusAddressBar':
+            if (uiStore.isTopBarOmniboxActive) {
+                uiStore.setIsTopBarOmniboxActive(false);
+            } else {
+                if (uiStore.isFullscreen || uiStore.isFramelessMode) {
+                    uiStore.setIsTopBarPeeking(true);
+                }
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
+                const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
+                if (!activeUrl) {
+                    const homeInput = document.getElementById('homepage-omnibox-card')?.querySelector('input');
+                    if (homeInput) {
+                        homeInput.focus();
+                        homeInput.select();
+                    } else {
+                        uiStore.setIsTopBarOmniboxActive(true);
+                    }
+                } else {
+                    uiStore.setIsTopBarOmniboxActive(true);
+                }
+            }
+            break;
+        case 'copyCurrentUrl': {
+            if (hasActiveTextSelection()) break;
+            let targetTab = tabStore.getActiveTab();
+            if (uiStore.isSplitView && uiStore.focusedPane === 'right' && uiStore.splitRightTabId) {
+                const activeList = tabStore.getActiveList() || [];
+                const rightTab = activeList.find(t => t.id === uiStore.splitRightTabId);
+                if (rightTab) targetTab = rightTab;
+            }
+            const url = targetTab?.url && targetTab.url !== 'about:blank' ? targetTab.url : '';
+            if (url) {
+                const copyPromise = navigator.clipboard?.writeText
+                    ? navigator.clipboard.writeText(url).catch(() => window.electronAPI?.writeClipboardText?.(url))
+                    : Promise.resolve(window.electronAPI?.writeClipboardText?.(url));
+                Promise.resolve(copyPromise).then(() => {
+                    uiStore.showToast(t('stores.shortcuts.copiedUrl', 'Copied URL to clipboard'));
+                }).catch(() => {});
+            }
+            break;
+        }
+        case 'reloadTab':
+            uiStore.refresh();
+            break;
+        case 'hardReloadTab':
+            if (window.electronAPI && window.electronAPI.clearAllData) {
+                window.electronAPI.clearAllData({ cache: true, storage: false, cookies: false }).catch(() => {});
+            }
+            uiStore.refresh();
+            uiStore.showToast(t('stores.shortcuts.hardReload', 'Hard Reload: Cache purged & refreshed'));
+            break;
+        case 'navigateBack': {
+            const activeTab = tabStore.getActiveTab();
+            if (activeTab) tabStore.navigateTabBack(activeTab.id);
+            break;
+        }
+        case 'navigateForward': {
+            const activeTab = tabStore.getActiveTab();
+            if (activeTab) tabStore.navigateTabForward(activeTab.id);
+            break;
+        }
+        case 'openHistory':
+            if (uiStore.activeModal === 'history') uiStore.closeModal();
+            else uiStore.openModal('history');
+            break;
+        case 'openFile':
+            if (window.electronAPI && window.electronAPI.openFileDialog) {
+                window.electronAPI.openFileDialog().then(fileUrls => {
+                    if (fileUrls && fileUrls.length > 0) {
+                        tabStore.openLocalFiles(fileUrls);
+                    }
+                }).catch(err => {
+                    console.error('[Open File] Error:', err);
+                });
+            }
+            break;
+        case 'toggleSidebar':
+            uiStore.setIsSidebarHidden(!uiStore.isSidebarHidden);
+            uiStore.showToast(uiStore.isSidebarHidden ? t('stores.shortcuts.sidebarHidden', 'Sidebar: Hidden') : t('stores.shortcuts.sidebarVisible', 'Sidebar: Visible'));
+            break;
+        case 'toggleRightPanel':
+            uiStore.setIsRightPanelOpen(!uiStore.isRightPanelOpen);
+            break;
+        case 'toggleFramelessMode': {
+            const next = uiStore.toggleFramelessMode();
+            uiStore.showToast(
+                next
+                    ? t('stores.shortcuts.framelessOn', 'Frameless Mode: On (Hover edges for bars)')
+                    : t('stores.shortcuts.framelessOff', 'Frameless Mode: Off')
+            );
+            break;
+        }
+        case 'toggleSplitView':
+            uiStore.toggleSplitView();
+            break;
+        case 'toggleSplitOrientation':
+            uiStore.toggleSplitOrientation();
+            break;
+        case 'swapSplitPanes':
+            uiStore.swapSplitPanes();
+            break;
+        case 'toggleReaderMode':
+            uiStore.toggleReaderMode();
+            break;
+        case 'zoomIn':
+            uiStore.zoomIn();
+            break;
+        case 'zoomOut':
+            uiStore.zoomOut();
+            break;
+        case 'resetZoom': {
+            const activeTab = tabStore.getActiveTab();
+            const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
+            if (wv && typeof wv.send === 'function') {
+                try { wv.send('webview-visual-zoom', 'reset'); } catch (_) {}
+            }
+            uiStore.resetZoom();
+            break;
+        }
+        case 'toggleFullscreen': {
+            const newFullscreenState = !uiStore.isFullscreen;
+            if (window.electronAPI && window.electronAPI.setFullscreen) {
+                window.electronAPI.setFullscreen(newFullscreenState);
+            }
+            uiStore.setIsFullscreen(newFullscreenState);
+            break;
+        }
+        case 'findInPage':
+            uiStore.setIsFindOpen(true);
+            break;
+        case 'findNext':
+            uiStore.findNextMatch(true);
+            break;
+        case 'findPrev':
+            uiStore.findNextMatch(false);
+            break;
+        case 'toggleElementEraser':
+            uiStore.toggleElementEraser();
+            break;
+        case 'toggleScreenshotBar':
+            uiStore.setIsScreenshotBarOpen(!uiStore.isScreenshotBarOpen);
+            break;
+        case 'toggleReadAloud':
+            uiStore.toggleReadAloud();
+            break;
+        case 'printPage':
+            uiStore.printActivePage();
+            break;
+        case 'openDevTools':
+            if (window.electronAPI && window.electronAPI.openDevTools) {
+                window.electronAPI.openDevTools();
+            }
+            break;
+        case 'toggleCaretBrowsing': {
+            const next = !uiStore.settings?.a11yCaretBrowsing;
+            uiStore.toggleSetting('a11yCaretBrowsing');
+            uiStore.showToast(next ? t('stores.shortcuts.caretEnabled', 'Caret Browsing enabled (Arrow keys navigate page text)') : t('stores.shortcuts.caretDisabled', 'Caret Browsing disabled'));
+            break;
+        }
+        case 'newWindow':
+            if (window.electronAPI && window.electronAPI.openNewWindow) {
+                window.electronAPI.openNewWindow({ space: 'personal' });
+                uiStore.showToast(t('stores.shortcuts.openingWindow', 'Opening new window...'));
+            } else {
+                tabStore.handleNewTab();
+            }
+            break;
+        case 'newPrivateWindow': {
+            const isTor = useTorStore.getState().isTorEnabled;
+            const targetSpace = isTor ? 'tor' : 'ghost';
+            if (window.electronAPI && window.electronAPI.openNewWindow) {
+                window.electronAPI.openNewWindow({ space: targetSpace });
+                uiStore.showToast(isTor ? t('stores.shortcuts.openingTorWindow', 'Opening new Tor window...') : t('stores.shortcuts.openingPrivateWindow', 'Opening new private window...'));
+            } else {
+                tabStore.setActiveSpace(targetSpace);
+                uiStore.showToast(isTor ? t('stores.shortcuts.torActivated', 'Tor Space: Activated') : t('stores.shortcuts.ghostActivated', 'Ghost Mode: Activated'));
+            }
+            break;
+        }
+        case 'closeWindow':
+            if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
+                window.electronAPI.closeCurrentWindow();
+            } else if (window.electronAPI && typeof window.electronAPI.close === 'function') {
+                window.electronAPI.close();
+            } else {
+                window.close();
+            }
+            break;
+        case 'openSettings':
+            if (uiStore.activeModal === 'settings') uiStore.closeModal();
+            else uiStore.openSettings();
+            break;
+        case 'openHelp':
+            if (uiStore.activeModal === 'help') uiStore.closeModal();
+            else uiStore.openHelpModal('help');
+            break;
+        case 'openTaskManager':
+            if (uiStore.activeModal === 'tasks') uiStore.closeModal();
+            else uiStore.openModal('tasks');
+            break;
+        default:
+            break;
+    }
+};
+
 export const executeShortcut = (key, shift = false, alt = false) => {
     const uiStore = useUIStore.getState();
     const tabStore = useTabStore.getState();
@@ -264,55 +616,7 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                 }
                 uiStore.setIsReaderAvailable(false);
 
-                const activeList = tabStore.getActiveList() || [];
-                const pinnedTabs = tabStore.pinnedTabs || [];
-                const shouldCloseWindowOnEmpty = uiStore.settings?.closeWindowOnLastTab !== false;
-
-                const isTabWithContent = (tab) => {
-                    if (!tab || tab.isClosing) return false;
-                    const url = typeof tab.url === 'string' ? tab.url.trim() : '';
-                    if (!url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('qbrowse://newtab')) {
-                        return false;
-                    }
-                    return true;
-                };
-
-                const isAnyPinnedTabOpen = (tabs, pins) => {
-                    if (!Array.isArray(pins) || pins.length === 0 || !Array.isArray(tabs) || tabs.length === 0) return false;
-                    return tabs.some(t => isTabWithContent(t) && pins.some(p => isTabForPin(t, p)));
-                };
-
-                const isAnyRegularTabOpen = (tabs, pins) => {
-                    if (!Array.isArray(tabs) || tabs.length === 0) return false;
-                    return tabs.some(t => isTabWithContent(t) && !(Array.isArray(pins) && pins.some(p => isTabForPin(t, p))));
-                };
-
-                const allTabs = [
-                    ...(tabStore.privateTabs || []),
-                    ...(tabStore.workTabs || []),
-                    ...(tabStore.ghostTabs || []),
-                    ...(tabStore.torTabs || [])
-                ];
-
-                const hasRegularTabOpen = isAnyRegularTabOpen(allTabs, pinnedTabs);
-                const hasPinnedTabOpen = isAnyPinnedTabOpen(allTabs, pinnedTabs);
-                const hasMultipleTabs = activeList.length > 1;
-
-                if (shouldCloseWindowOnEmpty && !hasRegularTabOpen && !hasPinnedTabOpen && !hasMultipleTabs) {
-                    if (window.electronAPI && typeof window.electronAPI.close === 'function') {
-                        window.electronAPI.close();
-                    } else if (window.electronAPI && typeof window.electronAPI.closeCurrentWindow === 'function') {
-                        window.electronAPI.closeCurrentWindow();
-                    } else {
-                        window.close();
-                    }
-                    break;
-                }
-
-                const activeTab = tabStore.getActiveTab();
-                if (activeTab) {
-                    tabStore.handleCloseTab(activeTab.id);
-                }
+                closeActiveTabOrWindow(uiStore, tabStore);
             }
             break;
 
@@ -339,7 +643,14 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             if (uiStore.isOmniboxOpen) {
                 uiStore.closeOmnibox();
             } else {
-                const activeTab = tabStore.getActiveTab();
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
                 const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
                 uiStore.openOmnibox(activeUrl);
             }
@@ -349,10 +660,17 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             if (uiStore.isTopBarOmniboxActive) {
                 uiStore.setIsTopBarOmniboxActive(false);
             } else {
-                if (uiStore.isFullscreen) {
+                if (uiStore.isFullscreen || uiStore.isFramelessMode) {
                     uiStore.setIsTopBarPeeking(true);
                 }
-                const activeTab = tabStore.getActiveTab();
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
                 const activeUrl = activeTab && activeTab.url !== 'about:blank' ? activeTab.url : '';
                 if (!activeUrl) {
                     // On Homepage: focus homepage omnibox directly
@@ -431,15 +749,55 @@ export const executeShortcut = (key, shift = false, alt = false) => {
             uiStore.setIsRightPanelOpen(!uiStore.isRightPanelOpen);
             break;
 
-        // Find in Page (Cmd+F)
+        // Find in Page (Cmd+F) & Windowed Frameless / Zen Mode (Cmd+Alt+F)
         case 'f':
-            uiStore.setIsFindOpen(true);
+            if (alt) {
+                const next = uiStore.toggleFramelessMode();
+                uiStore.showToast(
+                    next
+                        ? t('stores.shortcuts.framelessOn', 'Frameless Mode: On (Hover edges for bars)')
+                        : t('stores.shortcuts.framelessOff', 'Frameless Mode: Off')
+                );
+            } else {
+                uiStore.setIsFindOpen(true);
+            }
             break;
 
         // Screenshot & Snipping Bar (Cmd+Shift+S)
         case 's':
             if (shift) {
                 uiStore.setIsScreenshotBarOpen(!uiStore.isScreenshotBarOpen);
+            }
+            break;
+
+        // Copy Current Tab URL (Cmd/Ctrl+Shift+C)
+        case 'c':
+            if (shift) {
+                const activeEl = document.activeElement;
+                const hasDomSelection = Boolean(window.getSelection()?.toString());
+                const hasInputSelection = Boolean(
+                    activeEl &&
+                    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+                    activeEl.selectionStart !== activeEl.selectionEnd
+                );
+                if (hasDomSelection || hasInputSelection) {
+                    break;
+                }
+                let targetTab = tabStore.getActiveTab();
+                if (uiStore.isSplitView && uiStore.focusedPane === 'right' && uiStore.splitRightTabId) {
+                    const activeList = tabStore.getActiveList() || [];
+                    const rightTab = activeList.find(t => t.id === uiStore.splitRightTabId);
+                    if (rightTab) targetTab = rightTab;
+                }
+                const url = targetTab?.url && targetTab.url !== 'about:blank' ? targetTab.url : '';
+                if (url) {
+                    const copyPromise = navigator.clipboard?.writeText
+                        ? navigator.clipboard.writeText(url).catch(() => window.electronAPI?.writeClipboardText?.(url))
+                        : Promise.resolve(window.electronAPI?.writeClipboardText?.(url));
+                    Promise.resolve(copyPromise).then(() => {
+                        uiStore.showToast(t('stores.shortcuts.copiedUrl', 'Copied URL to clipboard'));
+                    }).catch(() => {});
+                }
             }
             break;
 
@@ -489,7 +847,14 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         case '=':
         case 'add': {
             if (alt) {
-                const activeTab = tabStore.getActiveTab();
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
                 const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
                 if (wv && typeof wv.send === 'function') {
                     try { wv.send('webview-visual-zoom', 'in'); } catch (_) {}
@@ -503,7 +868,14 @@ export const executeShortcut = (key, shift = false, alt = false) => {
         case '_':
         case 'subtract': {
             if (alt) {
-                const activeTab = tabStore.getActiveTab();
+                const activeTab = getFocusedSplitTab({
+                    spaceTabs: tabStore.getActiveList() || [],
+                    isSplitView: uiStore.isSplitView,
+                    splitOrientation: uiStore.splitOrientation,
+                    splitPaneTabIds: uiStore.splitPaneTabIds,
+                    splitRightTabId: uiStore.splitRightTabId,
+                    focusedPane: uiStore.focusedPane
+                });
                 const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
                 if (wv && typeof wv.send === 'function') {
                     try { wv.send('webview-visual-zoom', 'out'); } catch (_) {}
@@ -546,6 +918,15 @@ export const executeShortcut = (key, shift = false, alt = false) => {
                 uiStore.closeModal();
             } else {
                 uiStore.openModal('tasks');
+            }
+            break;
+
+        // Help Center (F1)
+        case 'f1':
+            if (uiStore.activeModal === 'help') {
+                uiStore.closeModal();
+            } else {
+                uiStore.openHelpModal('help');
             }
             break;
 
@@ -624,7 +1005,7 @@ export default function useGlobalShortcuts() {
                 return;
             }
 
-            if (e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
+            if (e.key === 'F1' || e.key === 'F11' || e.key === 'F12' || e.key === 'F3') {
                 e.preventDefault();
                 executeShortcut(e.key.toLowerCase(), e.shiftKey);
                 return;
@@ -646,11 +1027,11 @@ export default function useGlobalShortcuts() {
             // EXCEPT for global browser shortcuts (only let the input consume non-modifier keys and native text-editing shortcuts)
             const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
             if (isInput) {
-                if (!cmdOrCtrl) {
+                if (!cmdOrCtrl && !e.altKey && !/^f\d{1,2}$/i.test(e.key || '')) {
                     return;
                 }
                 const k = (e.key || '').toLowerCase();
-                if (!e.altKey) {
+                if (cmdOrCtrl && !e.altKey) {
                     const isBasicEditShortcut = !e.shiftKey && (k === 'a' || k === 'c' || k === 'v' || k === 'x' || k === 'z');
                     const isShiftEditShortcut = e.shiftKey && (k === 'v' || k === 'z');
                     const isRedoY = !e.shiftKey && k === 'y' && (e.target.value || e.target.textContent || '').length > 0;
@@ -668,6 +1049,29 @@ export default function useGlobalShortcuts() {
                     if (isBasicEditShortcut || isShiftEditShortcut || isRedoY || isTextNavOrDelete) {
                         return;
                     }
+                }
+            }
+
+            // Preserve Ctrl+Shift+C text-selection guard when user has highlighted text
+            if (cmdOrCtrl && e.shiftKey && !e.altKey && (e.key || '').toLowerCase() === 'c' && hasActiveTextSelection()) {
+                return;
+            }
+
+            // Route modifier / function-key combos through the customizable shortcut registry
+            if (cmdOrCtrl || e.altKey || /^f\d{1,2}$/i.test(e.key || '')) {
+                if (cmdOrCtrl && (e.key || '').toLowerCase() === 'tab' && e.repeat) {
+                    e.preventDefault();
+                    return;
+                }
+                const uiState = useUIStore.getState();
+                const matchedAction = resolveActionForEvent(e, uiState.customShortcuts || {});
+                if (matchedAction) {
+                    if (matchedAction === 'copyCurrentUrl' && hasActiveTextSelection()) {
+                        return;
+                    }
+                    e.preventDefault();
+                    executeAction(matchedAction);
+                    return;
                 }
             }
 
@@ -839,11 +1243,25 @@ export default function useGlobalShortcuts() {
 
                 if (shortcut.startsWith('cmd+')) {
                     const key = shortcut.replace('cmd+', '');
+                    const uiState = useUIStore.getState();
+                    const isMac = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform || '');
+                    const syntheticEvent = {
+                        key,
+                        ctrlKey: !isMac,
+                        metaKey: isMac,
+                        shiftKey: Boolean(shift),
+                        altKey: Boolean(data.alt)
+                    };
+                    const matchedAction = resolveActionForEvent(syntheticEvent, uiState.customShortcuts || {}, isMac);
+                    if (matchedAction) {
+                        executeAction(matchedAction);
+                        return;
+                    }
                     executeShortcut(key, shift, !!data.alt);
                     return;
                 }
 
-                if (shortcut === 'f5' || shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3' || shortcut === 'f7' || shortcut === 'alt_r') {
+                if (shortcut === 'f1' || shortcut === 'f5' || shortcut === 'f11' || shortcut === 'f12' || shortcut === 'f3' || shortcut === 'f7' || shortcut === 'alt_r') {
                     executeShortcut(shortcut, shift, !!data.alt);
                 }
             });

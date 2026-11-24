@@ -4,7 +4,8 @@ import {
     X, Minus, Maximize2, Square, UserPlus, Clock, Settings, Home, Plus, ChevronRight, 
     User, Layers, Ghost, PictureInPicture2, VolumeX, Volume2, Pin, Globe, 
     FolderPlus, Check, Edit2, FolderOpen, Briefcase, Code, Rocket, Compass, 
-    Bookmark, Sparkles, Coffee, Folder, Terminal, Shield, Heart
+    Bookmark, Sparkles, Coffee, Folder, Terminal, Shield, Heart,
+    Copy, Columns, Moon, Trash2, SplitSquareHorizontal, SplitSquareVertical, LayoutGrid, ArrowLeftRight
 } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import useUIStore from '../../store/useUIStore';
@@ -14,13 +15,21 @@ import useProfileStore from '../../store/useProfileStore';
 import { renderProfileAvatar } from '../popovers/UserProfilePopover';
 import useTorStore from '../../store/useTorStore';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
-import PinnedStackPopup, { isTabForPin } from './PinnedStackPopup';
+import PinnedStackPopup from './PinnedStackPopup';
+import { isTabForPin, getPinHomeUrl } from '../../utils/pinnedAppHelpers';
+import { pruneTabsFromParkedGroups } from '../../utils/splitGroupHelpers';
 import GitHubLiveFolder from './GitHubLiveFolder';
 import GitHubGlancePopover from './GitHubGlancePopover';
 import { useGitHubStore } from '../../store/useGitHubStore';
 import { useTranslation } from '../../i18n/index';
 import { selectPluralForm } from '../../i18n/domains/chrome';
 import { PLACEHOLDER_TAB_TITLE_SET } from '../../i18n/domains/stores.js';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
+import {
+    resolveSplitSlotTabs,
+    getFocusedSlotIndex,
+    slotIndexToFocusedPane
+} from '../../utils/splitLayoutHelpers';
 
 const SPACE_ICONS = {
     User,
@@ -65,10 +74,13 @@ export default function Sidebar() {
 
     // UI Store State
     const isFullscreen = useUIStore(state => state.isFullscreen);
+    const isFramelessMode = useUIStore(state => state.isFramelessMode);
+    const isChromeHidden = isFullscreen || isFramelessMode;
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isSidebarPeeking = useUIStore(state => state.isSidebarPeeking);
     const setIsSidebarPeeking = useUIStore(state => state.setIsSidebarPeeking);
     const uiScale = useUIStore(state => state.settings?.uiScale);
+    const settings = useUIStore(state => state.settings);
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
     const frameCurvature = useUIStore(state => state.settings?.frameCurvature || 'default');
     const tabPresentation = useUIStore(state => state.settings?.tabPresentation || 'pills');
@@ -99,10 +111,27 @@ export default function Sidebar() {
     const activePinnedStack = useUIStore(state => state.activePinnedStack);
     const setActivePinnedStack = useUIStore(state => state.setActivePinnedStack);
     const closePinnedStack = useUIStore(state => state.closePinnedStack);
+    const isSplitView = useUIStore(state => state.isSplitView);
+    const splitOrientation = useUIStore(state => state.splitOrientation);
+    const splitPaneTabIds = useUIStore(state => state.splitPaneTabIds);
+    const splitRightTabId = useUIStore(state => state.splitRightTabId);
+    const focusedPane = useUIStore(state => state.focusedPane);
+    const setFocusedPane = useUIStore(state => state.setFocusedPane);
+    const swapSplitPanes = useUIStore(state => state.swapSplitPanes);
+    const toggleSplitView = useUIStore(state => state.toggleSplitView);
+    const setSplitPaneTabId = useUIStore(state => state.setSplitPaneTabId);
+    const parkedSplitGroups = useUIStore(state => state.parkedSplitGroups) || [];
+    const activeSplitGroupId = useUIStore(state => state.activeSplitGroupId);
+    const activeSplitGroupName = useUIStore(state => state.activeSplitGroupName) || '';
+    const renameSplitGroup = useUIStore(state => state.renameSplitGroup);
+    const restoreParkedSplitGroup = useUIStore(state => state.restoreParkedSplitGroup);
+    const clearParkedSplitGroup = useUIStore(state => state.clearParkedSplitGroup);
+    const [editingSplitGroupKey, setEditingSplitGroupKey] = React.useState(null);
+    const [editingSplitGroupDraft, setEditingSplitGroupDraft] = React.useState('');
 
     const activeProfileId = useProfileStore(state => state.activeProfileId);
-    const isPeeking = isFullscreen && isSidebarPeeking;
-    const isActuallyHidden = isFullscreen ? !isPeeking : isSidebarHidden;
+    const isPeeking = isChromeHidden && isSidebarPeeking;
+    const isActuallyHidden = isChromeHidden ? !isPeeking : isSidebarHidden;
     const peekLeaveTimeoutRef = useRef(null);
 
     const handleSidebarMouseEnter = () => {
@@ -113,7 +142,7 @@ export default function Sidebar() {
     };
 
     const handleSidebarMouseLeave = () => {
-        if (isFullscreen && isSidebarPeeking) {
+        if (isChromeHidden && isSidebarPeeking) {
             peekLeaveTimeoutRef.current = setTimeout(() => {
                 setIsSidebarPeeking(false);
             }, 200);
@@ -133,6 +162,9 @@ export default function Sidebar() {
     const getTabsForSpace = useTabStore(state => state.getTabsForSpace);
     const setTabsForSpace = useTabStore(state => state.setTabsForSpace);
     const pinnedTabs = useTabStore(state => state.pinnedTabs);
+    const ephemeralPinnedTabs = useTabStore(state => state.ephemeralPinnedTabs);
+    const getPinnedTabsForSpace = useTabStore(state => state.getPinnedTabsForSpace);
+    const activatePinnedApp = useTabStore(state => state.activatePinnedApp);
     const draggedItem = useTabStore(state => state.draggedItem);
     const dragOverItem = useTabStore(state => state.dragOverItem);
     const dragOverPosition = useTabStore(state => state.dragOverPosition);
@@ -150,6 +182,13 @@ export default function Sidebar() {
     const handleDrop = useTabStore(state => state.handleDrop);
     const handleDropFolder = useTabStore(state => state.handleDropFolder);
     const handleDropRoot = useTabStore(state => state.handleDropRoot);
+    const selectedTabIds = useTabStore(state => state.selectedTabIds) || [];
+    const toggleTabSelection = useTabStore(state => state.toggleTabSelection);
+    const clearTabSelection = useTabStore(state => state.clearTabSelection);
+    const bulkCloseTabs = useTabStore(state => state.bulkCloseTabs);
+    const bulkSuspendTabs = useTabStore(state => state.bulkSuspendTabs);
+    const bulkToggleMuteTabs = useTabStore(state => state.bulkToggleMuteTabs);
+    const getSelectedTabUrls = useTabStore(state => state.getSelectedTabUrls);
     
     const folders = useTabStore(state => state.folders);
     const createFolder = useTabStore(state => state.createFolder);
@@ -324,52 +363,8 @@ export default function Sidebar() {
     };
 
     const handlePinnedTabClick = (e, pin) => {
-        const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs)));
-        const setTabs = (updater) => setTabsForSpace ? setTabsForSpace(activeSpace, updater) : (activeSpace === 'personal' ? setPrivateTabs(updater) : (activeSpace === 'work' ? setWorkTabs(updater) : (activeSpace === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
-        
-        const pinTabs = tabs.filter(t => isTabForPin(t, pin));
-        const activeTabInStack = pinTabs.find(t => t.active);
-
-        if (activeTabInStack) {
-            // User is ALREADY viewing one of the tabs in this service stack!
-            // Toggle the Stack Popup Picker:
-            if (activePinnedStack?.pin?.id === pin.id) {
-                closePinnedStack();
-            } else {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setActivePinnedStack({ pin, rect });
-            }
-        } else if (pinTabs.length > 0) {
-            // User is not viewing this stack. Switch to the first tab in this stack!
-            const targetTab = pinTabs[0];
-            const nowTs = Date.now();
-            setTabs(tabs.map(t => ({ 
-                ...t, 
-                active: t.id === targetTab.id,
-                suspended: t.id === targetTab.id ? false : t.suspended,
-                lastActiveAt: (t.id === targetTab.id || t.active) ? nowTs : t.lastActiveAt
-            })));
-            useUIStore.getState().setCurrentUrl(targetTab.url || '');
-            closePinnedStack();
-            setTimeout(() => {
-                const wv = window.qbrowseWebviews ? window.qbrowseWebviews[targetTab.id] : null;
-                if (wv && typeof wv.focus === 'function') {
-                    try { wv.focus(); } catch (_) {}
-                }
-            }, 30);
-        } else {
-            // No tabs open for this service yet: create a new tab for this pinned service
-            const targetUrl = pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`;
-            useTabStore.getState().addTab({
-                id: `t-${Date.now()}`,
-                pinnedId: pin.id,
-                title: pin.title,
-                url: targetUrl,
-                active: true,
-                folderId: null
-            });
-            closePinnedStack();
-        }
+        const rect = e?.currentTarget?.getBoundingClientRect ? e.currentTarget.getBoundingClientRect() : null;
+        activatePinnedApp(pin, rect);
     };
 
     const handlePinnedContextMenu = (e, pin) => {
@@ -383,7 +378,7 @@ export default function Sidebar() {
         if (e.button === 1) {
             e.preventDefault();
             e.stopPropagation();
-            const targetUrl = pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`;
+            const targetUrl = getPinHomeUrl(pin);
             useTabStore.getState().addTab({
                 id: `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                 pinnedId: pin.id,
@@ -404,7 +399,8 @@ export default function Sidebar() {
         }
     };
 
-    const renderTab = (tab, spaceType) => {
+    const renderTab = (tab, spaceType, orderedTabIds = []) => {
+        const isSelected = selectedTabIds.includes(tab.id);
         const isSquare = frameCurvature === 'square';
         const isCohesive = frameCurvature === 'cohesive';
         const domain = getTabDomain(tab.url);
@@ -479,31 +475,38 @@ export default function Sidebar() {
                 handleDrop(e, tab, spaceType);
             },
             onContextMenu: (e) => handleTabContextMenuClick(e, tab, spaceType),
-            onClick: () => {
+            onClick: (e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleTabSelection(tab.id, {
+                        ctrl: e.ctrlKey || e.metaKey,
+                        shift: e.shiftKey,
+                        orderedTabIds
+                    });
+                    return;
+                }
+                if (selectedTabIds.length > 0) {
+                    clearTabSelection();
+                }
                 const ui = useUIStore.getState();
                 if (ui.isReaderOpen) {
                     ui.closeReaderMode();
                 }
-                const { isSplitView, focusedPane, setSplitRightTabId, splitRightTabId } = ui;
-                if (isSplitView && focusedPane === 'right') {
-                    setSplitRightTabId(tab.id);
-                    ui.setCurrentUrl(tab.url || '');
-                } else {
-                    const list = getTabsForSpace ? getTabsForSpace(spaceType) : (spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs)));
-                    const setList = (updater) => setTabsForSpace ? setTabsForSpace(spaceType, updater) : (spaceType === 'personal' ? setPrivateTabs(updater) : (spaceType === 'work' ? setWorkTabs(updater) : (spaceType === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
-                    if (isSplitView && splitRightTabId === tab.id) {
-                        const otherTab = (list || []).find(t => t.id !== tab.id);
-                        setSplitRightTabId(otherTab ? otherTab.id : null);
-                    }
-                    const nowTs = Date.now();
-                    setList((list || []).map(t => ({ 
-                        ...t, 
-                        active: t.id === tab.id,
-                        suspended: t.id === tab.id ? false : t.suspended,
-                        lastActiveAt: (t.id === tab.id || t.active) ? nowTs : t.lastActiveAt
-                    })));
-                    ui.setCurrentUrl(tab.url || '');
+                const { isSplitView } = ui;
+                if (isSplitView) {
+                    ui.parkOrCloseSplitViewForTabSwitch?.();
                 }
+                const list = getTabsForSpace ? getTabsForSpace(spaceType) : (spaceType === 'personal' ? privateTabs : (spaceType === 'work' ? workTabs : (spaceType === 'ghost' ? ghostTabs : torTabs)));
+                const setList = (updater) => setTabsForSpace ? setTabsForSpace(spaceType, updater) : (spaceType === 'personal' ? setPrivateTabs(updater) : (spaceType === 'work' ? setWorkTabs(updater) : (spaceType === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
+                const nowTs = Date.now();
+                setList((list || []).map(t => ({ 
+                    ...t, 
+                    active: t.id === tab.id,
+                    suspended: t.id === tab.id ? false : t.suspended,
+                    lastActiveAt: (t.id === tab.id || t.active) ? nowTs : t.lastActiveAt
+                })));
+                ui.setCurrentUrl(tab.url || '');
 
                 // Check Reader Mode availability for the selected tab
                 const wv = window.qbrowseWebviews ? window.qbrowseWebviews[tab.id] : null;
@@ -582,10 +585,11 @@ export default function Sidebar() {
                     </svg>
                 );
             }
-            if (tab.url && tab.url !== 'about:blank') {
+            const safeFavicon = getSafeFaviconUrl(tab.url, settings, 64);
+            if (safeFavicon) {
                 return (
                     <img 
-                        src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                        src={safeFavicon} 
                         alt="icon" 
                         style={{ width: size, height: size }}
                         className={`rounded-sm flex-shrink-0 transition-all duration-300 ${tab.suspended ? 'grayscale opacity-50' : ''} ${tab.active && faviconGlow !== false ? 'shadow-[0_0_12px_var(--accent)] shadow-accent/60 scale-105' : ''}`} 
@@ -672,7 +676,9 @@ export default function Sidebar() {
                     className={`sidebar-tab-item group relative flex items-center justify-between py-1 px-2.5 ${
                         isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-lg' : 'rounded-md'
                     } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-150 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/35' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
-                        tab.active 
+                        isSelected
+                            ? 'ring-1 ring-accent/60 bg-accent/15 border-accent/50'
+                            : tab.active 
                             ? (isBright 
                                 ? 'bg-white/90 border-black/15 text-zinc-950 font-semibold shadow-xs' 
                                 : 'bg-white/10 border-white/20 text-white font-medium shadow-xs') 
@@ -683,6 +689,11 @@ export default function Sidebar() {
                 >
                     {renderDropIndicator()}
                     <div className="flex items-center gap-2 w-full justify-center md:justify-start pointer-events-none pr-7">
+                        {isSelected && (
+                            <span className="w-3.5 h-3.5 rounded-full bg-accent text-black flex items-center justify-center shrink-0 shadow-xs">
+                                <Check size={9} strokeWidth={3} />
+                            </span>
+                        )}
                         {renderTabIcon(12)}
                         <span className={`text-xs truncate hidden md:block transition-colors duration-150 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-normal'}`}>
                             {tabTitle}
@@ -708,7 +719,9 @@ export default function Sidebar() {
                     className={`sidebar-tab-item group relative flex flex-col justify-between p-2.5 ${
                         isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-2xl' : 'rounded-xl'
                     } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/40' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
-                        tab.active 
+                        isSelected
+                            ? 'ring-1 ring-accent/60 bg-accent/15 border-accent/50'
+                            : tab.active 
                             ? (isBright 
                                 ? 'bg-white/95 border-accent/40 shadow-sm text-zinc-950' 
                                 : 'bg-white/[0.08] border-accent/40 text-white shadow-[0_4px_20px_rgba(0,0,0,0.3),0_0_15px_var(--accent-20)]') 
@@ -720,6 +733,11 @@ export default function Sidebar() {
                     {renderDropIndicator()}
                     {/* Top row: Favicon in clear container + Title */}
                     <div className="flex items-center gap-2.5 w-full pointer-events-none pr-6">
+                        {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-accent text-black flex items-center justify-center shrink-0 shadow-xs">
+                                <Check size={10} strokeWidth={3} />
+                            </span>
+                        )}
                         <div className={`w-6 h-6 ${isSquare ? 'rounded-none' : 'rounded-lg'} flex items-center justify-center flex-shrink-0 border ${
                             isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10 shadow-xs'
                         }`}>
@@ -768,7 +786,9 @@ export default function Sidebar() {
                 } ${
                     isSquare ? 'rounded-none !rounded-none' : isCohesive ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                 } border cursor-grab active:cursor-grabbing w-full select-none transition-all duration-200 ${tab.isClosing ? 'tab-closing-anim' : 'animate-pop-in'} ${isDropTarget ? 'bg-accent/[0.06] border-accent/40' : ''} ${draggedItem?.tab?.id === tab.id ? 'opacity-35 scale-[0.98]' : ''} ${
-                    tab.active 
+                    isSelected
+                        ? 'ring-1 ring-accent/60 bg-accent/15 border-accent/50'
+                        : tab.active 
                         ? (isBright 
                             ? 'bg-white/80 border-black/[0.08] text-zinc-950 font-bold shadow-[0_2px_8px_rgba(0,0,0,0.06)]' 
                             : 'text-accent font-semibold') 
@@ -776,7 +796,7 @@ export default function Sidebar() {
                             ? 'bg-transparent hover:bg-black/[0.04] text-zinc-700 hover:text-zinc-950 border-transparent' 
                             : 'bg-transparent hover:bg-[color:var(--sidebar-bg-hover)] text-[color:var(--sidebar-text-normal)] hover:text-[color:var(--sidebar-text-hover)] border-transparent')
                 }`}
-                style={tab.active && !isBright ? { 
+                style={tab.active && !isBright && !isSelected ? { 
                     borderColor: 'var(--accent-40)', 
                     backgroundColor: 'var(--accent-15)',
                     boxShadow: draggedItem?.tab?.id === tab.id ? 'none' : '0 0 18px var(--accent-30)'
@@ -784,6 +804,11 @@ export default function Sidebar() {
             >
                 {renderDropIndicator()}
                 <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
+                    {isSelected && (
+                        <span className="w-4 h-4 rounded-full bg-accent text-black flex items-center justify-center shrink-0 shadow-xs">
+                            <Check size={10} strokeWidth={3} />
+                        </span>
+                    )}
                     {renderTabIcon(14)}
                     <span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
                         {tabTitle}
@@ -798,6 +823,498 @@ export default function Sidebar() {
 
                 {renderActionButtons('normal')}
             </div>
+        );
+    };
+
+    const renderSplitGroupSlotBadge = (slotIdx) => {
+        if (splitOrientation === 'quad') return `P${slotIdx + 1}`;
+        if (splitOrientation === 'vertical') return slotIdx === 0 ? 'T' : 'B';
+        return slotIdx === 0 ? 'L' : 'R';
+    };
+
+    const renderSplitTabGroup = (
+        slots,
+        slotCount,
+        spaceType,
+        isParked = false,
+        groupOrientation = splitOrientation,
+        groupId = null,
+        groupName = '',
+        groupNumber = 1
+    ) => {
+        const isSquare = frameCurvature === 'square';
+        const isCohesive = frameCurvature === 'cohesive';
+        const isQuad = groupOrientation === 'quad';
+        const focusedSlotIdx = isParked ? -1 : getFocusedSlotIndex(focusedPane);
+        const LayoutIcon = isQuad
+            ? LayoutGrid
+            : (groupOrientation === 'vertical' ? SplitSquareVertical : SplitSquareHorizontal);
+        const hasSecondaryTab = slots.slice(1, slotCount).some(Boolean);
+
+        const groupRadiusClass = isSquare
+            ? 'rounded-none !rounded-none'
+            : (tabPresentation === 'compact'
+                ? (isCohesive ? 'rounded-xl' : 'rounded-lg')
+                : (isCohesive ? 'rounded-2xl' : 'rounded-xl'));
+
+        const renderMiniFavicon = (tabObj, size = 13) => {
+            if (!tabObj) return <Plus size={size - 1} className="opacity-50" />;
+            if (spaceType === 'ghost') return <Ghost size={size} className="text-accent opacity-80 shrink-0" />;
+            if (spaceType === 'tor') return <Globe size={size} className="text-purple-400 shrink-0" />;
+            const safeFav = getSafeFaviconUrl(tabObj.url, settings, 32);
+            if (safeFav) {
+                return (
+                    <img
+                        src={safeFav}
+                        alt=""
+                        style={{ width: size, height: size }}
+                        className="rounded-sm shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                );
+            }
+            return <Globe size={size} className="opacity-65 shrink-0" />;
+        };
+
+        const getTabLabel = (tabObj) => {
+            if (!tabObj) return t('chrome.splitPickTabShort', null, 'Select tab...');
+            return (!tabObj.title || PLACEHOLDER_TAB_TITLE_SET.has(tabObj.title))
+                ? t('nav.newTab', null, 'New Tab')
+                : tabObj.title;
+        };
+
+        const handleSlotClick = (e, slotIdx, tabObj) => {
+            e.stopPropagation();
+            if (isParked) {
+                restoreParkedSplitGroup(groupId, slotIdx);
+                return;
+            }
+            if (!tabObj) {
+                setFocusedPane(slotIndexToFocusedPane(slotIdx));
+                return;
+            }
+            setFocusedPane(slotIndexToFocusedPane(slotIdx));
+            useUIStore.getState().setCurrentUrl(tabObj.url || '');
+        };
+
+        const handleSlotContextMenu = (e, tabObj) => {
+            if (!tabObj) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setTabContextMenu({ x: e.clientX, y: e.clientY, tab: tabObj, spaceType });
+        };
+
+        const handleSlotClose = (e, slotIdx, tabObj) => {
+            e.stopPropagation();
+            if (!tabObj) return;
+            if (slotIdx >= 1 && isQuad) {
+                setSplitPaneTabId(slotIdx, null);
+            } else {
+                handleCloseTab(tabObj.id);
+            }
+        };
+
+        const groupContainerStyle = isParked
+            ? (isBright
+                ? { backgroundColor: 'rgba(0, 0, 0, 0.025)', borderColor: 'rgba(0, 0, 0, 0.08)' }
+                : { backgroundColor: 'rgba(255, 255, 255, 0.025)', borderColor: 'rgba(255, 255, 255, 0.08)', boxShadow: 'none' })
+            : (isBright
+                ? { backgroundColor: 'rgba(255, 255, 255, 0.72)', borderColor: 'var(--accent-40, rgba(212,188,148,0.4))' }
+                : { backgroundColor: 'rgba(255, 255, 255, 0.045)', borderColor: 'var(--accent-30, rgba(212,188,148,0.35))', boxShadow: '0 4px 18px rgba(0,0,0,0.22)' });
+
+        const editKey = `${spaceType}:${groupId || 'active'}`;
+        const isEditingGroup = editingSplitGroupKey === editKey;
+        const baseGroupLabel = isQuad ? t('chrome.quadGroupLabel', null, 'Quad Split') : t('chrome.splitGroupLabel', null, 'Split Group');
+        const displayGroupLabel = groupName ? groupName : `${baseGroupLabel} ${groupNumber}`;
+
+        const startGroupRename = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            setEditingSplitGroupKey(editKey);
+            setEditingSplitGroupDraft(groupName || '');
+        };
+
+        const commitGroupRename = () => {
+            renameSplitGroup(isParked ? groupId : (activeSplitGroupId || 'active'), editingSplitGroupDraft);
+            setEditingSplitGroupKey(null);
+            setEditingSplitGroupDraft('');
+        };
+
+        const cancelGroupRename = () => {
+            setEditingSplitGroupKey(null);
+            setEditingSplitGroupDraft('');
+        };
+
+        const handleGroupContainerClick = (e) => {
+            if (!isParked || isEditingGroup) return;
+            e.stopPropagation();
+            restoreParkedSplitGroup(groupId, 0);
+        };
+
+        const renderGroupHeader = (compactHeader = false) => (
+            <div className={`flex items-center justify-between ${compactHeader ? 'px-1.5 py-0.5' : 'px-1.5 py-0.5'} select-none gap-1`}>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <LayoutIcon size={11} className={`${isParked ? (isBright ? 'text-zinc-500' : 'text-white/45') : 'text-accent'} shrink-0`} />
+                    {isEditingGroup ? (
+                        <input
+                            type="text"
+                            autoFocus
+                            value={editingSplitGroupDraft}
+                            placeholder={`${baseGroupLabel} ${groupNumber}`}
+                            maxLength={40}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setEditingSplitGroupDraft(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                                e.stopPropagation();
+                                if (e.key === 'Enter') commitGroupRename();
+                                else if (e.key === 'Escape') cancelGroupRename();
+                            }}
+                            onBlur={commitGroupRename}
+                            className={`hidden md:block w-full min-w-0 px-1.5 py-0.5 rounded text-[10px] font-semibold outline-none border ${
+                                isBright
+                                    ? 'bg-white text-zinc-900 border-accent/60 placeholder:text-zinc-400'
+                                    : 'bg-black/40 text-white border-accent/60 placeholder:text-white/35'
+                            }`}
+                        />
+                    ) : (
+                        <span
+                            onDoubleClick={startGroupRename}
+                            title={isParked ? `${displayGroupLabel} • Click to open • Double-click to rename` : `${displayGroupLabel} • Double-click to rename`}
+                            className={`hidden md:inline text-[10px] font-bold ${groupName ? 'tracking-normal' : 'uppercase tracking-wider'} truncate ${
+                                isParked ? (isBright ? 'text-zinc-600' : 'text-white/55') : 'text-accent'
+                            }`}
+                        >
+                            {displayGroupLabel}
+                        </span>
+                    )}
+                </div>
+                <div className="hidden md:flex items-center gap-0.5 shrink-0">
+                    {!isEditingGroup && (
+                        <button
+                            type="button"
+                            onClick={startGroupRename}
+                            className={`opacity-0 group-hover/splitgrp:opacity-100 p-0.5 rounded transition-all duration-150 cursor-pointer ${
+                                isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/45 hover:text-white hover:bg-white/10'
+                            }`}
+                            title={t('chrome.renameSplitGroupTooltip', null, 'Rename Split Group')}
+                        >
+                            <Edit2 size={9.5} />
+                        </button>
+                    )}
+                    {!isParked && hasSecondaryTab && (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); swapSplitPanes(); }}
+                            className={`p-0.5 rounded transition-all duration-200 cursor-pointer ${isBright ? 'text-zinc-500 hover:text-zinc-900 hover:bg-black/5' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
+                            title={t('chrome.swapPanesTooltip', null, 'Swap Panes')}
+                        >
+                            <ArrowLeftRight size={10} className="transition-transform duration-300 hover:rotate-180" />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (isParked) {
+                                clearParkedSplitGroup(groupId);
+                            } else {
+                                toggleSplitView();
+                            }
+                        }}
+                        className={`p-0.5 rounded transition cursor-pointer ${isBright ? 'text-zinc-500 hover:text-rose-600 hover:bg-rose-500/10' : 'text-white/50 hover:text-rose-300 hover:bg-rose-500/15'}`}
+                        title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
+                    >
+                        <X size={10} />
+                    </button>
+                </div>
+            </div>
+        );
+
+        // 1. Compact High-Density Mode
+        if (tabPresentation === 'compact') {
+            return (
+                <div
+                    key={`split-tab-group-compact-${groupId || 'active'}`}
+                    style={groupContainerStyle}
+                    onClick={handleGroupContainerClick}
+                    className={`group/splitgrp relative flex flex-col gap-0.5 p-1 border border-l-2 ${
+                        isParked ? `cursor-pointer ${isBright ? 'border-l-black/15 hover:border-black/20' : 'border-l-white/15 hover:border-white/20'}` : 'border-l-accent'
+                    } ${groupRadiusClass} ${isReducedMotion ? '' : 'animate-split-group'}`}
+                >
+                    {renderGroupHeader(true)}
+                    {Array.from({ length: slotCount }, (_, slotIdx) => {
+                        const tabObj = slots[slotIdx];
+                        const isSlotFocused = focusedSlotIdx === slotIdx;
+                        const slotRadius = isSquare ? 'rounded-none' : 'rounded-md';
+                        return (
+                            <div
+                                key={tabObj ? tabObj.id : `empty-slot-${slotIdx}`}
+                                data-tab-id={tabObj?.id}
+                                onClick={(e) => handleSlotClick(e, slotIdx, tabObj)}
+                                onContextMenu={(e) => handleSlotContextMenu(e, tabObj)}
+                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                onAuxClick={(e) => { if (e.button === 1 && tabObj) handleSlotClose(e, slotIdx, tabObj); }}
+                                className={`group/slot flex items-center justify-between py-1 px-2 ${slotRadius} cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] hover:translate-x-[2px] ${
+                                    !tabObj
+                                        ? `border border-dashed ${isSlotFocused ? 'border-accent/60 bg-accent/10' : (isBright ? 'border-black/15 text-zinc-500' : 'border-white/15 text-white/45')}`
+                                        : (isSlotFocused
+                                            ? (isBright ? 'bg-white text-zinc-950 font-semibold shadow-2xs' : 'bg-white/12 text-accent font-semibold')
+                                            : (isBright ? 'hover:bg-black/[0.04] text-zinc-700' : 'hover:bg-white/[0.06] text-white/80'))
+                                }`}
+                            >
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className={`hidden md:inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-mono font-bold rounded shrink-0 ${
+                                        isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/55')
+                                    }`}>
+                                        {slotIdx + 1}
+                                    </span>
+                                    {renderMiniFavicon(tabObj, 12)}
+                                    <span className="text-xs truncate hidden md:block">{getTabLabel(tabObj)}</span>
+                                </div>
+                                {tabObj && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSlotClose(e, slotIdx, tabObj)}
+                                        className="opacity-0 group-hover/slot:opacity-100 p-0.5 rounded hover:bg-white/10 transition shrink-0 hidden md:flex"
+                                        title={t('nav.closeTab', null, 'Close Tab')}
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // 2. Rich Card Tile Mode (mirrors spatial split layout inside the card!)
+        if (tabPresentation === 'cards') {
+            const cardRadius = isSquare ? 'rounded-none' : (isCohesive ? 'rounded-xl' : 'rounded-lg');
+            const useGridCols = groupOrientation === 'horizontal' || isQuad;
+            return (
+                <div
+                    key={`split-tab-group-cards-${groupId || 'active'}`}
+                    style={groupContainerStyle}
+                    onClick={handleGroupContainerClick}
+                    className={`group/splitgrp relative flex flex-col gap-1.5 p-2 border ${isParked ? 'cursor-pointer' : ''} ${groupRadiusClass} ${isReducedMotion ? '' : 'animate-split-group'}`}
+                >
+                    {renderGroupHeader(false)}
+                    <div className={useGridCols ? 'grid grid-cols-1 md:grid-cols-2 gap-1.5' : 'flex flex-col gap-1.5'}>
+                        {Array.from({ length: slotCount }, (_, slotIdx) => {
+                            const tabObj = slots[slotIdx];
+                            const isSlotFocused = focusedSlotIdx === slotIdx;
+                            let domainStr = '';
+                            try { if (tabObj?.url) domainStr = new URL(tabObj.url).hostname.replace(/^www\./, ''); } catch (_) {}
+                            return (
+                                <div
+                                    key={tabObj ? tabObj.id : `empty-card-${slotIdx}`}
+                                    data-tab-id={tabObj?.id}
+                                    onClick={(e) => handleSlotClick(e, slotIdx, tabObj)}
+                                    onContextMenu={(e) => handleSlotContextMenu(e, tabObj)}
+                                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                    onAuxClick={(e) => { if (e.button === 1 && tabObj) handleSlotClose(e, slotIdx, tabObj); }}
+                                    className={`group/slot relative flex flex-col justify-between p-2 ${cardRadius} border cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] ${
+                                        !tabObj
+                                            ? `border-dashed ${isSlotFocused ? 'border-accent/60 bg-accent/10' : (isBright ? 'border-black/15 bg-black/[0.02] text-zinc-500' : 'border-white/15 bg-white/[0.02] text-white/45')}`
+                                            : (isSlotFocused
+                                                ? (isBright ? 'bg-white border-accent/60 text-zinc-950 shadow-xs' : 'bg-white/[0.10] border-accent/55 text-white shadow-xs')
+                                                : (isBright ? 'bg-white/60 hover:bg-white/90 border-black/[0.06] text-zinc-800' : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/85'))
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between gap-1.5 min-w-0">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            {renderMiniFavicon(tabObj, 12)}
+                                            <span className={`text-[11px] font-semibold truncate hidden md:block ${isSlotFocused && !isBright ? 'text-accent' : ''}`}>
+                                                {getTabLabel(tabObj)}
+                                            </span>
+                                        </div>
+                                        <span className={`hidden md:inline text-[9px] font-mono font-bold px-1 rounded shrink-0 ${
+                                            isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-500' : 'bg-white/[0.08] text-white/50')
+                                        }`}>
+                                            {renderSplitGroupSlotBadge(slotIdx)}
+                                        </span>
+                                    </div>
+                                    <div className="hidden md:flex items-center justify-between mt-1 text-[9px] font-mono opacity-60 truncate">
+                                        <span className="truncate">{domainStr || (tabObj ? 'tab' : 'pick')}</span>
+                                        {tabObj && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleSlotClose(e, slotIdx, tabObj)}
+                                                className="opacity-0 group-hover/slot:opacity-100 hover:text-rose-400 transition shrink-0"
+                                            >
+                                                <X size={10} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        // 3. Signature Liquid Glass Pills Mode (Default)
+        const itemRadius = isSquare ? 'rounded-none' : (isCohesive ? 'rounded-xl' : 'rounded-lg');
+        return (
+            <div
+                key={`split-tab-group-pills-${groupId || 'active'}`}
+                style={groupContainerStyle}
+                onClick={handleGroupContainerClick}
+                className={`group/splitgrp relative flex flex-col gap-1 p-1.5 border ${isParked ? 'cursor-pointer' : ''} ${groupRadiusClass} ${isReducedMotion ? '' : 'animate-split-group'}`}
+            >
+                {renderGroupHeader(false)}
+                <div className="relative flex flex-col gap-1 pl-2">
+                    {/* Vertical Accent Connector Rail */}
+                    <div className={`hidden md:block absolute left-0.5 top-2 bottom-2 w-[2px] rounded-full pointer-events-none ${
+                        isParked ? (isBright ? 'bg-black/15' : 'bg-white/15') : 'bg-accent/65'
+                    }`} />
+                    {Array.from({ length: slotCount }, (_, slotIdx) => {
+                        const tabObj = slots[slotIdx];
+                        const isSlotFocused = focusedSlotIdx === slotIdx;
+                        return (
+                            <div
+                                key={tabObj ? tabObj.id : `empty-pill-${slotIdx}`}
+                                data-tab-id={tabObj?.id}
+                                onClick={(e) => handleSlotClick(e, slotIdx, tabObj)}
+                                onContextMenu={(e) => handleSlotContextMenu(e, tabObj)}
+                                onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                                onAuxClick={(e) => { if (e.button === 1 && tabObj) handleSlotClose(e, slotIdx, tabObj); }}
+                                className={`group/slot flex items-center justify-between ${uiScale === 'compact' ? 'py-1.5 px-2' : 'py-2 px-2.5'} ${itemRadius} border cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] hover:translate-x-[2px] ${
+                                    !tabObj
+                                        ? `border-dashed ${isSlotFocused ? 'border-accent/60 bg-accent/10 text-accent' : (isBright ? 'border-black/15 text-zinc-500 hover:border-accent/40' : 'border-white/15 text-white/45 hover:border-accent/40')}`
+                                        : (isSlotFocused
+                                            ? (isBright ? 'bg-white border-black/10 text-zinc-950 font-semibold shadow-xs' : 'bg-accent/15 border-accent/40 text-accent font-semibold')
+                                            : (isBright ? 'bg-black/[0.02] hover:bg-white/80 border-transparent text-zinc-800' : 'bg-white/[0.03] hover:bg-white/[0.08] border-transparent text-white/85'))
+                                }`}
+                            >
+                                <div className="flex items-center gap-2 min-w-0 pr-1">
+                                    {renderMiniFavicon(tabObj, 13)}
+                                    <span className="text-xs truncate hidden md:block">{getTabLabel(tabObj)}</span>
+                                </div>
+                                <div className="hidden md:flex items-center gap-1 shrink-0">
+                                    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                                        isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/55')
+                                    }`}>
+                                        {renderSplitGroupSlotBadge(slotIdx)}
+                                    </span>
+                                    {tabObj && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleSlotClose(e, slotIdx, tabObj)}
+                                            className="opacity-0 group-hover/slot:opacity-100 p-0.5 rounded hover:bg-white/10 transition"
+                                            title={t('nav.closeTab', null, 'Close Tab')}
+                                        >
+                                            <X size={10} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    const renderSpaceTabList = (fullSpaceTabs, filtered, spaceType) => {
+        const orderedIds = filtered.map(t => t.id);
+        const filteredIds = new Set(orderedIds);
+        const groupedTabIds = new Set();
+        const anchorDescriptors = new Map(); // anchorTabId -> Array<descriptor>
+        const topDescriptors = [];
+
+        if (isSplitView && spaceType === activeSpace) {
+            const { slots, slotCount } = resolveSplitSlotTabs({
+                spaceTabs: fullSpaceTabs,
+                isSplitView: true,
+                splitOrientation,
+                splitPaneTabIds,
+                splitRightTabId
+            });
+            slots.slice(0, slotCount).filter(Boolean).forEach(t => groupedTabIds.add(t.id));
+            const anchorTab = slots.slice(0, slotCount).find(t => t && filteredIds.has(t.id)) || null;
+            const desc = {
+                slots,
+                slotCount,
+                isParked: false,
+                orientation: splitOrientation,
+                groupId: activeSplitGroupId || 'active',
+                groupName: activeSplitGroupName
+            };
+            if (anchorTab) {
+                anchorDescriptors.set(anchorTab.id, [desc]);
+            } else {
+                topDescriptors.push(desc);
+            }
+        }
+
+        const byId = new Map((fullSpaceTabs || []).map(t => [t.id, t]));
+        for (const pg of parkedSplitGroups) {
+            if (!pg || pg.space !== spaceType) continue;
+            const pOrientation = pg.orientation || 'horizontal';
+            const pSlotCount = pOrientation === 'quad' ? 4 : 2;
+            const pSlots = [
+                byId.get(pg.primaryTabId) || null,
+                ...(pg.paneTabIds || []).slice(0, 3).map(id => (id ? (byId.get(id) || null) : null))
+            ];
+            const populated = pSlots.slice(0, pSlotCount).filter(t => t && !groupedTabIds.has(t.id));
+            if (populated.length < 2 || !pSlots[0] || groupedTabIds.has(pSlots[0].id)) continue;
+
+            populated.forEach(t => groupedTabIds.add(t.id));
+            const anchorTab = populated.find(t => filteredIds.has(t.id)) || null;
+            const desc = {
+                slots: pSlots,
+                slotCount: pSlotCount,
+                isParked: true,
+                orientation: pOrientation,
+                groupId: pg.id,
+                groupName: pg.name || ''
+            };
+            if (anchorTab) {
+                const prev = anchorDescriptors.get(anchorTab.id) || [];
+                anchorDescriptors.set(anchorTab.id, [...prev, desc]);
+            } else {
+                topDescriptors.push(desc);
+            }
+        }
+
+        if (groupedTabIds.size === 0) {
+            return filtered.map(tab => renderTab(tab, spaceType, orderedIds));
+        }
+
+        let groupNumberCounter = 0;
+        const renderDescriptor = (d) => {
+            groupNumberCounter += 1;
+            return renderSplitTabGroup(
+                d.slots,
+                d.slotCount,
+                spaceType,
+                d.isParked,
+                d.orientation,
+                d.groupId,
+                d.groupName,
+                groupNumberCounter
+            );
+        };
+
+        const topNodes = topDescriptors.map(renderDescriptor);
+        return (
+            <>
+                {topNodes}
+                {filtered.map((tab) => {
+                    if (groupedTabIds.has(tab.id)) {
+                        const list = anchorDescriptors.get(tab.id);
+                        return list ? list.map(renderDescriptor) : null;
+                    }
+                    return renderTab(tab, spaceType, orderedIds);
+                })}
+            </>
         );
     };
 
@@ -826,11 +1343,11 @@ export default function Sidebar() {
                 ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
-            isFullscreen
+            isChromeHidden
                 ? `!fixed ${sidebarPosition === 'right' ? '!right-3' : '!left-3'} !top-3 !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl`
                 : (isSidebarHidden ? 'is-hidden pointer-events-none' : '')
         }`}
-        style={isFullscreen ? {
+        style={isChromeHidden ? {
             position: 'fixed',
             left: sidebarPosition === 'right' ? 'auto' : '12px',
             right: sidebarPosition === 'right' ? '12px' : 'auto',
@@ -872,12 +1389,12 @@ export default function Sidebar() {
                 style={{
                     width: uiScale === 'compact' ? 240 : 256,
                     minWidth: uiScale === 'compact' ? 240 : 256,
-                    transform: (!isFullscreen && isSidebarHidden) 
+                    transform: (!isChromeHidden && isSidebarHidden) 
                         ? (sidebarPosition === 'right' ? 'translateX(100%)' : 'translateX(-100%)') 
                         : 'translateX(0)',
-                    opacity: (!isFullscreen && isSidebarHidden) ? 0 : 1,
+                    opacity: (!isChromeHidden && isSidebarHidden) ? 0 : 1,
                     transition: isReducedMotion ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-                    pointerEvents: (!isFullscreen && isSidebarHidden) ? 'none' : 'auto',
+                    pointerEvents: (!isChromeHidden && isSidebarHidden) ? 'none' : 'auto',
                     willChange: 'transform, opacity'
                 }}
             >
@@ -1076,10 +1593,20 @@ export default function Sidebar() {
             </div>
 
             <div className={`px-4 ${uiScale === 'compact' ? 'py-2.5 gap-1.5' : 'py-4 gap-2'} hidden md:grid grid-cols-4 border-b border-[color:var(--sidebar-border)] relative z-10`}>
-                {pinnedTabs.map((pin) => {
+                {(getPinnedTabsForSpace ? getPinnedTabsForSpace(activeSpace) : pinnedTabs).map((pin) => {
                     const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
                     const pinTabs = (tabs || []).filter(t => isTabForPin(t, pin));
-                    const hasActiveTab = pinTabs.some(t => t.active);
+                    const activeSplitSlots = isSplitView ? resolveSplitSlotTabs({
+                        spaceTabs: tabs || [],
+                        isSplitView: true,
+                        splitOrientation,
+                        splitPaneTabIds,
+                        splitRightTabId
+                    }).slots : [];
+                    const focusedSlotTab = isSplitView ? (activeSplitSlots[getFocusedSlotIndex(focusedPane)] || activeSplitSlots[0]) : null;
+                    const hasActiveTab = isSplitView
+                        ? Boolean(focusedSlotTab && isTabForPin(focusedSlotTab, pin))
+                        : pinTabs.some(t => t.active);
                     const isAudible = pinTabs.some(t => t.isAudioPlaying || t.isAudible);
                     const isPopupOpen = activePinnedStack?.pin?.id === pin.id;
                     const isGitHubPin = pin.domain && pin.domain.toLowerCase().includes('github.com');
@@ -1146,12 +1673,16 @@ export default function Sidebar() {
                                 );
                             })()}
                         >
-                            <img 
-                                src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
-                                alt={pin.title} 
-                                className={`w-5 h-5 rounded-md drop-shadow-md transition-transform duration-200 ${pinTabs.length > 0 ? '-translate-y-1' : ''}`} 
-                                onError={(e) => { e.target.style.display = 'none'; }} 
-                            />
+                            {getSafeFaviconUrl(pin.domain, settings, 64) ? (
+                                <img 
+                                    src={getSafeFaviconUrl(pin.domain, settings, 64)} 
+                                    alt={pin.title} 
+                                    className={`w-5 h-5 rounded-md drop-shadow-md transition-transform duration-200 ${pinTabs.length > 0 ? '-translate-y-1' : ''}`} 
+                                    onError={(e) => { e.target.style.display = 'none'; }} 
+                                />
+                            ) : (
+                                <Globe size={16} className={`transition-transform duration-200 ${pinTabs.length > 0 ? '-translate-y-1' : ''} ${isBright ? 'text-zinc-500' : 'text-white/55'}`} />
+                            )}
 
                             {/* Speaker badge if any tab in this service stack is playing audio */}
                             {isAudible && (
@@ -1226,7 +1757,8 @@ export default function Sidebar() {
                             {customSpaces.map((sp) => {
                                 const rawTabs = getTabsForSpace ? getTabsForSpace(sp.id) : (sp.id === 'personal' ? privateTabs : (sp.id === 'work' ? workTabs : []));
                                 const spaceTabs = rawTabs || [];
-                                const filtered = spaceTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
+                                const spPins = getPinnedTabsForSpace ? getPinnedTabsForSpace(sp.id) : pinnedTabs;
+                                const filtered = spaceTabs.filter(t => !spPins.some(p => isTabForPin(t, p)));
                                 const isDragOverRoot = dragOverItem === `root-${sp.id}`;
 
                                 return (
@@ -1269,7 +1801,8 @@ export default function Sidebar() {
                                             </button>
                                         </div>
                                         {(() => {
-                                            if (filtered.length === 0) {
+                                            const hasSplitInSpace = (isSplitView && sp.id === activeSpace) || parkedSplitGroups.some(pg => pg?.space === sp.id);
+                                            if (filtered.length === 0 && !hasSplitInSpace) {
                                                 return (
                                                     <button 
                                                         onClick={() => handleNewTab()} 
@@ -1289,7 +1822,7 @@ export default function Sidebar() {
                                                     </button>
                                                 );
                                             }
-                                            return filtered.map(tab => renderTab(tab, sp.id));
+                                            return renderSpaceTabList(spaceTabs, filtered, sp.id);
                                         })()}
                                     </div>
                                 );
@@ -1323,8 +1856,10 @@ export default function Sidebar() {
                                     </div>
                                 </div>
                                 {(() => {
-                                    const filtered = ghostTabs.filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                                    if (filtered.length === 0) {
+                                    const ghostPins = getPinnedTabsForSpace ? getPinnedTabsForSpace('ghost') : [];
+                                    const filtered = ghostTabs.filter(t => !ghostPins.some(p => isTabForPin(t, p)));
+                                    const hasSplitInGhost = (isSplitView && activeSpace === 'ghost') || parkedSplitGroups.some(pg => pg?.space === 'ghost');
+                                    if (filtered.length === 0 && !hasSplitInGhost) {
                                         return (
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between ${
                                                 uiScale === 'compact' ? 'py-2 px-2.5' : 'p-3'
@@ -1338,7 +1873,7 @@ export default function Sidebar() {
                                             </button>
                                         );
                                     }
-                                    return filtered.map(tab => renderTab(tab, 'ghost'));
+                                    return renderSpaceTabList(ghostTabs, filtered, 'ghost');
                                 })()}
                             </div>
 
@@ -1378,8 +1913,10 @@ export default function Sidebar() {
                                     </div>
                                 </div>
                                 {(() => {
-                                    const filtered = (torTabs || []).filter(t => !pinnedTabs.some(p => isTabForPin(t, p)));
-                                    if (filtered.length === 0) {
+                                    const torPins = getPinnedTabsForSpace ? getPinnedTabsForSpace('tor') : [];
+                                    const filtered = (torTabs || []).filter(t => !torPins.some(p => isTabForPin(t, p)));
+                                    const hasSplitInTor = (isSplitView && activeSpace === 'tor') || parkedSplitGroups.some(pg => pg?.space === 'tor');
+                                    if (filtered.length === 0 && !hasSplitInTor) {
                                         return (
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between p-3 ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-xl'
@@ -1391,7 +1928,7 @@ export default function Sidebar() {
                                             </button>
                                         );
                                     }
-                                    return filtered.map(tab => renderTab(tab, 'tor'));
+                                    return renderSpaceTabList(torTabs || [], filtered, 'tor');
                                 })()}
                             </div>
 
@@ -1399,6 +1936,143 @@ export default function Sidebar() {
                     );
                 })()}
             </div>
+
+            {selectedTabIds.length >= 2 && (() => {
+                const activeTabsList = getTabsForSpace ? (getTabsForSpace(activeSpace) || []) : [];
+                const selectedTabs = activeTabsList.filter(t => selectedTabIds.includes(t.id));
+                const allSelectedMuted = selectedTabs.length > 0 && selectedTabs.every(t => Boolean(t.isMuted));
+
+                const handleBulkCopyUrls = () => {
+                    const joined = getSelectedTabUrls(selectedTabIds);
+                    if (!joined) {
+                        showToast(t('chrome.noCopyableUrls', null, 'No copyable URLs in selected tabs'));
+                        return;
+                    }
+                    const count = joined.split('\n').length;
+                    const copyPromise = navigator.clipboard?.writeText
+                        ? navigator.clipboard.writeText(joined).catch(() => window.electronAPI?.writeClipboardText?.(joined))
+                        : Promise.resolve(window.electronAPI?.writeClipboardText?.(joined));
+                    Promise.resolve(copyPromise).then(() => {
+                        showToast(`Copied ${count} URL${count === 1 ? '' : 's'} to clipboard`);
+                    }).catch(() => {});
+                };
+
+                const handleBulkSplitView = () => {
+                    if (selectedTabIds.length < 2 || selectedTabIds.length > 4) return;
+                    const isBlankTab = (t) => !t || !t.url || t.url === '' || t.url === 'about:blank' || t.url === 'qbrowse://newtab';
+                    const orderedIds = [...selectedTabIds];
+                    // Prefer placing a non-blank tab in secondary slots
+                    const firstNonBlankIdx = orderedIds.findIndex(id => !isBlankTab(activeTabsList.find(t => t.id === id)));
+                    const primaryId = orderedIds[0];
+                    const secondaryRaw = orderedIds.slice(1, 4);
+                    const secondaryResolved = [0, 1, 2].map((i) => {
+                        const cid = secondaryRaw[i];
+                        if (!cid) return null;
+                        const tabObj = activeTabsList.find(t => t.id === cid);
+                        return isBlankTab(tabObj) ? null : cid;
+                    });
+                    const nextOrientation = selectedTabIds.length >= 3 ? 'quad' : 'horizontal';
+                    try { localStorage.setItem('qbrowse_split_orientation', nextOrientation); } catch (_) {}
+                    const setList = (updater) => setTabsForSpace
+                        ? setTabsForSpace(activeSpace, updater)
+                        : (activeSpace === 'personal' ? setPrivateTabs(updater) : (activeSpace === 'work' ? setWorkTabs(updater) : (activeSpace === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
+                    const nowTs = Date.now();
+                    const activeSet = new Set([primaryId, ...secondaryResolved.filter(Boolean)]);
+                    setList(activeTabsList.map(t => ({
+                        ...t,
+                        active: t.id === primaryId,
+                        suspended: activeSet.has(t.id) ? false : t.suspended,
+                        lastActiveAt: activeSet.has(t.id) ? nowTs : t.lastActiveAt
+                    })));
+                    const uiBefore = useUIStore.getState();
+                    if (uiBefore.isSplitView) {
+                        uiBefore.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+                    }
+                    const nextGroupId = `sg-${nowTs}-${Math.floor(Math.random() * 1000)}`;
+                    const nextParked = pruneTabsFromParkedGroups(useUIStore.getState().parkedSplitGroups, Array.from(activeSet));
+                    useUIStore.setState({
+                        isSplitView: true,
+                        activeSplitGroupId: nextGroupId,
+                        activeSplitGroupName: '',
+                        splitOrientation: nextOrientation,
+                        splitRightTabId: secondaryResolved[0] || null,
+                        splitPaneTabIds: secondaryResolved,
+                        focusedPane: secondaryResolved[0] ? 'left' : 'right',
+                        parkedSplitGroups: nextParked
+                    });
+                    const firstTab = firstNonBlankIdx >= 0 ? activeTabsList.find(t => t.id === primaryId) : null;
+                    if (firstTab) {
+                        useUIStore.getState().setCurrentUrl(firstTab.url || '');
+                    }
+                    clearTabSelection();
+                };
+
+                return (
+                    <div
+                        className={`mx-2 mb-2 p-2 flex flex-col gap-1.5 border shadow-lg animate-pop-in ${
+                            frameCurvature === 'square' ? 'rounded-none' : 'rounded-xl'
+                        } ${getLiquidGlassSurfaceClasses(isBright)}`}
+                        style={getLiquidGlassInlineStyle(isBright)}
+                    >
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+                                {selectedTabIds.length} selected
+                            </span>
+                            <button
+                                onClick={clearTabSelection}
+                                className="p-1 rounded-md text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] hover:bg-white/10 transition-colors cursor-pointer"
+                                title={t('common.clearSelection', null, 'Clear selection (Esc)')}
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                            <button
+                                onClick={handleBulkCopyUrls}
+                                className="flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/[0.06] hover:bg-accent/20 hover:text-accent border border-white/[0.08] transition-all cursor-pointer"
+                                title={t('chrome.copyUrls', null, 'Copy URLs')}
+                            >
+                                <Copy size={11} />
+                                <span className="hidden md:inline">Copy</span>
+                            </button>
+                            {selectedTabIds.length >= 2 && selectedTabIds.length <= 4 && (
+                                <button
+                                    onClick={handleBulkSplitView}
+                                    className="flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/[0.06] hover:bg-accent/20 hover:text-accent border border-white/[0.08] transition-all cursor-pointer"
+                                    title={selectedTabIds.length >= 3 ? t('chrome.splitQuadSelected', null, 'Open in 2×2 Quad Split') : t('chrome.splitViewSelected', null, 'Open in Split View')}
+                                >
+                                    <Columns size={11} />
+                                    <span className="hidden md:inline">{selectedTabIds.length >= 3 ? 'Quad' : 'Split'}</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => bulkSuspendTabs(selectedTabIds)}
+                                className="flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/[0.06] hover:bg-accent/20 hover:text-accent border border-white/[0.08] transition-all cursor-pointer"
+                                title={t('chrome.suspendSelected', null, 'Suspend selected tabs')}
+                            >
+                                <Moon size={11} />
+                                <span className="hidden md:inline">Sleep</span>
+                            </button>
+                            <button
+                                onClick={() => bulkToggleMuteTabs(selectedTabIds)}
+                                className="flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-white/[0.06] hover:bg-accent/20 hover:text-accent border border-white/[0.08] transition-all cursor-pointer"
+                                title={allSelectedMuted ? t('chrome.unmuteSelected', null, 'Unmute selected tabs') : t('chrome.muteSelected', null, 'Mute selected tabs')}
+                            >
+                                {allSelectedMuted ? <Volume2 size={11} /> : <VolumeX size={11} />}
+                                <span className="hidden md:inline">{allSelectedMuted ? 'Unmute' : 'Mute'}</span>
+                            </button>
+                            <button
+                                onClick={() => bulkCloseTabs(selectedTabIds)}
+                                className="flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-red-500/15 hover:bg-red-500/30 text-red-400 border border-red-500/25 transition-all cursor-pointer"
+                                title={t('chrome.closeSelected', null, 'Close selected tabs')}
+                            >
+                                <Trash2 size={11} />
+                                <span className="hidden md:inline">Close</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             <div ref={footerBarRef} className="relative p-3 border-t border-[color:var(--sidebar-border)] bg-transparent flex gap-1.5 items-center">
                 {/* Anchored Rename Workspace Popover (Portaled to body for true backdrop blur) */}
@@ -1792,9 +2466,9 @@ export default function Sidebar() {
                 }}
             >
                 <div className="flex items-center gap-2.5 truncate">
-                    {draggedItem.tab.url && draggedItem.tab.url !== 'about:blank' ? (
+                    {getSafeFaviconUrl(draggedItem.tab.url, settings, 64) ? (
                         <img 
-                            src={`https://www.google.com/s2/favicons?sz=64&domain=${draggedItem.tab.url}`} 
+                            src={getSafeFaviconUrl(draggedItem.tab.url, settings, 64)} 
                             className="w-4 h-4 rounded-sm shrink-0" 
                             onError={(e) => e.target.style.display = 'none'} 
                         />

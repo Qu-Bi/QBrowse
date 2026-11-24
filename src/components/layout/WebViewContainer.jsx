@@ -13,13 +13,24 @@ import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import FlagsPage from '../pages/FlagsPage';
 import LocalFileViewer from '../pages/LocalFileViewer';
+import HelpLegalContent from '../common/HelpLegalContent';
+import { resolveHelpLegalTabFromUrl } from '../../utils/helpLegalContent';
 import DrmHandOffBanner from '../features/DrmHandOffBanner';
 import WebviewErrorOverlay from '../common/WebviewErrorOverlay';
 import { buildSearchEngineUrl } from '../../utils/searchEngines';
 import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
 import { playDisintegrationAnimation } from '../../utils/elementDisintegrator';
 import { isUrlExcludedFromDarkMode } from '../../utils/darkModeWhitelist';
+import { consumeHardwareNavEvent } from '../../utils/navDedup';
+import { isLocalViewerUrl } from '../../utils/fileUrlHelpers';
 import { useTranslation, t as tStatic } from '../../i18n/index';
+import {
+    getSlotRectCss,
+    getFocusedSlotIndex,
+    resolveSplitSlotTabs,
+    slotIndexToFocusedPane
+} from '../../utils/splitLayoutHelpers';
+import { isUrlAllowedInPin } from '../../utils/pinnedAppHelpers';
 
 const normalizeUrlForCompare = (u) => {
     if (!u) return '';
@@ -46,13 +57,34 @@ const isSameOrEquivalentUrl = (a, b) => {
 
 // We extract WebViewItem so we can freeze its initial URL 
 // and use imperative loadURL() to avoid React src update bugs
-const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions, theme: themeProp }) => {
+const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActive, isFocusedPane, isSpaceActive, setSpaceTabs, zoomLevel, isForceDark, darkExclusions, theme: themeProp, paneRect, slotIndex, disableRectTransition, isReducedMotion }) => {
     const { t } = useTranslation();
     const storeTheme = useUIStore(state => state.theme);
     const theme = themeProp || storeTheme;
     const wrapperRef = useRef(null);
     const wvRef = useRef(null);
     const isDomReadyRef = useRef(false);
+    const slotIndexRef = useRef(slotIndex);
+    slotIndexRef.current = slotIndex;
+    const tabUrlRef = useRef(tab.url);
+    tabUrlRef.current = tab.url;
+    const isFocusedPaneRef = useRef(isFocusedPane);
+    isFocusedPaneRef.current = isFocusedPane;
+
+    const focusThisSplitPane = () => {
+        const idx = slotIndexRef.current;
+        if (idx === undefined || idx === null) return;
+        const ui = useUIStore.getState();
+        if (!ui.isSplitView) return;
+        const targetPane = slotIndexToFocusedPane(idx);
+        if (ui.focusedPane !== targetPane) {
+            ui.setFocusedPane(targetPane);
+        }
+        const u = tabUrlRef.current || '';
+        if (ui.currentUrl !== u) {
+            ui.setCurrentUrl(u);
+        }
+    };
     const pendingScrollAnnotationRef = useRef(null);
     const torSecurityLevel = useTorStore(state => state.securityLevel);
     const torStatus = useTorStore(state => state.status);
@@ -255,7 +287,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             const loadingTitle = cleanHost || tStatic('common.loading', null, 'Loading...');
             setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: finalUrl, title: loadingTitle } : t));
             useTabStore.getState().updateTabState(tab.id, { url: finalUrl, title: loadingTitle });
-            if (isActive && isSpaceActive) {
+            if (isFocusedPaneRef.current) {
                 useUIStore.getState().setCurrentUrl(finalUrl);
             }
         }
@@ -294,6 +326,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             return u.replace('qbrowse://ai', 'http://127.0.0.1:8080');
         }
         if (u.startsWith('qbrowse://')) {
+            return 'about:blank';
+        }
+        if (isLocalViewerUrl(u)) {
             return 'about:blank';
         }
         // If it's an unencrypted HTTP URL and not yet bypassed, do not load initially — error overlay will render
@@ -454,7 +489,14 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         if (tab.url.startsWith('qbrowse://') && !tab.url.startsWith('qbrowse://ai')) {
             return;
         }
-        if (tab.url.startsWith('file://')) {
+        if (isLocalViewerUrl(tab.url)) {
+            // Blank out any previous webpage/audio when switching this tab to LocalFileViewer
+            if (currentRequestedUrlRef.current && currentRequestedUrlRef.current !== 'about:blank' && typeof wv.loadURL === 'function') {
+                currentRequestedUrlRef.current = 'about:blank';
+                try {
+                    wv.loadURL('about:blank').catch(() => {});
+                } catch (_) {}
+            }
             return;
         }
 
@@ -556,7 +598,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 }
                 return prev;
             });
-            if (isActive && isSpaceActive) {
+            if (isFocusedPaneRef.current) {
                 useUIStore.getState().setCurrentUrl(e.url);
                 useUIStore.getState().setIsReaderAvailable(false);
                 if (useUIStore.getState().isReaderOpen) {
@@ -780,7 +822,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             if (failedUrl && failedUrl !== 'about:blank') {
                 setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: failedUrl, title: errorTitle } : t));
                 useTabStore.getState().updateTabState(tab.id, { url: failedUrl, title: errorTitle });
-                if (isActive && isSpaceActive) {
+                if (isFocusedPaneRef.current) {
                     useUIStore.getState().setCurrentUrl(failedUrl);
                 }
             }
@@ -833,7 +875,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     useUIStore.getState().setIsReaderAvailable(isArticle);
                 }
             } else if (e.channel === 'webview-mouse-nav') {
+                focusThisSplitPane();
                 const action = e.args && e.args[0];
+                if (!consumeHardwareNavEvent(action)) return;
                 if (action === 'back' && wv.canGoBack && wv.canGoBack()) {
                     wv.goBack();
                 } else if (action === 'forward' && wv.canGoForward && wv.canGoForward()) {
@@ -1021,7 +1065,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         return { ...prev, rect: updateData.rect };
                     });
                 }
+            } else if (e.channel === 'webview-pane-interact') {
+                focusThisSplitPane();
             } else if (e.channel === 'webview-page-clicked') {
+                focusThisSplitPane();
                 const ui = useUIStore.getState();
                 ui.closeContextMenus();
                 if (ui.activePopover) {
@@ -1334,9 +1381,21 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleWillNavigate = (e) => {
-            if (e.url && window.electronAPI?.isAppProtocol?.(e.url)) {
+            if (!e?.url) return;
+            if (window.electronAPI?.isAppProtocol?.(e.url)) {
                 try { if (e.preventDefault) e.preventDefault(); } catch(_) {}
                 window.electronAPI.openAppProtocol(e.url);
+                return;
+            }
+            if (tab.pinnedId && /^https?:\/\//i.test(e.url)) {
+                const pin = useTabStore.getState().getPinById?.(tab.pinnedId, space);
+                if (pin && !isUrlAllowedInPin(e.url, pin)) {
+                    try { if (e.preventDefault) e.preventDefault(); } catch(_) {}
+                    useTabStore.getState().handleNewTab(e.url, true, {
+                        isOpenedByNewWindow: true,
+                        openerTabId: tab.id
+                    });
+                }
             }
         };
 
@@ -1422,8 +1481,10 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         wv.addEventListener('ipc-message', handleIpcMessage);
         wv.addEventListener('new-window', handleNewWindow);
         wv.addEventListener('will-navigate', handleWillNavigate);
+        wv.addEventListener('focus', focusThisSplitPane);
 
         return () => {
+            wv.removeEventListener('focus', focusThisSplitPane);
             wv.removeEventListener('did-attach', registerWcId);
             wv.removeEventListener('context-menu', handleContextMenu);
             wv.removeEventListener('did-start-loading', handleDidStartLoading);
@@ -1594,12 +1655,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     // Refresh mechanism
     const isRefreshing = useUIStore(state => state.isRefreshing);
     useEffect(() => {
-        if (isRefreshing && isActive && isSpaceActive && wvRef.current) {
+        if (isRefreshing && isFocusedPane && wvRef.current) {
             try {
                 wvRef.current.reload();
             } catch(e) {}
         }
-    }, [isRefreshing, isActive, isSpaceActive]);
+    }, [isRefreshing, isFocusedPane]);
 
     // High-Res Spatial Zoom Animation (Instant Reflow + 120ms Spring Expansion)
     const appliedFactorRef = useRef((zoomLevel || 100) / 100);
@@ -1702,6 +1763,28 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const isBrightTab = theme === 'light' && space !== 'ghost' && space !== 'tor';
     const exclusions = darkExclusions || [];
     const darkExcludeMedia = useUIStore(state => state.darkExcludeMedia);
+    const textHighlightStyle = useUIStore(state => state.textHighlightStyle);
+    const textHighlightColor = useUIStore(state => state.textHighlightColor);
+    const textHighlightApplyToWeb = useUIStore(state => state.textHighlightApplyToWeb);
+    const accentColor = useUIStore(state => state.accentColor);
+
+    useEffect(() => {
+        const wv = wvRef.current;
+        if (!wv) return;
+        const pushHighlight = () => {
+            try {
+                wv.send('apply-text-highlight', {
+                    style: textHighlightStyle,
+                    color: textHighlightColor,
+                    accentColor,
+                    applyToWeb: textHighlightApplyToWeb
+                });
+            } catch (_) {}
+        };
+        if (isDomReadyRef.current) pushHighlight();
+        wv.addEventListener('dom-ready', pushHighlight);
+        return () => { wv.removeEventListener('dom-ready', pushHighlight); };
+    }, [textHighlightStyle, textHighlightColor, textHighlightApplyToWeb, accentColor]);
 
     useEffect(() => {
         const wv = wvRef.current;
@@ -1800,7 +1883,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     }, [isActive, isSpaceActive]);
 
     const isFlagsPage = tab.url && (tab.url.startsWith('qbrowse://flags') || tab.url.startsWith('chrome://flags') || tab.url.startsWith('about:flags'));
-    const isLocalResource = tab.url && tab.url.startsWith('file://') && !/\.(html?|xhtml)$/i.test(tab.url);
+    const helpLegalTab = resolveHelpLegalTabFromUrl(tab.url);
+    const isLocalResource = isLocalViewerUrl(tab.url);
 
     const handleSaveNote = () => {
         if (!activeNoteCard) return;
@@ -1957,7 +2041,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     return (
         <div 
             ref={wrapperRef}
-            className={`w-full absolute ${isBright ? 'bg-white' : 'bg-[#0c0d14]'} transition-opacity duration-200 ${
+            onMouseDown={focusThisSplitPane}
+            onWheel={focusThisSplitPane}
+            className={`absolute ${isBright ? 'bg-white' : 'bg-[#0c0d14]'} ${
                 tab.isClosing ? 'webview-closing-anim' : ''
             } ${isHtmlFs ? 'fixed inset-0 !z-[999999] !w-screen !h-screen bg-black' : ''}`} 
             style={isHtmlFs ? {
@@ -1978,13 +2064,20 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 pointerEvents: 'auto',
                 willChange: 'transform'
             } : { 
-                top: '0px',
-                left: '0px',
-                width: '100%',
-                height: '100%',
-                zIndex: shouldShow ? 10 : -1,
+                top: paneRect ? paneRect.top : '0%',
+                left: paneRect ? paneRect.left : '0%',
+                width: paneRect ? paneRect.width : '100%',
+                height: paneRect ? paneRect.height : '100%',
+                paddingTop: paneRect ? paneRect.paddingTop : '0px',
+                boxSizing: 'border-box',
+                zIndex: shouldShow ? (slotIndex === 0 ? 12 : 10) : -1,
                 opacity: shouldShow ? 1 : 0,
-                pointerEvents: shouldShow ? 'auto' : 'none'
+                pointerEvents: shouldShow ? 'auto' : 'none',
+                transition: isReducedMotion
+                    ? 'none'
+                    : disableRectTransition
+                        ? 'opacity 220ms ease-out'
+                        : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1), padding-top 220ms ease-out, opacity 220ms ease-out'
             }}
         >
             {shouldShow && !tab.isClosing && !isFlagsPage && !isLocalResource && (
@@ -2044,6 +2137,15 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     <FlagsPage />
                 </div>
             )}
+            {helpLegalTab && shouldShow && (
+                <div className={`w-full h-full absolute inset-0 z-20 overflow-hidden ${isBright ? 'bg-zinc-50' : 'bg-[#0a0a0f]'}`}>
+                    <HelpLegalContent
+                        activeTab={helpLegalTab}
+                        onTabChange={(nextTab) => useTabStore.getState().handleNavigateTab(tab.id, `qbrowse://${nextTab}`)}
+                        mode="page"
+                    />
+                </div>
+            )}
             {isLocalResource && shouldShow && (
                 <div className="w-full h-full absolute inset-0 z-20 overflow-hidden">
                     <LocalFileViewer tab={tab} />
@@ -2066,7 +2168,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 src={initialUrl}
                 partition={space === 'ghost' ? 'ghost' : (space === 'tor' ? 'tor' : `persist:profile_${activeProfileId || 'default'}`)}
                 className={`w-full h-full ${isBright ? 'bg-white' : 'bg-[#0c0d14]'}`}
-                style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !isLocalResource && !activeError ? 'visible' : 'hidden' }}
+                style={{ display: 'flex', visibility: shouldShow && !isFlagsPage && !helpLegalTab && !isLocalResource && !activeError ? 'visible' : 'hidden' }}
                 allowpopups="true"
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
@@ -2251,20 +2353,22 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 });
 WebViewItem.displayName = 'WebViewItem';
 
-export default function WebViewContainer({ space, targetTabId, isSplitPane = false }) {
+export default function WebViewContainer({ space }) {
   const { 
     privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, activeSpace,
     setPrivateTabs, setWorkTabs, setGhostTabs, setTorTabs, getTabsForSpace, setTabsForSpace
   } = useTabStore();
   const { 
-    isRightPanelOpen, isFullscreen, isSplitView, 
-    splitRightTabId, zoomLevel, currentUrl, 
+    isSplitView, splitRightTabId, splitPaneTabIds, splitOrientation, focusedPane,
+    isDraggingSplit, isSplitAxisAnimating, isSplitClosing, zoomLevel,
     isForceDark, darkExclusions,
     activePopover, isPopoverClosing, activeModal, isModalClosing, 
     isOmniboxOpen, activePinnedStack, isPinnedStackClosing, theme,
-    activeDialog
+    activeDialog, settings, isSystemReducedMotion
   } = useUIStore();
   const activeProfileId = useProfileStore(state => state.activeProfileId);
+  const isSplitLeft = (settings?.sidebarPosition || 'left') === 'right';
+  const isReducedMotion = Boolean(settings?.a11yReducedMotion || isSystemReducedMotion);
 
   const isSpaceActive = activeSpace === space;
   let spaceTabs = [];
@@ -2287,17 +2391,14 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
     setSpaceTabs = (updater) => setTabsForSpace ? setTabsForSpace(space, updater) : null;
   }
 
-  let activeTab;
-  if (isSplitPane && targetTabId) {
-    activeTab = spaceTabs.find(t => t.id === targetTabId);
-  } else if (isSplitView && splitRightTabId) {
-    // In split view, left container must show an active tab distinct from right split tab
-    activeTab = spaceTabs.find(t => t.active && t.id !== splitRightTabId) || 
-                spaceTabs.find(t => t.id !== splitRightTabId) || 
-                spaceTabs[0];
-  } else {
-    activeTab = spaceTabs.find(t => t.active) || spaceTabs[0];
-  }
+  const { slots, tabSlotMap } = resolveSplitSlotTabs({
+    spaceTabs,
+    isSplitView: isSpaceActive && isSplitView,
+    splitOrientation,
+    splitPaneTabIds,
+    splitRightTabId
+  });
+  const activeTab = slots[0];
 
   const containerRef = useRef(null);
 
@@ -2320,20 +2421,22 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
           
           // Optimization: Do not spawn heavy Chromium webview renderers for blank / new tab pages.
           // Blank tabs use the lightweight React Zen Dashboard instead.
-          const isBlankTab = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab') || tab.url.startsWith('qbrowse://home') || tab.url.startsWith('qbrowse://blank') || (tab.url.startsWith('qbrowse://') && !tab.url.startsWith('qbrowse://flags') && !tab.url.startsWith('qbrowse://ai'));
+          const isBlankTab = !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://newtab') || tab.url.startsWith('qbrowse://home') || tab.url.startsWith('qbrowse://blank') || (tab.url.startsWith('qbrowse://') && !tab.url.startsWith('qbrowse://flags') && !tab.url.startsWith('qbrowse://ai') && !resolveHelpLegalTabFromUrl(tab.url));
           if (isBlankTab) return null;
 
-          // If this is the left container in split view, don't render the right split tab
-          if (!isSplitPane && isSplitView && splitRightTabId && tab.id === splitRightTabId) {
-              return null;
-          }
-          // If this is the right container in split view, only render the targetTabId
-          if (isSplitPane && targetTabId && tab.id !== targetTabId) {
-              return null;
-          }
-
-          const isActive = activeTab && tab.id === activeTab.id;
-          const isVisible = isActive && isSpaceActive;
+          const slotIndex = tabSlotMap.get(tab.id);
+          const isVisible = isSpaceActive && slotIndex !== undefined;
+          const isActive = slotIndex === 0;
+          const focusedSlotIdx = isSplitView ? getFocusedSlotIndex(focusedPane) : 0;
+          const isFocusedPane = isSpaceActive && (isSplitView ? slotIndex === focusedSlotIdx : isActive);
+          const paneRect = slotIndex !== undefined
+            ? getSlotRectCss({
+                isSplitView: isSpaceActive && (isSplitView || (slotIndex === 0 && isSplitClosing)),
+                splitOrientation,
+                isSplitLeft,
+                slotIndex
+              })
+            : null;
 
           return (
               <WebViewItem 
@@ -2343,12 +2446,17 @@ export default function WebViewContainer({ space, targetTabId, isSplitPane = fal
                   activeProfileId={activeProfileId}
                   isVisible={isVisible}
                   isActive={isActive}
+                  isFocusedPane={isFocusedPane}
                   isSpaceActive={isSpaceActive}
                   setSpaceTabs={setSpaceTabs}
-                  zoomLevel={isActive ? zoomLevel : 100}
+                  zoomLevel={isVisible ? zoomLevel : 100}
                   isForceDark={isForceDark}
                   darkExclusions={darkExclusions}
                   theme={theme}
+                  paneRect={paneRect}
+                  slotIndex={slotIndex}
+                  disableRectTransition={isDraggingSplit || isSplitAxisAnimating}
+                  isReducedMotion={isReducedMotion}
               />
           );
       })}

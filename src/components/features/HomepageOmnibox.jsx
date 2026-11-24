@@ -32,7 +32,7 @@ const isOverlayBlockingHomepage = (state) => Boolean(
     state.topBarContextMenu ||
     state.toolHubContextMenu ||
     state.activePinnedStack ||
-    (state.isSplitView && state.focusedPane === 'right')
+    (state.isSplitView && state.focusedPane !== 'left')
 );
 
 export default function HomepageOmnibox({ 

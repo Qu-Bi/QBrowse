@@ -3,6 +3,7 @@ import { Pin, X, Globe, Plus, Sparkles } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 const PRESET_APPS = [
     { name: 'GitHub', domain: 'github.com' },
@@ -19,7 +20,7 @@ const PRESET_APPS = [
 
 export default function AddPinModal() {
     const { t } = useTranslation();
-    const { activeModal, isModalClosing, closingModal, closeModal, theme } = useUIStore();
+    const { activeModal, isModalClosing, closingModal, closeModal, theme, settings } = useUIStore();
     const addPinnedTab = useTabStore(state => state.addPinnedTab);
     const activeSpace = useTabStore(state => state.activeSpace);
 
@@ -102,9 +103,9 @@ export default function AddPinModal() {
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border ${
                             isBright ? 'bg-white/80 border-black/10 shadow-sm' : 'bg-white/[0.06] border-white/10 shadow-inner'
                         }`}>
-                            {cleanDomain ? (
+                            {getSafeFaviconUrl(cleanDomain, settings, 64) ? (
                                 <img 
-                                    src={`https://www.google.com/s2/favicons?sz=64&domain=${cleanDomain}`} 
+                                    src={getSafeFaviconUrl(cleanDomain, settings, 64)} 
                                     alt="favicon" 
                                     className="w-6 h-6 rounded-md"
                                     onError={(e) => { e.target.style.display = 'none'; }}
@@ -171,11 +172,15 @@ export default function AddPinModal() {
                                     }`}
                                     title={preset.name}
                                 >
-                                    <img 
-                                        src={`https://www.google.com/s2/favicons?sz=64&domain=${preset.domain}`} 
-                                        alt={preset.name}
-                                        className="w-5 h-5 rounded-md group-hover:scale-110 transition" 
-                                    />
+                                    {getSafeFaviconUrl(preset.domain, settings, 64) ? (
+                                        <img 
+                                            src={getSafeFaviconUrl(preset.domain, settings, 64)} 
+                                            alt={preset.name}
+                                            className="w-5 h-5 rounded-md group-hover:scale-110 transition" 
+                                        />
+                                    ) : (
+                                        <Globe size={16} className="opacity-50 group-hover:scale-110 transition" />
+                                    )}
                                     <span className={`text-[9px] truncate w-full text-center ${
                                         isBright ? 'text-zinc-600 group-hover:text-zinc-950 font-medium' : 'text-white/60 group-hover:text-white'
                                     }`}>{preset.name.split(' ')[0]}</span>

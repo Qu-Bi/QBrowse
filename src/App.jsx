@@ -12,6 +12,7 @@ import useDragAndDrop from './hooks/useDragAndDrop';
 import { listenToEvent } from './services/electronIPC';
 import { playBootWelcomeChime, playDownloadCompleteChime } from './utils/bootAudio';
 import { applyAppFont } from './utils/appFontManager';
+import { pathToSafeFileUrl, extractLocalFileName } from './utils/fileUrlHelpers';
 
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
@@ -25,6 +26,7 @@ import SettingsModal from './components/modals/SettingsModal';
 import HistoryModal from './components/modals/HistoryModal';
 import CookiesModal from './components/modals/CookiesModal';
 import ResourceManagerModal from './components/modals/ResourceManagerModal';
+import HelpLegalModal from './components/modals/HelpLegalModal';
 import BootCurtain from './components/common/BootCurtain';
 import SetupJourney from './components/modals/SetupJourney';
 import LivingTour from './components/modals/LivingTour';
@@ -46,6 +48,8 @@ export default function App() {
     const theme = useUIStore(state => state.theme);
     const themeTransition = useUIStore(state => state.themeTransition);
     const isFullscreen = useUIStore(state => state.isFullscreen);
+    const isFramelessMode = useUIStore(state => state.isFramelessMode);
+    const isChromeHidden = isFullscreen || isFramelessMode;
     const isRightPanelOpen = useUIStore(state => state.isRightPanelOpen);
     const accentColor = useUIStore(state => state.accentColor);
     const uiScale = useUIStore(state => state.settings?.uiScale);
@@ -235,7 +239,11 @@ export default function App() {
             if (lastExternalUrl === targetUrl && (now - lastExternalTime < 2000)) return;
             lastExternalUrl = targetUrl;
             lastExternalTime = now;
-            useTabStore.getState().handleNewTab(targetUrl);
+            if (targetUrl.startsWith('file://')) {
+                useTabStore.getState().openLocalFiles([targetUrl]);
+            } else {
+                useTabStore.getState().handleNewTab(targetUrl);
+            }
         };
 
         if (window.electronAPI && window.electronAPI.getInitialLaunchUrl) {
@@ -291,6 +299,18 @@ export default function App() {
                     if (targetUrl && targetUrl !== 'about:blank') {
                         if (window.electronAPI?.isAppProtocol?.(targetUrl)) {
                             window.electronAPI.openAppProtocol(targetUrl);
+                            return;
+                        }
+                        if (targetUrl.startsWith('file://')) {
+                            if (disposition === 'background-tab') {
+                                useTabStore.getState().handleNewTab(targetUrl, false, {
+                                    title: extractLocalFileName(targetUrl),
+                                    isOpenedByNewWindow: true,
+                                    isDownloadTab: false
+                                });
+                            } else {
+                                useTabStore.getState().openLocalFiles([targetUrl]);
+                            }
                             return;
                         }
                         const isLikelyDownload = isLikelyDownloadUrl(targetUrl);
@@ -561,12 +581,10 @@ export default function App() {
                 e.preventDefault();
                 const files = Array.from(e.dataTransfer.files);
                 const fileUrls = files.map(f => {
-                    const filePath = f.path; // Electron exposed file path
-                    if (filePath) {
-                        const normalized = filePath.replace(/\\/g, '/');
-                        return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
-                    }
-                    return null;
+                    const filePath = window.electronAPI?.getPathForFile
+                        ? window.electronAPI.getPathForFile(f)
+                        : f.path;
+                    return pathToSafeFileUrl(filePath);
                 }).filter(Boolean);
 
                 if (fileUrls.length > 0) {
@@ -614,7 +632,11 @@ export default function App() {
             const suspendTimeoutMs = effectiveTimeoutMinutes * 60 * 1000;
             const AUDIO_GRACE_PERIOD_MS = 5 * 60 * 1000;
             const tabStore = useTabStore.getState();
-            const splitRightTabId = uiStore.isSplitView ? uiStore.splitRightTabId : null;
+            const splitTabIdsSet = new Set(
+                uiStore.isSplitView
+                    ? [uiStore.splitRightTabId, ...(uiStore.splitPaneTabIds || [])].filter(Boolean)
+                    : []
+            );
 
             const spaceEntries = [
                 ['personal', tabStore.privateTabs || []],
@@ -633,7 +655,7 @@ export default function App() {
                     if (!tab || seenIds.has(tab.id)) return;
                     seenIds.add(tab.id);
 
-                    const isActiveTab = tab.active || (splitRightTabId && tab.id === splitRightTabId);
+                    const isActiveTab = tab.active || splitTabIdsSet.has(tab.id);
                     const isAudioGrace = tab.lastAudibleAt && (now - tab.lastAudibleAt < AUDIO_GRACE_PERIOD_MS);
                     const isImmune = (
                         isActiveTab ||
@@ -796,7 +818,7 @@ export default function App() {
                 } ${
                     isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'
                 } transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    isFullscreen ? '!p-0 !m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'
+                    isChromeHidden ? '!p-0 !m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'
                 } ${
                     frameCurvature === 'square' ? 'rounded-none !rounded-none' : ''
                 }`}
@@ -808,8 +830,8 @@ export default function App() {
             >
                 {/* Hardware-Optimized Live Wallpaper Engine (Zero Stacking, Live Video/GIF, Background Pausing) */}
                 <WallpaperEngine />
-                {/* Arc-Style Zen Fullscreen Edge Peek Hit Triggers */}
-                {isFullscreen && (
+                {/* Arc-Style Zen Fullscreen / Frameless Edge Peek Hit Triggers */}
+                {isChromeHidden && (
                     <>
                         {sidebarPosition === 'right' ? (
                             <div 
@@ -846,6 +868,7 @@ export default function App() {
                 <CookiesModal />
                 <HistoryModal />
                 <ResourceManagerModal />
+                <HelpLegalModal />
                 {/* Full-Screen Setup Journey */}
                 {(activeModal === 'onboarding' || activeModal === 'setup') && (
                     <SetupJourney 

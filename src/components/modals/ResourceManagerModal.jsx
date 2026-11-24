@@ -7,10 +7,11 @@ import {
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 export default function ResourceManagerModal() {
     const { t, intlLocale } = useTranslation();
-    const { activeModal, isModalClosing, closeModal, showToast, theme } = useUIStore();
+    const { activeModal, isModalClosing, closeModal, showToast, theme, settings } = useUIStore();
     const { 
         privateTabs, workTabs, ghostTabs, torTabs, activeSpace,
         suspendTab, wakeTab, closeTabById, handleSwitchToTab,
@@ -687,9 +688,9 @@ export default function ResourceManagerModal() {
                                             {item.isProcess ? (
                                                 item.isMain ? <Shield size={13} className="text-accent" /> : (item.type === 'GPU' ? <Monitor size={13} /> : <Cpu size={13} />)
                                             ) : (
-                                                item.rawItem?.url && item.rawItem.url !== 'about:blank' ? (
+                                                getSafeFaviconUrl(item.rawItem?.url, settings, 32) ? (
                                                     <img 
-                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${item.rawItem.url}`}
+                                                        src={getSafeFaviconUrl(item.rawItem.url, settings, 32)}
                                                         alt="" 
                                                         className="w-4 h-4 rounded-full"
                                                         onError={(e) => { e.target.style.display = 'none'; }}

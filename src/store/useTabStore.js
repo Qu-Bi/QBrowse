@@ -3,20 +3,29 @@ import useUIStore from './useUIStore';
 import { t } from '../i18n/index';
 import { PLACEHOLDER_TAB_TITLE_SET } from '../i18n/domains/stores.js';
 import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
+import { extractLocalFileName } from '../utils/fileUrlHelpers.js';
+import { getHelpLegalPageTitle } from '../utils/helpLegalContent.js';
+import {
+  getPinDomain as _getPinDomain,
+  getPinHomeUrl,
+  isTabForPin as _isTabForPin,
+  isUrlAllowedInPin,
+  isSamePinHomeUrl,
+  migrateLegacyPins
+} from '../utils/pinnedAppHelpers.js';
+import {
+  getGroupMemberIds,
+  sanitizeParkedSplitGroups
+} from '../utils/splitGroupHelpers.js';
+import {
+  computeNextTabSelection,
+  pruneTabSelection,
+  computeBulkMuteTarget,
+  collectSelectedTabUrls,
+} from '../utils/tabSelectionHelpers.js';
 
-export const getPinDomain = (pin) => {
-  if (!pin || !pin.domain) return '';
-  return pin.domain.toLowerCase().trim().replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./i, '');
-};
-
-export const isTabForPin = (tab, pin) => {
-  if (!tab || !pin) return false;
-  if (tab.pinnedId === pin.id) return true;
-  if (!tab.url || typeof tab.url !== 'string') return false;
-  const domain = getPinDomain(pin);
-  if (!domain) return false;
-  return tab.url.toLowerCase().includes(domain);
-};
+export const getPinDomain = _getPinDomain;
+export const isTabForPin = _isTabForPin;
 
 export const isValidSyncTab = (tab) => {
   if (!tab || typeof tab !== 'object') return false;
@@ -109,7 +118,13 @@ const useTabStore = create((set, get) => ({
     return state.customSpaceTabs?.[space] || state.privateTabs;
   },
   lastNormalSpace: 'personal',
-  setActiveSpace: (space) => set((state) => {
+  setActiveSpace: (space, options = {}) => {
+    const prevSpace = get().activeSpace;
+    const uiBefore = useUIStore.getState();
+    if (prevSpace !== space && uiBefore.isSplitView) {
+      uiBefore.parkOrCloseSplitViewForTabSwitch({ instant: true });
+    }
+    set((state) => {
       const ui = useUIStore.getState();
       ui.setIsReaderAvailable(false);
       if (ui.isFindOpen) {
@@ -119,7 +134,7 @@ const useTabStore = create((set, get) => ({
           ui.closeReaderMode(true);
       }
       const now = Date.now();
-      const updates = { activeSpace: space };
+      const updates = { activeSpace: space, selectedTabIds: [], lastSelectedTabId: null };
       if (space !== 'ghost' && space !== 'tor') {
           updates.lastNormalSpace = space;
       } else if (state.activeSpace !== 'ghost' && state.activeSpace !== 'tor') {
@@ -179,7 +194,21 @@ const useTabStore = create((set, get) => ({
           }).catch(() => {});
       }
       return updates;
-  }),
+    });
+    if (!options?.skipAutoSplitRestore) {
+      const uiAfter = useUIStore.getState();
+      const enteringList = get().getTabsForSpace(space) || [];
+      const enteringActive = enteringList.find(t => t && t.active) || enteringList[0];
+      if (enteringActive) {
+        const matchingGroup = (uiAfter.parkedSplitGroups || []).find(
+          pg => pg && pg.space === space && getGroupMemberIds(pg).includes(enteringActive.id)
+        );
+        if (matchingGroup) {
+          uiAfter.restoreParkedSplitGroup(matchingGroup.id, 0, { instant: true });
+        }
+      }
+    }
+  },
 
   bypassedInsecureHosts: new Set(),
   allowInsecureHost: (hostname) => {
@@ -284,6 +313,8 @@ const useTabStore = create((set, get) => ({
     set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, isOpen: !f.isOpen } : f) }));
   },
 
+  ephemeralPinnedTabs: { ghost: [], tor: [] },
+
   pinnedTabs: (() => {
       try {
           const profileId = (() => {
@@ -293,22 +324,15 @@ const useTabStore = create((set, get) => ({
           if (stored !== null) {
               const parsed = JSON.parse(stored);
               if (Array.isArray(parsed)) {
-                  // If legacy default pin contains chatgpt, suggest/migrate to Gemini
-                  const migrated = parsed.map(p => {
-                      if (p.domain === 'chatgpt.com' || (p.title === 'ChatGPT' && String(p.domain).includes('chatgpt'))) {
-                          return { ...p, title: 'Gemini', domain: 'gemini.google.com' };
-                      }
-                      return p;
-                  });
-                  return migrated;
+                  return migrateLegacyPins(parsed);
               }
           }
       } catch(e) {}
-      return [
+      return migrateLegacyPins([
           { id: 'pin-1', title: 'GitHub', domain: 'github.com' },
           { id: 'pin-2', title: 'YouTube', domain: 'youtube.com' },
           { id: 'pin-3', title: 'Gemini', domain: 'gemini.google.com' }
-      ];
+      ]);
   })(),
   pinnedDomains: (() => {
       try {
@@ -325,8 +349,22 @@ const useTabStore = create((set, get) => ({
       } catch(e) {}
       return ['github.com', 'youtube.com', 'gemini.google.com'];
   })(),
+  getPinnedTabsForSpace: (spaceId) => {
+      const sp = spaceId || get().activeSpace || 'personal';
+      if (sp === 'ghost' || sp === 'tor') {
+          return (get().ephemeralPinnedTabs && get().ephemeralPinnedTabs[sp]) || [];
+      }
+      return (get().pinnedTabs || []).filter(p => (p.spaceId || 'personal') === sp);
+  },
+  getPinById: (pinId, spaceId = null) => {
+      if (!pinId) return null;
+      const sp = spaceId || get().activeSpace || 'personal';
+      const inSpace = get().getPinnedTabsForSpace(sp).find(p => p.id === pinId);
+      if (inSpace) return inSpace;
+      return (get().pinnedTabs || []).find(p => p.id === pinId) || null;
+  },
   setPinnedTabs: (tabs) => {
-      const list = Array.isArray(tabs) ? tabs : [];
+      const list = migrateLegacyPins(Array.isArray(tabs) ? tabs : []);
       const domains = list.map(p => p.domain).filter(Boolean);
       set({ pinnedTabs: list, pinnedDomains: domains });
       try {
@@ -339,47 +377,196 @@ const useTabStore = create((set, get) => ({
       }
   },
 
-  addPinnedTab: (title, urlOrDomain) => {
+  addPinnedTab: (title, urlOrDomain, targetSpace = null) => {
       if (!urlOrDomain) return;
-      let cleanDomain = urlOrDomain.trim().replace(/^https?:\/\//i, '').split('/')[0];
+      const spaceId = targetSpace || get().activeSpace || 'personal';
+      const raw = String(urlOrDomain).trim();
+      const cleanDomain = raw.replace(/^https?:\/\//i, '').split('/')[0];
+      const pinUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
       const newPin = {
-          id: 'pin-' + Date.now(),
+          id: 'pin-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
           title: title ? title.trim() : cleanDomain,
-          domain: cleanDomain
+          domain: cleanDomain,
+          url: pinUrl,
+          spaceId
       };
-      set(state => {
-          const updated = [...state.pinnedTabs, newPin];
-          const domains = updated.map(p => p.domain).filter(Boolean);
-          try {
-              localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
-              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
-              localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
-          } catch(e) {}
-          return { pinnedTabs: updated, pinnedDomains: domains };
-      });
+      if (spaceId === 'ghost' || spaceId === 'tor') {
+          set(state => ({
+              ephemeralPinnedTabs: {
+                  ...state.ephemeralPinnedTabs,
+                  [spaceId]: [...(state.ephemeralPinnedTabs?.[spaceId] || []), newPin]
+              }
+          }));
+      } else {
+          set(state => {
+              const updated = [...state.pinnedTabs, newPin];
+              const domains = updated.map(p => p.domain).filter(Boolean);
+              try {
+                  localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+                  const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+                  localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
+              } catch(e) {}
+              return { pinnedTabs: updated, pinnedDomains: domains };
+          });
+          if (typeof window !== 'undefined' && window.__syncStore) {
+              window.__syncStore.getState().triggerDebouncedSync?.(25000);
+          }
+      }
       useUIStore.getState().showToast(t('stores.tab.pinnedToSidebar', { title: newPin.title }, `Pinned "${newPin.title}" to sidebar`));
-      if (typeof window !== 'undefined' && window.__syncStore) {
-          window.__syncStore.getState().triggerDebouncedSync?.(25000);
+  },
+
+  handleUnpinTab: (pin, targetSpace = null) => {
+      const pinId = pin?.id || pin;
+      const spaceId = pin?.spaceId || targetSpace || get().activeSpace || 'personal';
+      const stripPinnedFromTabs = (list) => (list || []).map(t => (t.pinnedId === pinId ? { ...t, pinnedId: null } : t));
+
+      if (spaceId === 'ghost' || spaceId === 'tor') {
+          set(state => ({
+              ephemeralPinnedTabs: {
+                  ...state.ephemeralPinnedTabs,
+                  [spaceId]: (state.ephemeralPinnedTabs?.[spaceId] || []).filter(p => p.id !== pinId)
+              },
+              ghostTabs: spaceId === 'ghost' ? stripPinnedFromTabs(state.ghostTabs) : state.ghostTabs,
+              torTabs: spaceId === 'tor' ? stripPinnedFromTabs(state.torTabs) : state.torTabs
+          }));
+      } else {
+          set(state => {
+              const updated = state.pinnedTabs.filter(p => p.id !== pinId);
+              const domains = updated.map(p => p.domain).filter(Boolean);
+              try {
+                  localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
+                  const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
+                  localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
+              } catch(e) {}
+              const nextCustom = { ...(state.customSpaceTabs || {}) };
+              if (nextCustom[spaceId]) {
+                  nextCustom[spaceId] = stripPinnedFromTabs(nextCustom[spaceId]);
+              }
+              return {
+                  pinnedTabs: updated,
+                  pinnedDomains: domains,
+                  privateTabs: spaceId === 'personal' ? stripPinnedFromTabs(state.privateTabs) : state.privateTabs,
+                  workTabs: spaceId === 'work' ? stripPinnedFromTabs(state.workTabs) : state.workTabs,
+                  customSpaceTabs: nextCustom
+              };
+          });
+          if (typeof window !== 'undefined' && window.__syncStore) {
+              window.__syncStore.getState().triggerDebouncedSync?.(25000);
+          }
+      }
+      const pinTitle = pin?.title || t('stores.tab.appDefault', 'app');
+      useUIStore.getState().showToast(t('stores.tab.unpinned', { title: pinTitle }, `Unpinned "${pinTitle}"`));
+  },
+
+  activatePinnedApp: (pin, anchorRect = null) => {
+      if (!pin || !pin.id) return;
+      const space = get().activeSpace || 'personal';
+      const tabs = get().getTabsForSpace(space) || [];
+      const setTabs = (updater) => get().setTabsForSpace(space, updater);
+      const ui = useUIStore.getState();
+
+      const pinTabs = tabs
+          .filter(t => isTabForPin(t, pin) && !t.isClosing)
+          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+      const activeTabInStack = pinTabs.find(t => t.active);
+
+      // If Split View is active, normal click on a pinned app parks Split View and focuses the pin standalone
+      if (!ui.isSplitView && activeTabInStack) {
+          if (pinTabs.length > 1) {
+              if (ui.activePinnedStack?.pin?.id === pin.id) {
+                  ui.closePinnedStack();
+              } else if (anchorRect) {
+                  ui.setActivePinnedStack({ pin, rect: anchorRect });
+              }
+              return;
+          }
+          // Single dedicated tab already active: reset to home URL if navigated away, else toggle stack popup
+          if (!isSamePinHomeUrl(activeTabInStack.url, pin)) {
+              const homeUrl = getPinHomeUrl(pin);
+              get().handleNavigateTab(activeTabInStack.id, homeUrl, pin.title || activeTabInStack.title, { allowExternal: true });
+              ui.closePinnedStack();
+              return;
+          }
+          if (ui.activePinnedStack?.pin?.id === pin.id) {
+              ui.closePinnedStack();
+          } else if (anchorRect) {
+              ui.setActivePinnedStack({ pin, rect: anchorRect });
+          }
+          return;
+      }
+
+      if (ui.isSplitView) {
+          ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+      }
+
+      if (pinTabs.length > 0) {
+          const targetTab = pinTabs[0];
+          const nowTs = Date.now();
+          setTabs(tabs.map(t => ({
+              ...t,
+              active: t.id === targetTab.id,
+              suspended: t.id === targetTab.id ? false : t.suspended,
+              lastActiveAt: (t.id === targetTab.id || t.active) ? nowTs : t.lastActiveAt
+          })));
+          ui.setCurrentUrl(targetTab.url || '');
+          ui.closePinnedStack();
+          setTimeout(() => {
+              const wv = window.qbrowseWebviews ? window.qbrowseWebviews[targetTab.id] : null;
+              if (wv && typeof wv.focus === 'function') {
+                  try { wv.focus(); } catch (_) {}
+              }
+          }, 30);
+      } else {
+          const targetUrl = getPinHomeUrl(pin);
+          const nowTs = Date.now();
+          get().addTab({
+              id: `t-${nowTs}-${Math.floor(Math.random() * 1000)}`,
+              pinnedId: pin.id,
+              title: pin.title,
+              url: targetUrl,
+              active: true,
+              folderId: null,
+              createdAt: nowTs,
+              lastActiveAt: nowTs
+          });
+          ui.closePinnedStack();
       }
   },
 
-  handleUnpinTab: (pin) => {
-      const pinId = pin?.id || pin;
-      set(state => {
-          const updated = state.pinnedTabs.filter(p => p.id !== pinId);
-          const domains = updated.map(p => p.domain).filter(Boolean);
-          try {
-              localStorage.setItem('qbrowse_pinned_tabs', JSON.stringify(updated));
-              const profileId = window.__profileStore?.getState()?.activeProfileId || 'default';
-              localStorage.setItem(`qbrowse_pins_${profileId}`, JSON.stringify(updated));
-          } catch(e) {}
-          return { pinnedTabs: updated, pinnedDomains: domains };
-      });
-      const pinTitle = pin?.title || t('stores.tab.appDefault', 'app');
-      useUIStore.getState().showToast(t('stores.tab.unpinned', { title: pinTitle }, `Unpinned "${pinTitle}"`));
-      if (typeof window !== 'undefined' && window.__syncStore) {
-          window.__syncStore.getState().triggerDebouncedSync?.(25000);
+  openPinInSplitView: (pin) => {
+      if (!pin || !pin.id) return;
+      const space = get().activeSpace || 'personal';
+      const tabs = get().getTabsForSpace(space) || [];
+      const ui = useUIStore.getState();
+
+      const existing = tabs
+          .filter(t => isTabForPin(t, pin) && !t.isClosing)
+          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+
+      let targetTabId = existing[0]?.id || null;
+      if (!targetTabId) {
+          const nowTs = Date.now();
+          targetTabId = `t-${nowTs}-${Math.floor(Math.random() * 1000)}`;
+          get().addTab({
+              id: targetTabId,
+              pinnedId: pin.id,
+              title: pin.title,
+              url: getPinHomeUrl(pin),
+              active: false,
+              folderId: null,
+              createdAt: nowTs,
+              lastActiveAt: nowTs
+          });
       }
+
+      if (ui.isSplitView) {
+          const slots = ui.splitPaneTabIds || [null, null, null];
+          const emptySlotIdx = slots[0] === null ? 1 : (ui.splitOrientation === 'quad' && slots[1] === null ? 2 : (ui.splitOrientation === 'quad' && slots[2] === null ? 3 : 1));
+          ui.setSplitPaneTabId(emptySlotIdx, targetTabId);
+      } else {
+          ui.toggleSplitView(targetTabId);
+      }
+      ui.closePinnedStack();
   },
 
   getSpaceListName: (space) => getSpaceListName(space),
@@ -703,6 +890,9 @@ const useTabStore = create((set, get) => ({
         : (isTor ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
     const defaultUrl = '';
     const targetTitle = (cleanUrl && cleanUrl !== 'about:blank') ? cleanUrl : defaultTitle;
+    if (makeActive && !meta.keepSplitView) {
+        useUIStore.getState().parkOrCloseSplitViewForTabSwitch?.();
+    }
     get().addTab({ 
         id: `t-${now}-${Math.floor(Math.random() * 1000)}`, 
         title: targetTitle, 
@@ -862,7 +1052,7 @@ const useTabStore = create((set, get) => ({
                   if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendAudio', 'Cannot suspend tab playing audio'));
                   return true;
               }
-              if (tab.isPinned || tab.pinned || (pinnedTabs && pinnedTabs.some(p => p.domain && tab.url && tab.url.includes(p.domain)))) {
+              if (tab.isPinned || tab.pinned || Boolean(tab.pinnedId)) {
                   if (!silent) useUIStore.getState().showToast(t('stores.tab.cannotSuspendPinned', 'Cannot suspend pinned tab'));
                   return true;
               }
@@ -1141,12 +1331,18 @@ const useTabStore = create((set, get) => ({
     const tabToClose = list.find(t => t.id === id);
     if (!tabToClose || tabToClose.isClosing) return;
 
+    // Prune closed tab from multi-selection
+    if ((get().selectedTabIds || []).includes(id) || get().lastSelectedTabId === id) {
+        set((state) => pruneTabSelection(state.selectedTabIds, state.lastSelectedTabId, id));
+    }
+
     // Alive tabs are those not currently in closing animation
     const aliveTabs = list.filter(t => !t.isClosing);
     const isLastAliveTab = aliveTabs.length <= 1 && aliveTabs.some(t => t.id === id);
 
     // If the closed tab is active (or last tab remaining), discard find in page and reader mode
     const uiStore = useUIStore.getState();
+    uiStore.clearSplitTabFromPanes?.(id);
     if (tabToClose.active || isLastAliveTab) {
         if (uiStore.isFindOpen) {
             uiStore.setIsFindOpen(false);
@@ -1232,11 +1428,12 @@ const useTabStore = create((set, get) => ({
             return;
         }
 
-        // Seamlessly reset this tab to a fresh New Tab (Zen Dashboard)
+        // Seamlessly reset this tab to a fresh New Tab (Zen Dashboard), detaching any pinnedId
         setList(list.map(t => {
             if (t.id === id) {
                 return stripEphemeralTabMediaFields({
                     ...t,
+                    pinnedId: null,
                     url: '',
                     title: defaultTitle,
                     active: true,
@@ -1272,10 +1469,15 @@ const useTabStore = create((set, get) => ({
     if (tabToClose.active) {
         const remainingAlive = aliveTabs.filter(t => t.id !== id);
         if (remainingAlive.length > 0) {
-            const closedIdxInAlive = aliveTabs.findIndex(t => t.id === id);
-            // Activate previous alive tab or next alive tab
-            const targetIdx = Math.max(0, closedIdxInAlive > 0 ? closedIdxInAlive - 1 : 0);
-            const targetTab = remainingAlive[Math.min(targetIdx, remainingAlive.length - 1)];
+            let targetTab = null;
+            if (tabToClose.pinnedId) {
+                const normalTabs = remainingAlive.filter(t => !t.pinnedId).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+                targetTab = normalTabs[0] || remainingAlive[0];
+            } else {
+                const closedIdxInAlive = aliveTabs.findIndex(t => t.id === id);
+                const targetIdx = Math.max(0, closedIdxInAlive > 0 ? closedIdxInAlive - 1 : 0);
+                targetTab = remainingAlive[Math.min(targetIdx, remainingAlive.length - 1)];
+            }
             if (targetTab) {
                 nextActiveId = targetTab.id;
                 nextUrl = targetTab.url || '';
@@ -2104,16 +2306,254 @@ const useTabStore = create((set, get) => ({
     toggle(list, (tabs) => get().setTabsForSpace(space, tabs));
   },
 
+  selectedTabIds: [],
+  lastSelectedTabId: null,
+
+  toggleTabSelection: (tabId, { ctrl = false, shift = false, orderedTabIds = [] } = {}) => {
+    set((state) =>
+      computeNextTabSelection(state.selectedTabIds, state.lastSelectedTabId, tabId, {
+        ctrl,
+        shift,
+        orderedTabIds,
+      })
+    );
+  },
+
+  clearTabSelection: () => {
+    set({ selectedTabIds: [], lastSelectedTabId: null });
+  },
+
+  selectAllTabsInSpace: (spaceId) => {
+    const targetSpace = spaceId || get().activeSpace || 'personal';
+    const tabs = (get().getTabsForSpace(targetSpace) || []).filter((t) => !t.isClosing);
+    const ids = tabs.map((t) => t.id);
+    set({
+      selectedTabIds: ids,
+      lastSelectedTabId: ids.length > 0 ? ids[ids.length - 1] : null,
+    });
+  },
+
+  getSelectedTabUrls: (tabIds) => {
+    const state = get();
+    const targetIds = Array.isArray(tabIds) ? tabIds : state.selectedTabIds;
+    const allTabs = [
+      ...(state.privateTabs || []),
+      ...(state.workTabs || []),
+      ...(state.ghostTabs || []),
+      ...(state.torTabs || []),
+      ...Object.values(state.customSpaceTabs || {}).flat(),
+    ];
+    return collectSelectedTabUrls(allTabs, targetIds);
+  },
+
+  bulkToggleMuteTabs: (tabIds) => {
+    const targetIds = Array.isArray(tabIds) ? tabIds : get().selectedTabIds;
+    if (!targetIds || targetIds.length === 0) return;
+
+    const state = get();
+    const allTabs = [
+      ...(state.privateTabs || []),
+      ...(state.workTabs || []),
+      ...(state.ghostTabs || []),
+      ...(state.torTabs || []),
+      ...Object.values(state.customSpaceTabs || {}).flat(),
+    ];
+    const nextMuted = computeBulkMuteTarget(allTabs, targetIds);
+    const idsSet = new Set(targetIds);
+
+    const updateList = (list) => {
+      if (!Array.isArray(list) || !list.some((t) => idsSet.has(t.id))) return list;
+      return list.map((t) => (idsSet.has(t.id) ? { ...t, isMuted: nextMuted } : t));
+    };
+
+    const nextCustom = { ...(state.customSpaceTabs || {}) };
+    for (const [spId, spList] of Object.entries(nextCustom)) {
+      const updated = updateList(spList);
+      if (updated !== spList) nextCustom[spId] = updated;
+    }
+
+    set({
+      privateTabs: updateList(state.privateTabs),
+      workTabs: updateList(state.workTabs),
+      ghostTabs: updateList(state.ghostTabs),
+      torTabs: updateList(state.torTabs || []),
+      customSpaceTabs: nextCustom,
+    });
+  },
+
+  bulkSuspendTabs: (tabIds) => {
+    const targetIds = Array.isArray(tabIds) ? tabIds : get().selectedTabIds;
+    if (!targetIds || targetIds.length === 0) return 0;
+
+    const idsSet = new Set(targetIds);
+    const state = get();
+    const uiState = useUIStore.getState();
+    const splitRightTabId = uiState.isSplitView ? uiState.splitRightTabId : null;
+    const pinnedTabs = state.pinnedTabs || [];
+    const now = Date.now();
+    let suspendedCount = 0;
+
+    const isEligible = (tab) => {
+      if (!tab || !idsSet.has(tab.id) || tab.suspended || tab.isClosing) return false;
+      if (tab.active || (splitRightTabId && tab.id === splitRightTabId)) return false;
+      const isAudioGrace = tab.lastAudibleAt && (now - tab.lastAudibleAt < 5 * 60 * 1000);
+      if (tab.isAudible || tab.hasAudio || tab.isAudioPlaying || tab.mediaPlaying || isAudioGrace) return false;
+      if (tab.isPinned || tab.pinned || Boolean(tab.pinnedId)) return false;
+      if (tab.isDownloading) return false;
+      return true;
+    };
+
+    const updateList = (list) => {
+      if (!Array.isArray(list) || !list.some((t) => idsSet.has(t.id))) return list;
+      return list.map((t) => {
+        if (!isEligible(t)) return t;
+        suspendedCount += 1;
+        uiState.clearMediaStateForTab?.(t.id);
+        return stripEphemeralTabMediaFields({ ...t, suspended: true, suspendedAt: now });
+      });
+    };
+
+    const nextCustom = { ...(state.customSpaceTabs || {}) };
+    for (const [spId, spList] of Object.entries(nextCustom)) {
+      const updated = updateList(spList);
+      if (updated !== spList) nextCustom[spId] = updated;
+    }
+
+    set({
+      privateTabs: updateList(state.privateTabs),
+      workTabs: updateList(state.workTabs),
+      ghostTabs: updateList(state.ghostTabs),
+      torTabs: updateList(state.torTabs || []),
+      customSpaceTabs: nextCustom,
+      selectedTabIds: [],
+      lastSelectedTabId: null,
+    });
+
+    if (suspendedCount > 0) {
+      uiState.showToast(`Suspended ${suspendedCount} tab${suspendedCount === 1 ? '' : 's'}`);
+    } else {
+      uiState.showToast(t('stores.tab.cannotSuspendActive', 'No eligible tabs to suspend'));
+    }
+    return suspendedCount;
+  },
+
+  bulkCloseTabs: (tabIds) => {
+    const targetIds = Array.isArray(tabIds) ? tabIds : get().selectedTabIds;
+    const idsSet = new Set((targetIds || []).filter(Boolean));
+    if (idsSet.size === 0) {
+      set({ selectedTabIds: [], lastSelectedTabId: null });
+      return;
+    }
+
+    const uiStore = useUIStore.getState();
+    uiStore.setHoverPreview(null);
+
+    const list = get().getActiveList() || [];
+    const setList = get().getActiveSetList();
+    const currentSpace = get().activeSpace;
+    const defaultTitle = currentSpace === 'ghost'
+      ? t('stores.tab.newIncognitoTab', 'New Incognito Tab')
+      : (currentSpace === 'tor' ? t('stores.tab.newTorTab', 'New Tor Tab') : t('stores.tab.newTab', 'New Tab'));
+
+    const closingTabs = list.filter((t) => idsSet.has(t.id) && !t.isClosing);
+    if (closingTabs.length === 0) {
+      set({ selectedTabIds: [], lastSelectedTabId: null });
+      return;
+    }
+
+    const { splitRightTabId, setSplitRightTabId, isSplitView, toggleSplitView } = uiStore;
+    if (isSplitView && splitRightTabId && idsSet.has(splitRightTabId)) {
+      setSplitRightTabId(null);
+      toggleSplitView();
+    }
+
+    const recentlyClosedAdditions = [];
+    for (const tabToClose of closingTabs) {
+      uiStore.clearMediaStateForTab?.(tabToClose.id);
+      if (
+        !tabToClose.isOrphanedDownload &&
+        !tabToClose.isDownloadTab &&
+        tabToClose.url &&
+        tabToClose.url !== 'about:blank' &&
+        currentSpace !== 'ghost' &&
+        currentSpace !== 'tor' &&
+        !tabToClose.url.includes('.onion')
+      ) {
+        recentlyClosedAdditions.push({ url: tabToClose.url, title: tabToClose.title, space: currentSpace });
+      }
+    }
+
+    const remaining = list.filter((t) => !idsSet.has(t.id) && !t.isClosing);
+    if (remaining.length === 0) {
+      const fallbackTab = {
+        ...getFallbackTabForSpace(currentSpace),
+        title: defaultTitle,
+      };
+      setList([fallbackTab]);
+      uiStore.setCurrentUrl('');
+      uiStore.setIsReaderAvailable(false);
+      if (uiStore.isFindOpen) uiStore.setIsFindOpen(false);
+      if (uiStore.isReaderOpen || uiStore.isReaderClosing) uiStore.closeReaderMode(true);
+    } else {
+      let nextList = remaining;
+      const activeRemaining = remaining.find((t) => t.active);
+      if (!activeRemaining) {
+        const firstAlive = remaining[0];
+        nextList = remaining.map((t) => ({
+          ...t,
+          active: t.id === firstAlive.id,
+          suspended: t.id === firstAlive.id ? false : t.suspended,
+          lastActiveAt: t.id === firstAlive.id ? Date.now() : t.lastActiveAt,
+        }));
+        uiStore.setCurrentUrl(firstAlive.url || '');
+        uiStore.setIsReaderAvailable(false);
+        if (uiStore.isFindOpen) uiStore.setIsFindOpen(false);
+        if (uiStore.isReaderOpen || uiStore.isReaderClosing) uiStore.closeReaderMode(true);
+      }
+      setList(nextList);
+    }
+
+    set((state) => ({
+      selectedTabIds: [],
+      lastSelectedTabId: null,
+      recentlyClosedTabs: recentlyClosedAdditions.length > 0
+        ? [...(state.recentlyClosedTabs || []), ...recentlyClosedAdditions].slice(-20)
+        : state.recentlyClosedTabs,
+    }));
+  },
+
   handlePinTab: (tab) => {
     if (!tab.url || tab.url === 'about:blank') return;
-    const { activeSpace, pinnedTabs, privateTabs, workTabs, setPinnedTabs, setPrivateTabs, setWorkTabs } = get();
-    let cleanDomain = tab.url.trim().replace(/^https?:\/\//i, '').split('/')[0];
-    const newPin = { id: `p-${tab.id}-${Date.now()}`, title: tab.title || cleanDomain, domain: cleanDomain };
-    setPinnedTabs([...pinnedTabs, newPin]);
-    if (activeSpace === 'personal') setPrivateTabs(privateTabs.filter(t => t.id !== tab.id));
-    else if (activeSpace === 'work') setWorkTabs(workTabs.filter(t => t.id !== tab.id));
-    else get().setTabsForSpace(activeSpace, (tabs) => (tabs || []).filter(t => t.id !== tab.id));
-    useUIStore.getState().showToast(t('stores.tab.pinnedTab', { title: newPin.title }, `Pinned: ${newPin.title}`));
+    const { activeSpace } = get();
+    const cleanDomain = tab.url.trim().replace(/^https?:\/\//i, '').split('/')[0];
+    const spacePins = get().getPinnedTabsForSpace(activeSpace);
+    const existingPin = spacePins.find(p => _getPinDomain(p) === cleanDomain.toLowerCase().replace(/^www\./, ''));
+    let pinToUse = existingPin;
+
+    if (!pinToUse) {
+      pinToUse = {
+        id: `p-${tab.id}-${Date.now()}`,
+        title: tab.title || cleanDomain,
+        domain: cleanDomain,
+        url: tab.url.trim(),
+        spaceId: activeSpace
+      };
+      if (activeSpace === 'ghost' || activeSpace === 'tor') {
+        set(state => ({
+          ephemeralPinnedTabs: {
+            ...state.ephemeralPinnedTabs,
+            [activeSpace]: [...(state.ephemeralPinnedTabs?.[activeSpace] || []), pinToUse]
+          }
+        }));
+      } else {
+        const nextPins = [...(get().pinnedTabs || []), pinToUse];
+        get().setPinnedTabs(nextPins);
+      }
+    }
+
+    // Keep the live tab alive and bind it to the pin via pinnedId
+    get().setTabsForSpace(activeSpace, (tabs) => (tabs || []).map(t => t.id === tab.id ? { ...t, pinnedId: pinToUse.id } : t));
+    useUIStore.getState().showToast(t('stores.tab.pinnedTab', { title: pinToUse.title }, `Pinned: ${pinToUse.title}`));
   },
 
   handleDragStart: (e, tab, spaceType) => {
@@ -2519,7 +2959,7 @@ const useTabStore = create((set, get) => ({
     });
   },
 
-  handleNavigateTab: (tabId, url, title) => {
+  handleNavigateTab: (tabId, url, title, options = {}) => {
     let targetUrl = url || '';
     if (targetUrl && window.electronAPI?.isAppProtocol?.(targetUrl)) {
       window.electronAPI.openAppProtocol(targetUrl);
@@ -2530,10 +2970,20 @@ const useTabStore = create((set, get) => ({
     }
 
     const isBlank = !targetUrl || targetUrl === 'about:blank' || targetUrl.startsWith('qbrowse://newtab') || targetUrl.startsWith('qbrowse://home') || targetUrl.startsWith('qbrowse://blank');
+    if (!isBlank && !options.allowExternal && /^https?:\/\//i.test(targetUrl)) {
+      const targetTab = get().getActiveList?.().find(t => t.id === tabId);
+      if (targetTab?.pinnedId) {
+        const pin = get().getPinById?.(targetTab.pinnedId, get().activeSpace);
+        if (pin && !isUrlAllowedInPin(targetUrl, pin)) {
+          get().handleNewTab(targetUrl, true);
+          return;
+        }
+      }
+    }
     const cleanUrl = isBlank ? '' : targetUrl;
     const cleanTitle = isBlank 
       ? (get().activeSpace === 'ghost' ? 'New Incognito Tab' : 'New Tab')
-      : (title || (targetUrl === 'qbrowse://flags' ? 'QBrowse Flags' : targetUrl));
+      : (title || getHelpLegalPageTitle(targetUrl) || (targetUrl === 'qbrowse://flags' ? 'QBrowse Flags' : targetUrl));
 
     const update = (list) => (list || []).map(t => {
       if (t.id !== tabId) return t;
@@ -2610,19 +3060,12 @@ const useTabStore = create((set, get) => ({
     const isBlank = !activeTab?.url || activeTab.url === 'about:blank' || activeTab.url.startsWith('qbrowse://newtab') || activeTab.url.startsWith('qbrowse://home') || activeTab.url.startsWith('qbrowse://blank');
     
     fileUrls.forEach((url, idx) => {
-      let title = '';
-      try {
-        const decoded = decodeURIComponent(url);
-        const parts = decoded.split(/[/\\]/).filter(Boolean);
-        title = parts[parts.length - 1] || 'Local Resource';
-      } catch (_) {
-        title = 'Local Resource';
-      }
+      const title = extractLocalFileName(url);
 
       if (idx === 0 && isBlank && activeTab) {
         get().handleNavigateTab(activeTab.id, url, title);
       } else {
-        get().handleNewTab(url);
+        get().handleNewTab(url, idx === 0, { title });
       }
     });
   },
@@ -2651,6 +3094,7 @@ const useTabStore = create((set, get) => ({
       localStorage.removeItem(`qbrowse_tabs_${profileId}_tor`);
       localStorage.removeItem(`qbrowse_folders_${profileId}`);
       localStorage.removeItem(`qbrowse_active_space_${profileId}`);
+      localStorage.removeItem(`qbrowse_split_state_${profileId}`);
       const customSpaces = useUIStore.getState().settings?.customSpaces || [];
       customSpaces.forEach(s => {
         if (s?.id) localStorage.removeItem(`qbrowse_tabs_${profileId}_${s.id}`);
@@ -2692,6 +3136,27 @@ const useTabStore = create((set, get) => ({
       if (activeSpace && activeSpace !== 'ghost' && activeSpace !== 'tor') {
         localStorage.setItem(`qbrowse_active_space_${profileId}`, activeSpace);
       }
+
+      // Persist active or parked Split View state (strictly excluding Ghost/Tor)
+      try {
+        const ui = useUIStore.getState();
+        const isNormalSpace = activeSpace && activeSpace !== 'ghost' && activeSpace !== 'tor';
+        const hasActiveSecondary = isNormalSpace && ui.isSplitView && (ui.splitPaneTabIds || []).some(Boolean);
+        const validParkedGroups = (ui.parkedSplitGroups || []).filter(
+          pg => pg && pg.space && pg.space !== 'ghost' && pg.space !== 'tor'
+        );
+        localStorage.setItem(`qbrowse_split_state_${profileId}`, JSON.stringify({
+          isSplitView: Boolean(hasActiveSecondary),
+          activeSplitGroupId: hasActiveSecondary ? (ui.activeSplitGroupId || null) : null,
+          activeSplitGroupName: hasActiveSecondary ? (ui.activeSplitGroupName || '') : '',
+          splitSpace: hasActiveSecondary ? activeSpace : null,
+          splitOrientation: ui.splitOrientation || 'horizontal',
+          splitRatio: ui.splitRatio || 50,
+          splitRatioY: ui.splitRatioY || 50,
+          splitPaneTabIds: hasActiveSecondary ? (ui.splitPaneTabIds || [null, null, null]) : [null, null, null],
+          parkedSplitGroups: validParkedGroups
+        }));
+      } catch (_) {}
     } catch(e) {}
   },
 
@@ -2772,6 +3237,7 @@ const useTabStore = create((set, get) => ({
           { id: 'pin-3', title: 'Gemini', domain: 'gemini.google.com' }
         ];
       }
+      pins = migrateLegacyPins(pins);
       let folders = [];
       if (storedFolders) {
         try {
@@ -2800,6 +3266,74 @@ const useTabStore = create((set, get) => ({
       const uiStore = useUIStore.getState();
       uiStore.resetAllMediaState?.();
       uiStore.setCurrentUrl(activeTab ? (activeTab.url || '') : '');
+
+      // Restore persisted Split View & Parked Split Groups for this profile
+      try {
+        const rawSplit = shouldRestore ? localStorage.getItem(`qbrowse_split_state_${profileId}`) : null;
+        const parsedSplit = rawSplit ? JSON.parse(rawSplit) : null;
+        const getListBySpace = (spId) => spId === 'personal' ? pTabs : (spId === 'work' ? wTabs : (loadedCustomSpaceTabs[spId] || []));
+        const validOrient = ['horizontal', 'vertical', 'quad'].includes(parsedSplit?.splitOrientation)
+          ? parsedSplit.splitOrientation
+          : (uiStore.splitOrientation || 'horizontal');
+
+        const rawParkedList = Array.isArray(parsedSplit?.parkedSplitGroups)
+          ? parsedSplit.parkedSplitGroups
+          : (parsedSplit?.parkedSplitGroup ? [parsedSplit.parkedSplitGroup] : []);
+
+        let activeExcludeIds = [];
+        let activeSplitState = {
+          isSplitView: false,
+          activeSplitGroupId: null,
+          activeSplitGroupName: '',
+          splitPaneTabIds: [null, null, null],
+          splitRightTabId: null
+        };
+
+        if (parsedSplit?.isSplitView && parsedSplit.splitSpace && parsedSplit.splitSpace !== 'ghost' && parsedSplit.splitSpace !== 'tor') {
+          const spList = getListBySpace(parsedSplit.splitSpace);
+          const validIds = new Set(spList.map(t => t.id));
+          const activeId = (spList.find(t => t.active) || spList[0])?.id;
+          const cleanedPaneIds = (parsedSplit.splitPaneTabIds || [null, null, null]).map(id => (id && id !== activeId && validIds.has(id) ? id : null));
+          if (cleanedPaneIds.some(Boolean) && parsedSplit.splitSpace === restoredSpace) {
+            activeExcludeIds = [activeId, ...cleanedPaneIds.filter(Boolean)].filter(Boolean);
+            activeSplitState = {
+              isSplitView: true,
+              activeSplitGroupId: parsedSplit.activeSplitGroupId || `sg-${Date.now()}`,
+              activeSplitGroupName: typeof parsedSplit.activeSplitGroupName === 'string' ? parsedSplit.activeSplitGroupName : '',
+              splitOrientation: validOrient,
+              splitRatio: Math.min(80, Math.max(20, Number(parsedSplit.splitRatio) || 50)),
+              splitRatioY: Math.min(80, Math.max(20, Number(parsedSplit.splitRatioY) || 50)),
+              splitPaneTabIds: cleanedPaneIds,
+              splitRightTabId: cleanedPaneIds[0] || null,
+              focusedPane: 'left',
+              splitTransitionMode: 'instant'
+            };
+          } else if (cleanedPaneIds.some(Boolean) && activeId) {
+            // Active split belonged to a non-restored space; preserve it as a parked group
+            rawParkedList.unshift({
+              id: parsedSplit.activeSplitGroupId || `sg-${Date.now()}`,
+              space: parsedSplit.splitSpace,
+              name: typeof parsedSplit.activeSplitGroupName === 'string' ? parsedSplit.activeSplitGroupName : '',
+              primaryTabId: activeId,
+              paneTabIds: cleanedPaneIds,
+              orientation: validOrient,
+              splitRatio: parsedSplit.splitRatio || 50,
+              splitRatioY: parsedSplit.splitRatioY || 50
+            });
+          }
+        }
+
+        const sanitizedParked = sanitizeParkedSplitGroups(rawParkedList, getListBySpace, activeExcludeIds);
+        useUIStore.setState({
+          ...activeSplitState,
+          ...(parsedSplit ? {
+            splitOrientation: validOrient,
+            splitRatio: Math.min(80, Math.max(20, Number(parsedSplit.splitRatio) || 50)),
+            splitRatioY: Math.min(80, Math.max(20, Number(parsedSplit.splitRatioY) || 50))
+          } : {}),
+          parkedSplitGroups: sanitizedParked
+        });
+      } catch (_) {}
     } catch(e) {
       console.warn('[TabStore] Failed to load profile tabs:', e);
     }
@@ -2835,6 +3369,28 @@ if (typeof window !== 'undefined') {
       state.customSpaceTabs !== prevState?.customSpaceTabs ||
       state.folders !== prevState?.folders ||
       state.activeSpace !== prevState?.activeSpace
+    ) {
+      if (tabPersistTimer) clearTimeout(tabPersistTimer);
+      tabPersistTimer = setTimeout(() => {
+        try {
+          const profileId = window.__profileStore?.getState()?.activeProfileId || localStorage.getItem('qbrowse_active_profile_id') || 'default';
+          useTabStore.getState().serializeCurrentProfileTabs(profileId);
+        } catch (_) {}
+      }, 250);
+    }
+  });
+
+  // Also persist when Split View state changes
+  useUIStore.subscribe((state, prevState) => {
+    if (
+      state.isSplitView !== prevState?.isSplitView ||
+      state.splitPaneTabIds !== prevState?.splitPaneTabIds ||
+      state.splitOrientation !== prevState?.splitOrientation ||
+      state.splitRatio !== prevState?.splitRatio ||
+      state.splitRatioY !== prevState?.splitRatioY ||
+      state.activeSplitGroupId !== prevState?.activeSplitGroupId ||
+      state.activeSplitGroupName !== prevState?.activeSplitGroupName ||
+      state.parkedSplitGroups !== prevState?.parkedSplitGroups
     ) {
       if (tabPersistTimer) clearTimeout(tabPersistTimer);
       tabPersistTimer = setTimeout(() => {

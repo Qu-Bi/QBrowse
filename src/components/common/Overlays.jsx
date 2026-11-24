@@ -7,6 +7,7 @@ import PresetStudioModal from '../modals/PresetStudioModal';
 import LiquidTooltip from './LiquidTooltip';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from './ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 export default function Overlays() {
     const { t } = useTranslation();
@@ -16,6 +17,7 @@ export default function Overlays() {
     const isSidebarHidden = useUIStore(state => state.isSidebarHidden);
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const theme = useUIStore(state => state.theme);
+    const settings = useUIStore(state => state.settings);
     const activeSpace = useTabStore(state => state.activeSpace);
     const draggedItem = useTabStore(state => state.draggedItem);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
@@ -66,8 +68,8 @@ export default function Overlays() {
                     }}
                 >
                     <div className={`flex items-center gap-3 p-3 ${isBright ? 'bg-black/[0.03] border-b border-black/[0.06]' : 'bg-white/5 border-b border-white/10'}`}>
-                        {activeCard.tab?.url ? (
-                            <img src={`https://www.google.com/s2/favicons?sz=64&domain=${activeCard.tab.url}`} alt="icon" className="w-4 h-4 rounded-sm flex-shrink-0" onError={(e) => e.target.style.display = 'none'} />
+                        {getSafeFaviconUrl(activeCard.tab?.url, settings, 64) ? (
+                            <img src={getSafeFaviconUrl(activeCard.tab.url, settings, 64)} alt="icon" className="w-4 h-4 rounded-sm flex-shrink-0" onError={(e) => e.target.style.display = 'none'} />
                         ) : (
                             <Globe size={14} className={isBright ? "text-zinc-500" : "text-white/50"} />
                         )}

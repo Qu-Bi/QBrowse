@@ -3,25 +3,32 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
     Copy, Check, FileText, Code2, Image as ImageIcon, Film, Music, 
-    ExternalLink, ZoomIn, ZoomOut, Maximize2, Sparkles, Eye, FileCode
+    ExternalLink, FolderOpen, ZoomIn, ZoomOut, Maximize2, Eye, FileCode
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import { useTranslation } from '../../i18n/index';
 
-export default function GlassDocumentViewer({ url, filePath, fileName, extension, type }) {
+export default function GlassDocumentViewer({ url, filePath, fileName, extension, type, initialFileData = null }) {
     const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const showToast = useUIStore(state => state.showToast);
     const isBright = theme === 'light';
 
-    const [fileData, setFileData] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [fileData, setFileData] = useState(() => (initialFileData && !initialFileData.error ? initialFileData : null));
+    const [loading, setLoading] = useState(() => !(initialFileData && !initialFileData.error));
     const [error, setError] = useState(null);
     const [copied, setCopied] = useState(false);
     const [markdownMode, setMarkdownMode] = useState('preview'); // 'preview' | 'raw'
     const [imageZoom, setImageZoom] = useState(1);
 
     useEffect(() => {
+        if (initialFileData && !initialFileData.error) {
+            setFileData(initialFileData);
+            setError(null);
+            setLoading(false);
+            return;
+        }
+
         let isMounted = true;
         setLoading(true);
         setError(null);
@@ -56,7 +63,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
         return () => {
             isMounted = false;
         };
-    }, [url, filePath]);
+    }, [url, initialFileData]);
 
     const handleCopy = () => {
         if (!fileData?.content) return;
@@ -240,6 +247,41 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                         <FileCode size={28} className="text-red-400 mx-auto" />
                         <h3 className="text-sm font-bold text-white">{t('tools.docViewer.errorTitle', null, 'Unable to Display File')}</h3>
                         <p className="text-xs text-zinc-400">{error}</p>
+                    </div>
+                ) : (!fileData?.isText && !isMediaImage && !isMediaVideo && !isMediaAudio) || (!fileData?.base64 && !blobUrl && (isMediaVideo || isMediaAudio)) ? (
+                    /* Unsupported / Large Binary File Fallback Card */
+                    <div className={`m-auto max-w-md w-full p-7 rounded-3xl border text-center space-y-4 shadow-2xl ${
+                        isBright ? 'bg-white border-black/10 text-zinc-900' : 'bg-white/[0.03] border-white/10 text-zinc-100'
+                    }`}>
+                        <div className="w-14 h-14 rounded-2xl bg-accent/15 text-accent border border-accent/25 flex items-center justify-center mx-auto">
+                            <FileText size={26} />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="text-sm font-bold truncate" title={fileName || fileData?.name}>
+                                {fileName || fileData?.name || t('tools.docViewer.fallbackName', null, 'Local Document')}
+                            </h3>
+                            <p className="text-xs text-zinc-400">
+                                {fileData?.size ? `${(fileData.size / 1024).toFixed(1)} KB` : ''}
+                                {fileData?.size && ext ? ' • ' : ''}
+                                {ext ? ext.toUpperCase() : 'FILE'}
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                            <button
+                                onClick={() => window.electronAPI?.openPath?.(filePath || url)}
+                                className="px-4 py-2 rounded-full bg-accent text-zinc-950 text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition cursor-pointer"
+                            >
+                                <ExternalLink size={13} /> Open with Default App
+                            </button>
+                            <button
+                                onClick={handleRevealFile}
+                                className={`px-4 py-2 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                                    isBright ? 'bg-black/5 hover:bg-black/10 border-black/10 text-zinc-800' : 'bg-white/10 hover:bg-white/15 border-white/15 text-white'
+                                }`}
+                            >
+                                <FolderOpen size={13} /> Reveal in Folder
+                            </button>
+                        </div>
                     </div>
                 ) : isMediaImage ? (
                     /* Image Viewer */

@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl || `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 }
 
-export default function GlassPdfViewer({ url, filePath, fileName }) {
+export default function GlassPdfViewer({ url, filePath, fileName, initialFileData = null }) {
     const { t } = useTranslation();
     const theme = useUIStore(state => state.theme);
     const showToast = useUIStore(state => state.showToast);
@@ -51,18 +51,23 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
             try {
                 let docData = null;
 
-                // 1. If we have Electron API, read raw bytes directly
-                if (window.electronAPI?.readLocalFileData && (filePath || url)) {
+                // 0. Reuse pre-probed base64 payload from LocalFileViewer to avoid duplicate IPC read
+                let rawBase64 = initialFileData?.base64 || null;
+
+                // 1. Otherwise read raw bytes directly via Electron API
+                if (!rawBase64 && window.electronAPI?.readLocalFileData && (filePath || url)) {
                     const res = await window.electronAPI.readLocalFileData(filePath || url);
-                    if (res?.base64) {
-                        const binaryStr = atob(res.base64);
-                        const len = binaryStr.length;
-                        const bytes = new Uint8Array(len);
-                        for (let i = 0; i < len; i++) {
-                            bytes[i] = binaryStr.charCodeAt(i);
-                        }
-                        docData = bytes.buffer;
+                    rawBase64 = res?.base64 || null;
+                }
+
+                if (rawBase64) {
+                    const binaryStr = atob(rawBase64);
+                    const len = binaryStr.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                        bytes[i] = binaryStr.charCodeAt(i);
                     }
+                    docData = bytes.buffer;
                 }
 
                 // 2. Fallback to standard fetch
@@ -94,7 +99,7 @@ export default function GlassPdfViewer({ url, filePath, fileName }) {
         return () => {
             isMounted = false;
         };
-    }, [url, filePath]);
+    }, [url, initialFileData]);
 
     // Render Active Page onto Canvas
     const renderPage = useCallback(async (pageNum) => {

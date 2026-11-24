@@ -16,6 +16,7 @@ import useHistoryStore from '../../store/useHistoryStore';
 import useProfileStore from '../../store/useProfileStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 export const AVATAR_PRESETS = [
     { id: 'rocket', icon: Rocket, name: 'Rocket', nameKey: 'pop.profile.avatarRocket' },
@@ -71,6 +72,7 @@ function formatTimeAgo(ts, t) {
 }
 
 export default function UserProfilePopover({ isClosing }) {
+    const settings = useUIStore(state => state.settings);
     const { t, intlLocale } = useTranslation();
     const { closePopover, openModal, showToast, theme } = useUIStore();
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
@@ -1038,9 +1040,9 @@ export default function UserProfilePopover({ isClosing }) {
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-2 min-w-0 pr-2">
-                                                                    {tab.url ? (
+                                                                    {getSafeFaviconUrl(tab.url, settings, 32) ? (
                                                                         <img 
-                                                                            src={`https://www.google.com/s2/favicons?sz=32&domain=${tab.url}`} 
+                                                                            src={getSafeFaviconUrl(tab.url, settings, 32)} 
                                                                             alt="" 
                                                                             className="w-3.5 h-3.5 rounded-xs flex-shrink-0"
                                                                             onError={e => { e.target.style.display = 'none'; }} 

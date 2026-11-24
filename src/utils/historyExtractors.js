@@ -194,6 +194,11 @@ export const getIntelligentTitle = (itemOrUrl, rawTitleArg) => {
         const page = rawUrl.replace('qbrowse://', '').split(/[/?#]/)[0];
         if (page === 'flags') return 'QBrowse Flags & Features';
         if (page === 'settings') return 'Browser Settings';
+        if (page === 'help') return 'QBrowse Help Center';
+        if (page === 'shortcuts') return 'Keyboard Shortcuts';
+        if (page === 'terms' || page === 'tos') return 'Terms of Service';
+        if (page === 'privacy') return 'Privacy Policy';
+        if (page === 'licenses' || page === 'credits') return 'Open-Source Licenses';
         if (page === 'ai') return 'Qu-AI Assistant';
         if (page === 'vault') return 'Credential Vault';
         if (page === 'adblock') return 'Shield & Content Filtering';

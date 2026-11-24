@@ -3190,6 +3190,66 @@ if (typeof window !== 'undefined' && window === window.top) {
     } catch (_) {}
 }
 
+// --- CUSTOM TEXT HIGHLIGHT COLOR & STYLE ---
+function applyWebTextHighlight(cfg = {}) {
+    try {
+        const styleElId = 'qbrowse-text-highlight-style';
+        const existing = document.getElementById(styleElId);
+        const styleMode = cfg.style || 'tinted';
+        const applyToWeb = cfg.applyToWeb !== false;
+        const isInternal = isInternalSmartDarkScheme(window.location && window.location.protocol);
+        if (!applyToWeb || styleMode === 'system' || isInternal) {
+            if (existing) existing.remove();
+            return;
+        }
+        const rawColor = (cfg.color && cfg.color !== 'accent') ? cfg.color : (cfg.accentColor || '#d4bc94');
+        const cleaned = String(rawColor).trim();
+        let hex = /^#[0-9a-fA-F]{6}$/.test(cleaned) ? cleaned : '#d4bc94';
+        if (/^#[0-9a-fA-F]{3}$/.test(cleaned)) {
+            hex = `#${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}${cleaned[3]}${cleaned[3]}`;
+        }
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+        let bg = `rgba(${r}, ${g}, ${b}, 0.32)`;
+        let fg = 'inherit';
+        let shadow = 'none';
+        let deco = 'none';
+        if (styleMode === 'vibrant') {
+            bg = `rgb(${r}, ${g}, ${b})`;
+            fg = lum > 0.56 ? '#09090b' : '#ffffff';
+        } else if (styleMode === 'glow') {
+            bg = `rgba(${r}, ${g}, ${b}, 0.24)`;
+            shadow = `0 0 8px rgba(${r}, ${g}, ${b}, 0.55)`;
+        } else if (styleMode === 'underline') {
+            bg = `rgba(${r}, ${g}, ${b}, 0.16)`;
+            deco = `underline solid rgb(${r}, ${g}, ${b})`;
+        }
+
+        const cssText = `::selection { background-color: ${bg} !important; color: ${fg} !important; text-shadow: ${shadow} !important; text-decoration: ${deco} !important; }\n::-moz-selection { background-color: ${bg} !important; color: ${fg} !important; text-shadow: ${shadow} !important; text-decoration: ${deco} !important; }`;
+        const el = existing || document.createElement('style');
+        el.id = styleElId;
+        el.textContent = cssText;
+        if (!el.isConnected) {
+            (document.head || document.documentElement)?.appendChild(el);
+        }
+    } catch (_) {}
+}
+
+ipcRenderer.on('apply-text-highlight', (event, cfg) => {
+    applyWebTextHighlight(cfg);
+});
+
+if (typeof window !== 'undefined' && window === window.top) {
+    try {
+        ipcRenderer.invoke('get-text-highlight-state')
+            .then(state => { if (state) applyWebTextHighlight(state); })
+            .catch(() => {});
+    } catch (_) {}
+}
+
 // ==============================================================================
 // --- ACCESSIBILITY (EU EAA / EN 301 549 & WCAG 2.1 AA) WEB ENGINE ---
 // ==============================================================================
@@ -3983,6 +4043,18 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             }
         }
     }, true);
+
+    let lastPaneInteractSentAt = 0;
+    const notifyPaneInteract = (immediate = false) => {
+        const now = Date.now();
+        if (!immediate && now - lastPaneInteractSentAt < 120) return;
+        lastPaneInteractSentAt = now;
+        try { ipcRenderer.sendToHost('webview-pane-interact'); } catch (_) {}
+    };
+    window.addEventListener('pointerdown', () => notifyPaneInteract(true), true);
+    window.addEventListener('focusin', () => notifyPaneInteract(true), true);
+    window.addEventListener('wheel', () => notifyPaneInteract(false), { capture: true, passive: true });
+    window.addEventListener('keydown', () => notifyPaneInteract(false), true);
 
     document.addEventListener('selectionchange', () => {
         // Fast-path: do not inspect or stringify selection during normal typing unless selection pill is active

@@ -94,6 +94,12 @@ let liveSmartDarkState = {
     darkExclusions: [...DEFAULT_DARK_EXCLUSIONS],
     darkExcludeMedia: true
 };
+let liveTextHighlightState = {
+    style: 'tinted',
+    color: 'accent',
+    accentColor: '#d4bc94',
+    applyToWeb: true
+};
 let livePasskeyState = {
     passkeyProviderMode: null,
     passkeyHardwareFallback: null
@@ -623,10 +629,12 @@ function toLocalFsPath(input) {
     if (!input || typeof input !== 'string') return '';
     let target = input.trim();
     if (target.startsWith('file://')) {
+        const cleanUrl = target.split(/[?#]/)[0];
         try {
-            target = fileURLToPath(target);
+            target = fileURLToPath(cleanUrl);
         } catch (_) {
-            target = target.replace(/^file:\/\/\/?/, '');
+            target = cleanUrl.replace(/^file:\/\/\/?/, '');
+            try { target = decodeURIComponent(target); } catch (_) {}
             if (process.platform === 'win32' && /^[a-zA-Z]:/.test(target)) {
                 // Keep Windows drive letter
             } else if (process.platform !== 'win32' && !target.startsWith('/')) {
@@ -1083,26 +1091,29 @@ if (process.platform === 'win32') {
 const gotTheLock = app.requestSingleInstanceLock();
 let initialUrlToOpen = null;
 
-const extractUrlFromArgs = (argv) => {
+const extractUrlFromArgs = (argv, workingDirectory = null) => {
     if (!Array.isArray(argv)) return null;
+    const appPath = (() => { try { return path.resolve(app.getAppPath()); } catch { return ''; } })();
+    const execPath = (() => { try { return path.resolve(process.execPath); } catch { return ''; } })();
     for (const rawArg of argv) {
         if (!rawArg || typeof rawArg !== 'string') continue;
         const arg = rawArg.trim().replace(/^["']|["']$/g, '');
-        if (arg.startsWith('--') || arg.startsWith('-')) continue;
+        if (!arg || arg.startsWith('--') || arg.startsWith('-')) continue;
         if (arg === '.' || arg.endsWith('main.cjs') || /electron(\.exe)?$/i.test(arg) || /qbrowse(\.exe)?$/i.test(arg)) continue;
 
         if (arg.startsWith('http://') || arg.startsWith('https://') || arg.startsWith('qbrowse://') || arg.startsWith('file://')) {
             return arg;
         }
 
-        if (/\.(html?|xhtml|shtml|xml|pdf|svg)$/i.test(arg)) {
-            try {
-                if (fsSync.existsSync(arg)) {
-                    const { pathToFileURL } = require('url');
-                    return pathToFileURL(path.resolve(arg)).href;
-                }
-            } catch (_) {}
-        }
+        try {
+            const resolved = path.isAbsolute(arg) ? path.normalize(arg) : path.resolve(workingDirectory || process.cwd(), arg);
+            if ((appPath && resolved === appPath) || (execPath && resolved === execPath) || resolved.includes('app.asar')) {
+                continue;
+            }
+            if (fsSync.existsSync(resolved)) {
+                return pathToFileURL(resolved).href;
+            }
+        } catch (_) {}
     }
     return null;
 };
@@ -1119,7 +1130,7 @@ if (!gotTheLock) {
         if (targetWin && !targetWin.isDestroyed()) {
             if (targetWin.isMinimized()) targetWin.restore();
             targetWin.focus();
-            const incomingUrl = extractUrlFromArgs(commandLine);
+            const incomingUrl = extractUrlFromArgs(commandLine, workingDirectory);
             if (incomingUrl) {
                 targetWin.webContents.send('open-new-tab-url', { url: incomingUrl, disposition: 'default' });
             }
@@ -1136,6 +1147,25 @@ app.on('open-url', (event, url) => {
         targetWin.webContents.send('open-new-tab-url', { url, disposition: 'default' });
     } else {
         initialUrlToOpen = url;
+    }
+});
+
+app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    if (!filePath || typeof filePath !== 'string') return;
+    let fileUrl = filePath;
+    try {
+        fileUrl = filePath.startsWith('file://') ? filePath : pathToFileURL(path.resolve(filePath)).href;
+    } catch (_) {}
+    const targetWin = (BrowserWindow.getFocusedWindow() && browserWindows.has(BrowserWindow.getFocusedWindow()))
+        ? BrowserWindow.getFocusedWindow()
+        : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : Array.from(browserWindows)[0]);
+    if (targetWin && !targetWin.isDestroyed()) {
+        if (targetWin.isMinimized()) targetWin.restore();
+        targetWin.focus();
+        targetWin.webContents.send('open-new-tab-url', { url: fileUrl, disposition: 'default' });
+    } else {
+        initialUrlToOpen = fileUrl;
     }
 });
 
@@ -2695,7 +2725,7 @@ function createWindow(options = {}) {
                 return;
             }
 
-            if (isCmdOrCtrl || keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
+            if (isCmdOrCtrl || keyRaw === 'F1' || keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
                 let shortcut = null;
                 if (isCmdOrCtrl) {
                     // Normalize zoom keys by physical key code so Ctrl++/- and Ctrl+Alt++/- always overrule websites
@@ -2721,10 +2751,14 @@ function createWindow(options = {}) {
                         codeRaw === 'Numpad0'
                     ) {
                         shortcut = 'cmd+0';
+                    } else if (codeRaw === 'Backslash') {
+                        shortcut = 'cmd+\\';
+                    } else if (isCmdOrCtrl && input.alt && codeRaw === 'KeyF') {
+                        shortcut = 'cmd+f';
                     } else if (keyLower) {
                         shortcut = `cmd+${keyLower}`;
                     }
-                } else if (keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
+                } else if (keyRaw === 'F1' || keyRaw === 'F11' || keyRaw === 'F12' || keyRaw === 'Escape' || keyRaw === 'F3' || keyRaw === 'F7') {
                     shortcut = keyLower;
                 }
 
@@ -2761,11 +2795,24 @@ function createWindow(options = {}) {
                         return;
                     }
 
+                    // Ctrl/Cmd+Shift+C -> Copy Current Tab URL (prevent DevTools Inspect Element hijack)
+                    if (shortcut === 'cmd+c' && input.shift && !input.alt) {
+                        event.preventDefault();
+                        try {
+                            targetWin.webContents.send('global-shortcut', {
+                                shortcut: 'cmd+c',
+                                shift: true,
+                                alt: false
+                            });
+                        } catch(e) {}
+                        return;
+                    }
+
                     const overrideKeys = [
                         'cmd+w', 'cmd+t', 'cmd+k', 'cmd+1', 'cmd+2', 'cmd+3', 
                         'cmd+n', 'cmd+p', 'cmd+e', 'cmd+b', 'cmd+j', 'cmd+f', 'cmd+h', 
                         'cmd+l', 'cmd+y', 'cmd+\\', 'cmd+|', 'cmd+d', 'cmd+[', 'cmd+]',
-                        'cmd+s', 'f11', 'f12', 'f3', 'f7'
+                        'cmd+s', 'cmd+m', 'cmd+,', 'f1', 'f11', 'f12', 'f3', 'f7'
                     ];
 
                     if (overrideKeys.includes(shortcut)) {
@@ -3933,13 +3980,21 @@ app.whenReady().then(async () => {
           }
           return true;
       };
+      const isAutoUpdateAllowed = () => {
+          return settingsStore?.strictOfflineMode !== true && settingsStore?.bgAllowAutoUpdates !== false;
+      };
       setTimeout(() => {
+          if (!isAutoUpdateAllowed()) {
+              console.log('[AutoUpdater] Silent startup check skipped (Strict Offline / Auto-Updates disabled).');
+              return;
+          }
           performGitHubUpdateCheck({ silent: true, autoDownload: shouldAutoDownloadInBackground() }).catch((err) => {
               console.log('[AutoUpdater] Silent startup check skipped/failed:', err?.message || err);
           });
       }, 6000);
 
       setInterval(() => {
+          if (!isAutoUpdateAllowed()) return;
           performGitHubUpdateCheck({ silent: true, autoDownload: shouldAutoDownloadInBackground() }).catch(() => {});
       }, 4 * 60 * 60 * 1000);
   }, 100);
@@ -5175,6 +5230,9 @@ function streamDownloadToFile(targetUrl, destinationPath, expectedSha512, silent
 }
 
 async function performGitHubUpdateCheck({ silent = false, autoDownload = true } = {}) {
+    if (silent && (settingsStore?.strictOfflineMode === true || settingsStore?.bgAllowAutoUpdates === false)) {
+        return { ...updaterState };
+    }
     if (activeCheckPromise) return activeCheckPromise;
     if (updaterState.status === 'downloading') {
         return updaterState;
@@ -7148,6 +7206,47 @@ ipcMain.handle('get-smart-dark-state', (event, url) => {
     } catch (_) {
         return { isForceDark: false, isExcluded: false, excludeMedia: true };
     }
+});
+
+ipcMain.handle('get-text-highlight-state', () => {
+    const store = getSettingsStore();
+    return {
+        style: store?.textHighlightStyle || liveTextHighlightState.style || 'tinted',
+        color: store?.textHighlightColor || liveTextHighlightState.color || 'accent',
+        accentColor: store?.accentColor || liveTextHighlightState.accentColor || '#d4bc94',
+        applyToWeb: typeof store?.textHighlightApplyToWeb === 'boolean' ? store.textHighlightApplyToWeb : (liveTextHighlightState.applyToWeb !== false)
+    };
+});
+
+ipcMain.on('sync-text-highlight-state', (event, payload = {}) => {
+    if (typeof payload.style === 'string') {
+        liveTextHighlightState.style = payload.style;
+        settingsStore['textHighlightStyle'] = payload.style;
+    }
+    if (typeof payload.color === 'string') {
+        liveTextHighlightState.color = payload.color;
+        settingsStore['textHighlightColor'] = payload.color;
+    }
+    if (typeof payload.accentColor === 'string') {
+        liveTextHighlightState.accentColor = payload.accentColor;
+    }
+    if (typeof payload.applyToWeb === 'boolean') {
+        liveTextHighlightState.applyToWeb = payload.applyToWeb;
+        settingsStore['textHighlightApplyToWeb'] = payload.applyToWeb;
+    }
+    scheduleSettingsDiskFlush();
+    try {
+        const state = {
+            style: liveTextHighlightState.style,
+            color: liveTextHighlightState.color,
+            accentColor: liveTextHighlightState.accentColor,
+            applyToWeb: liveTextHighlightState.applyToWeb
+        };
+        for (const wc of webContents.getAllWebContents()) {
+            if (!wc || wc.isDestroyed() || wc.getType() !== 'webview') continue;
+            try { wc.send('apply-text-highlight', state); } catch (_) {}
+        }
+    } catch (_) {}
 });
 
 ipcMain.on('sync-smart-dark-state', (event, { isForceDark, darkExclusions, darkExcludeMedia }) => {

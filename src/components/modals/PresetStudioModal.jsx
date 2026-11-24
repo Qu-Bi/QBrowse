@@ -1207,10 +1207,10 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                         </div>
 
                         {/* RIGHT: LIVE CUSTOMIZATION CONTROLS DRAWER */}
-                        <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l p-5 flex flex-col justify-between overflow-y-auto hide-scroll shrink-0 ${
+                        <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l flex flex-col min-h-0 overflow-hidden shrink-0 ${
                             isSystemBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
                         }`}>
-                            <div className="space-y-4">
+                            <div className="flex-1 min-h-0 overflow-y-auto hide-scroll p-4 sm:p-5 space-y-3">
                                 <div className={`flex items-center justify-between pb-2 border-b ${
                                     isSystemBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
                                 }`}>
@@ -1468,9 +1468,9 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                 </div>
                             </div>
 
-                            {/* STUDIO ACTION BAR */}
-                            <div className={`mt-6 pt-4 border-t space-y-2 shrink-0 ${
-                                isSystemBright ? 'border-black/[0.07]' : 'border-white/[0.06]'
+                            {/* STUDIO ACTION BAR (Pinned at bottom so buttons always fit) */}
+                            <div className={`p-4 pt-3 border-t space-y-2 shrink-0 ${
+                                isSystemBright ? 'border-black/[0.07] bg-black/[0.015]' : 'border-white/[0.06] bg-white/[0.015]'
                             }`}>
                                 {editingPresetId ? (
                                     <>

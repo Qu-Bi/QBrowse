@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PanelLeft, PanelRight, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
+import { PanelLeft, PanelRight, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, Minimize2 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
+import { consumeHardwareNavEvent } from '../../utils/navDedup';
 import { formatCompactNumber } from '../../utils/formatters';
 import TopBarMiniOmnibox from '../features/TopBarMiniOmnibox';
 import { useTranslation, t as tStatic } from '../../i18n/index';
+import { getFocusedSlotIndex, resolveSplitSlotTabs } from '../../utils/splitLayoutHelpers';
 
 function formatDisplayUrl(rawUrl) {
     if (!rawUrl || rawUrl === 'about:blank') return '';
@@ -58,6 +60,9 @@ function formatDisplayUrl(rawUrl) {
 export default function TopBar() {
     const { t, intlLocale } = useTranslation();
     const isFullscreen = useUIStore(state => state.isFullscreen);
+    const isFramelessMode = useUIStore(state => state.isFramelessMode);
+    const toggleFramelessMode = useUIStore(state => state.toggleFramelessMode);
+    const isChromeHidden = isFullscreen || isFramelessMode;
     const isTopBarPeeking = useUIStore(state => state.isTopBarPeeking);
     const setIsTopBarPeeking = useUIStore(state => state.setIsTopBarPeeking);
     const topBarContextMenu = useUIStore(state => state.topBarContextMenu);
@@ -85,7 +90,7 @@ export default function TopBar() {
 
     const handleTopBarMouseLeave = () => {
         isMouseOverTopBarRef.current = false;
-        if (isFullscreen && isTopBarPeeking && !isTopBarLockedOpen) {
+        if (isChromeHidden && isTopBarPeeking && !isTopBarLockedOpen) {
             if (topBarLeaveTimeoutRef.current) {
                 clearTimeout(topBarLeaveTimeoutRef.current);
             }
@@ -100,9 +105,9 @@ export default function TopBar() {
         }
     };
 
-    // Auto-dismiss in fullscreen when TopBar is no longer locked open and mouse is not hovering
+    // Auto-dismiss in fullscreen / frameless mode when TopBar is no longer locked open and mouse is not hovering
     useEffect(() => {
-        if (isFullscreen && !isTopBarLockedOpen && !isMouseOverTopBarRef.current) {
+        if (isChromeHidden && !isTopBarLockedOpen && !isMouseOverTopBarRef.current) {
             const timer = setTimeout(() => {
                 const currentUi = useUIStore.getState();
                 const isCurrentPopoverOpen = Boolean(currentUi.activePopover && currentUi.activePopover !== 'user' && currentUi.activePopover !== 'userProfile');
@@ -113,7 +118,7 @@ export default function TopBar() {
             }, 150);
             return () => clearTimeout(timer);
         }
-    }, [isFullscreen, isTopBarLockedOpen, setIsTopBarPeeking]);
+    }, [isChromeHidden, isTopBarLockedOpen, setIsTopBarPeeking]);
 
     useEffect(() => {
         return () => {
@@ -124,7 +129,9 @@ export default function TopBar() {
     }, []);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
-    const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
+    const splitPaneTabIds = useUIStore(state => state.splitPaneTabIds);
+    const splitOrientation = useUIStore(state => state.splitOrientation);
+    const swapSplitPanes = useUIStore(state => state.swapSplitPanes);
     const focusedPane = useUIStore(state => state.focusedPane);
     const setFocusedPane = useUIStore(state => state.setFocusedPane);
     const toggleSplitView = useUIStore(state => state.toggleSplitView);
@@ -169,12 +176,17 @@ export default function TopBar() {
     const isBright = theme === 'light' && !isIncognito && !isTor;
 
     const spaceTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
-    const leftTab = isSplitView && splitRightTabId 
-        ? (spaceTabs.find(t => t.active && t.id !== splitRightTabId) || spaceTabs.find(t => t.id !== splitRightTabId) || spaceTabs[0])
-        : (spaceTabs.find(t => t.active) || spaceTabs[0]);
-    const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
-    
-    const focusedTab = (isSplitView && focusedPane === 'right' && rightTab) ? rightTab : leftTab;
+    const { slots: splitSlots } = resolveSplitSlotTabs({
+        spaceTabs,
+        isSplitView,
+        splitOrientation,
+        splitPaneTabIds,
+        splitRightTabId
+    });
+    const leftTab = splitSlots[0] || spaceTabs[0];
+    const rightTab = splitSlots[1] || null;
+    const focusedSlotIdx = isSplitView ? getFocusedSlotIndex(focusedPane) : 0;
+    const focusedTab = (isSplitView && splitSlots[focusedSlotIdx]) ? splitSlots[focusedSlotIdx] : leftTab;
     const rawUrl = focusedTab && focusedTab.url !== 'about:blank' ? focusedTab.url : '';
     const showFullUrls = useUIStore(state => state.settings?.showFullUrls);
     const uiScale = useUIStore(state => state.settings?.uiScale);
@@ -237,58 +249,70 @@ export default function TopBar() {
     const handleSwapPanes = (e) => {
         if (e) e.stopPropagation();
         if (!isSplitView || !leftTab) return;
-        if (rightTab) {
-            // Swap active tab and right tab
-            const oldLeftId = leftTab.id;
-            const oldRightId = rightTab.id;
-            useTabStore.getState().handleSwitchToTab(oldRightId, activeSpace);
-            setSplitRightTabId(oldLeftId);
-            showToast(t('chrome.toastSwappedPanes', null, 'Swapped split panes'));
-        }
+        swapSplitPanes();
     };
+
+    const handleBackRef = useRef(handleBack);
+    const handleForwardRef = useRef(handleForward);
+    handleBackRef.current = handleBack;
+    handleForwardRef.current = handleForward;
 
     // Global Mouse 4 / Mouse 5 & Keyboard Navigation Listeners
     useEffect(() => {
         const handleMouseUp = (e) => {
             if (e.button === 3) {
                 e.preventDefault();
-                handleBack();
+                if (consumeHardwareNavEvent('back')) {
+                    handleBackRef.current();
+                }
             } else if (e.button === 4) {
                 e.preventDefault();
-                handleForward();
+                if (consumeHardwareNavEvent('forward')) {
+                    handleForwardRef.current();
+                }
             }
         };
 
         const handleKeyDown = (e) => {
             if (e.altKey && e.key === 'ArrowLeft') {
                 e.preventDefault();
-                handleBack();
+                handleBackRef.current();
             } else if (e.altKey && e.key === 'ArrowRight') {
                 e.preventDefault();
-                handleForward();
+                handleForwardRef.current();
             }
         };
 
         window.addEventListener('mouseup', handleMouseUp);
         window.addEventListener('keydown', handleKeyDown);
 
-        onGlobalNavigateBack(() => handleBack());
-        onGlobalNavigateForward(() => handleForward());
+        const unsubBack = onGlobalNavigateBack(() => {
+            if (consumeHardwareNavEvent('back')) {
+                handleBackRef.current();
+            }
+        });
+        const unsubForward = onGlobalNavigateForward(() => {
+            if (consumeHardwareNavEvent('forward')) {
+                handleForwardRef.current();
+            }
+        });
 
         return () => {
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('keydown', handleKeyDown);
+            if (typeof unsubBack === 'function') unsubBack();
+            if (typeof unsubForward === 'function') unsubForward();
         };
-    }, [activeTabId]);
+    }, []);
 
-    const isPeeking = isFullscreen && (isTopBarPeeking || isTopBarLockedOpen);
+    const isPeeking = isChromeHidden && (isTopBarPeeking || isTopBarLockedOpen);
 
     return (
         <>
             <div 
                 onMouseEnter={handleTopBarMouseEnter}
                 onMouseLeave={handleTopBarMouseLeave}
-                className={isFullscreen 
+                className={isChromeHidden 
                     ? `fixed ${topBarPosition === 'bottom' ? 'bottom-3' : 'top-3'} left-4 right-4 z-[99990] bg-transparent transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
                         isPeeking 
                             ? 'translate-y-0 pointer-events-auto' 
@@ -307,7 +331,7 @@ export default function TopBar() {
                         }
                     }}
                     className={`drag-region flex mx-0 ${
-                        isFullscreen
+                        isChromeHidden
                             ? (uiScale === 'compact' ? 'my-0 h-[44px]' : 'my-0 h-[50px]')
                             : topBarPosition === 'bottom'
                             ? (uiScale === 'compact' ? 'mt-1.5 mb-0 h-[44px]' : 'mt-3 mb-0 h-[50px]')
@@ -319,7 +343,7 @@ export default function TopBar() {
                             ? 'rounded-2xl'
                             : 'rounded-full'
                     } transition-[background-color,border-color,box-shadow] duration-300 ${
-                    isFullscreen
+                    isChromeHidden
                         ? (isBright
                             ? 'liquid-glass-bright !bg-white/82 backdrop-blur-2xl !border-black/10 !shadow-[0_20px_50px_rgba(0,0,0,0.22)] text-zinc-900'
                             : 'liquid-glass-dark !bg-[#0c0d14]/80 backdrop-blur-2xl !border-white/15 !shadow-[0_24px_65px_rgba(0,0,0,0.75)] text-white')
@@ -348,6 +372,27 @@ export default function TopBar() {
                                         title={t('chrome.zenModeTooltip', null, 'Zen Mode (CMD+B)')}
                                     >
                                         <PanelLeft size={15} strokeWidth={1.85} className={`transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.4,1)] ${isSidebarHidden ? 'rotate-180 opacity-70 scale-95' : 'rotate-0 opacity-100 scale-100'}`} />
+                                    </button>
+                                )}
+
+                                {isFramelessMode && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleFramelessMode(false);
+                                            showToast(t('stores.shortcuts.framelessOff', null, 'Frameless Mode: Off'));
+                                        }}
+                                        className={`h-8 px-2.5 flex-shrink-0 flex items-center gap-1.5 ${
+                                            frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
+                                        } text-[11px] font-semibold transition-all duration-200 active:scale-95 cursor-pointer border ${
+                                            isBright
+                                                ? 'bg-accent/20 border-accent/40 text-zinc-900 hover:bg-accent/30'
+                                                : 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30'
+                                        }`}
+                                        title={t('chrome.exitFramelessTooltip', null, 'Exit Frameless Mode (Ctrl+Alt+F)')}
+                                    >
+                                        <Minimize2 size={12} strokeWidth={2.2} />
+                                        <span className="hidden sm:inline">{t('chrome.exitFrameless', null, 'Exit Frameless')}</span>
                                     </button>
                                 )}
 

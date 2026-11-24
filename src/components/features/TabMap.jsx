@@ -9,6 +9,7 @@ import useTabStore from '../../store/useTabStore';
 import { isVideoWallpaper } from '../../utils/wallpaperHelpers';
 import { useTranslation } from '../../i18n/index';
 import { selectPluralForm, formatTabCount } from '../../i18n/domains/chrome';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -132,6 +133,7 @@ export default function TabMap() {
     const handleCloseTabMap = useUIStore(state => state.closeTabMap);
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
     const theme = useUIStore(state => state.theme);
+    const settings = useUIStore(state => state.settings);
     const uiShowToast = useUIStore(state => state.showToast);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
@@ -1886,12 +1888,16 @@ export default function TabMap() {
                                                     <div className="flex items-center justify-between w-full gap-3">
                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                             <div className="w-6 h-6 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
-                                                                <img
-                                                                    src={`https://www.google.com/s2/favicons?sz=64&domain=${subzone.domain}`}
-                                                                    alt=""
-                                                                    className="w-3.5 h-3.5 rounded"
-                                                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                                                />
+                                                                {getSafeFaviconUrl(subzone.domain, settings, 64) ? (
+                                                                    <img
+                                                                        src={getSafeFaviconUrl(subzone.domain, settings, 64)}
+                                                                        alt=""
+                                                                        className="w-3.5 h-3.5 rounded"
+                                                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                                                    />
+                                                                ) : (
+                                                                    <Globe size={12} className="text-white/50" />
+                                                                )}
                                                             </div>
                                                             <span className={`text-xs font-semibold truncate ${isBright ? 'text-zinc-800' : 'text-white/90'}`}>
                                                                 {subzone.domain}
@@ -2020,10 +2026,10 @@ export default function TabMap() {
                                             />
                                         ) : (
                                             <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-zinc-900/30">
-                                                {node.domain ? (
+                                                {getSafeFaviconUrl(node.domain, settings, 64) ? (
                                                     <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center mb-2">
                                                         <img 
-                                                            src={`https://www.google.com/s2/favicons?sz=64&domain=${node.domain}`}
+                                                            src={getSafeFaviconUrl(node.domain, settings, 64)}
                                                             alt=""
                                                             className="w-5 h-5 rounded"
                                                             onError={(e) => { e.target.style.display = 'none'; }}
@@ -2113,9 +2119,9 @@ export default function TabMap() {
                                     {/* Title & Hostname Row */}
                                     <div className="h-[60px] px-3.5 flex flex-col justify-center">
                                         <div className="flex items-center gap-2">
-                                            {node.domain ? (
+                                            {getSafeFaviconUrl(node.domain, settings, 64) ? (
                                                 <img
-                                                    src={`https://www.google.com/s2/favicons?sz=64&domain=${node.domain}`}
+                                                    src={getSafeFaviconUrl(node.domain, settings, 64)}
                                                     alt=""
                                                     className="w-3.5 h-3.5 rounded shrink-0"
                                                     onError={(e) => { e.target.style.display = 'none'; }}

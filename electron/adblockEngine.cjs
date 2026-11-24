@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const dns = require('dns');
 let ipcMain = null;
 let webContents = null;
 try {
@@ -74,6 +75,102 @@ let mainWindowRef = null;
 let pendingBlockedBatch = 0;
 let blockedBatchTimer = null;
 let lastBlockedUrl = '';
+let cnameUncloakedCount = 0;
+
+const CNAME_TTL_MS = 10 * 60 * 1000;
+const CNAME_MAX_ENTRIES = 2000;
+const CNAME_TIMEOUT_MS = 300;
+const IPV4_REGEX = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+function shouldResolveCnameHost(host) {
+    if (!host || typeof host !== 'string') return false;
+    const clean = host.trim().toLowerCase().replace(/\.$/, '');
+    if (!clean) return false;
+    if (clean === 'localhost' || clean.endsWith('.localhost') || clean.endsWith('.local') || clean.endsWith('.onion') || clean.endsWith('.internal')) {
+        return false;
+    }
+    if (clean.includes(':') || clean.startsWith('[') || IPV4_REGEX.test(clean)) {
+        return false;
+    }
+    const labels = clean.split('.').filter(Boolean);
+    // Only resolve subdomains (e.g. metrics.example.com), skip single-label & root domains
+    return labels.length >= 3;
+}
+
+function createCnameResolver(resolveFn, options = {}) {
+    const ttlMs = typeof options.ttlMs === 'number' ? options.ttlMs : CNAME_TTL_MS;
+    const maxEntries = typeof options.maxEntries === 'number' ? options.maxEntries : CNAME_MAX_ENTRIES;
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : CNAME_TIMEOUT_MS;
+    const nowFn = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
+
+    const cache = new Map();
+    const inFlight = new Map();
+
+    function setCached(host, cnames) {
+        if (cache.has(host)) {
+            cache.delete(host);
+        } else if (cache.size >= maxEntries) {
+            const oldestKey = cache.keys().next().value;
+            if (oldestKey !== undefined) {
+                cache.delete(oldestKey);
+            }
+        }
+        cache.set(host, { cnames, expiresAt: nowFn() + ttlMs });
+    }
+
+    function getCached(host) {
+        if (!host) return null;
+        const entry = cache.get(host);
+        if (!entry) return null;
+        if (nowFn() >= entry.expiresAt) {
+            cache.delete(host);
+            return null;
+        }
+        return entry.cnames;
+    }
+
+    function resolveInBackground(host, isOfflineFn) {
+        if (!shouldResolveCnameHost(host)) return null;
+        if (typeof isOfflineFn === 'function' && isOfflineFn()) return null;
+        const existing = getCached(host);
+        if (existing !== null) return null;
+        if (inFlight.has(host)) return inFlight.get(host);
+
+        const promise = (async () => {
+            let timer = null;
+            try {
+                const timeoutPromise = new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('CNAME timeout')), timeoutMs);
+                });
+                const raw = await Promise.race([Promise.resolve(resolveFn(host)), timeoutPromise]);
+                const normalized = Array.isArray(raw)
+                    ? raw.map((c) => String(c || '').trim().toLowerCase().replace(/\.$/, '')).filter(Boolean)
+                    : [];
+                setCached(host, normalized);
+                return normalized;
+            } catch (_) {
+                setCached(host, []);
+                return [];
+            } finally {
+                if (timer) clearTimeout(timer);
+                inFlight.delete(host);
+            }
+        })();
+
+        inFlight.set(host, promise);
+        return promise;
+    }
+
+    return {
+        getCached,
+        resolveInBackground,
+        clear: () => {
+            cache.clear();
+            inFlight.clear();
+        },
+        size: () => cache.size
+    };
+}
 
 function rebuildCustomNativeEngine(settings) {
     if (!AdBlockClient) return;
@@ -354,6 +451,7 @@ class AdblockEngine {
         this.cacheDir = '';
         this.cacheFile = '';
         this.isUpdating = false;
+        this.cnameResolver = createCnameResolver((host) => dns.promises.resolveCname(host));
     }
 
     async init(app, settingsStore, mainWindow) {
@@ -465,6 +563,9 @@ class AdblockEngine {
     }
 
     async fetchRemoteBlocklist(inputUrl) {
+        if (settingsStoreRef?.strictOfflineMode === true || settingsStoreRef?.bgAllowFilterUpdates === false) {
+            return { success: false, skipped: true, error: 'Remote filter fetches are disabled in Network & Background Services settings.' };
+        }
         if (!inputUrl || typeof inputUrl !== 'string') {
             return { success: false, error: 'Invalid URL provided' };
         }
@@ -528,7 +629,8 @@ class AdblockEngine {
                 mode: engineMode,
                 active: this.isActive(),
                 ruleCount: activeRuleCount,
-                lastUpdate: lastCacheUpdate
+                lastUpdate: lastCacheUpdate,
+                cnameUncloakedCount
             };
         });
 
@@ -554,6 +656,10 @@ class AdblockEngine {
     }
 
     async updateFilters(force = false) {
+        if (settingsStoreRef?.strictOfflineMode === true || settingsStoreRef?.bgAllowFilterUpdates === false) {
+            console.log('[AdblockEngine] Skipping remote filter update (Strict Offline / Filter Updates disabled); using local rules.');
+            return { success: false, skipped: true, count: activeRuleCount, message: 'Filter updates disabled by Network & Background Services settings' };
+        }
         if (this.isUpdating) return { success: true, count: activeRuleCount, message: 'Update already in progress' };
         if (!AdBlockClient) {
             return { success: true, count: activeRuleCount || 150000, updatedAt: Date.now() };
@@ -739,20 +845,79 @@ class AdblockEngine {
                     notifyBlocked(url);
                     return true;
                 }
-                return false;
             } catch (err) {
                 // If native check throws for malformed URL, fallback gracefully
             }
         }
 
         // 6. Fallback Ghostery Engine
-        if (fallbackBlocker) {
+        if (!nativeEngine && fallbackBlocker) {
             try {
                 const { fromElectronDetails } = require('@ghostery/adblocker-electron');
                 const requestObj = fromElectronDetails(details);
                 const match = fallbackBlocker.match(requestObj);
                 if (match && match.match) {
                     notifyBlocked(url);
+                    return true;
+                }
+            } catch (_) {}
+        }
+
+        // 7. Optional DNS CNAME Uncloaking (non-blocking cache lookup + background DNS resolution)
+        if (currentSettings?.adblockCnameUncloaking === true && shouldResolveCnameHost(reqHost)) {
+            const cachedCnames = this.cnameResolver.getCached(reqHost);
+            if (Array.isArray(cachedCnames)) {
+                for (let i = 0; i < cachedCnames.length; i++) {
+                    if (this.checkCnameTarget(details, currentSettings, cachedCnames[i])) {
+                        cnameUncloakedCount++;
+                        notifyBlocked(url);
+                        return true;
+                    }
+                }
+            } else {
+                this.cnameResolver.resolveInBackground(
+                    reqHost,
+                    () => currentSettings?.strictOfflineMode === true
+                );
+            }
+        }
+
+        return false;
+    }
+
+    checkCnameTarget(details, currentSettings, cnameHost) {
+        if (!cnameHost || typeof cnameHost !== 'string') return false;
+        const syntheticUrl = `https://${cnameHost}/`;
+        const resourceType = mapResourceType(details?.resourceType);
+        const sourceUrl = details?.referrer || (details?.initiator ? details.initiator + '/' : '');
+
+        if (customNativeEngine) {
+            try {
+                if (customNativeEngine.check(syntheticUrl, sourceUrl, resourceType)) {
+                    return true;
+                }
+            } catch (_) {}
+        } else {
+            const customSet = getCustomBlockedSet(currentSettings);
+            if (isHostInSet(cnameHost, customSet)) {
+                return true;
+            }
+        }
+
+        if (nativeEngine) {
+            try {
+                if (nativeEngine.check(syntheticUrl, sourceUrl, resourceType)) {
+                    return true;
+                }
+            } catch (_) {}
+        }
+
+        if (!nativeEngine && fallbackBlocker) {
+            try {
+                const { fromElectronDetails } = require('@ghostery/adblocker-electron');
+                const requestObj = fromElectronDetails({ ...details, url: syntheticUrl });
+                const match = fallbackBlocker.match(requestObj);
+                if (match && match.match) {
                     return true;
                 }
             } catch (_) {}
@@ -944,4 +1109,4 @@ class AdblockEngine {
 }
 
 const adblockEngine = new AdblockEngine();
-module.exports = { adblockEngine };
+module.exports = { adblockEngine, shouldResolveCnameHost, createCnameResolver };

@@ -14,6 +14,8 @@ import useTorStore from '../store/useTorStore';
 import { t, resolveActiveLanguage } from '../i18n/index';
 import { selectPluralForm } from '../i18n/domains/chrome.js';
 import { topSites } from '../utils/topSites';
+import { pathToSafeFileUrl } from '../utils/fileUrlHelpers';
+import { getFocusedSplitTab, isUrlAllowedInPin } from '../utils/pinnedAppHelpers';
 import { 
     getAllBangs, 
     parseBangFromQuery, 
@@ -29,6 +31,7 @@ import {
     parseKeywordQuery,
     isLikelyWebUrl
 } from '../utils/searchEngines';
+import { isBackgroundServiceAllowed } from '../utils/networkPrivacy';
 
 export const availableCommands = [
     { id: 'ls', title: 'List open tabs (Mission Control)', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
@@ -51,6 +54,10 @@ export const availableCommands = [
     { id: 'tool_hub', title: 'Toggle Tool Hub (Notes/AI)', cmd: 'tool hub', icon: Puzzle, color: 'text-fuchsia-400' },
     { id: 'split', title: 'Toggle Split Screen (Ctrl+\\ or ⇧⌘D)', cmd: 'split screen', icon: SplitSquareHorizontal, color: 'text-cyan-400' },
     { id: 'settings', title: 'Open Browser Settings', cmd: 'settings', icon: Settings, color: 'text-slate-400' },
+    { id: 'help', title: 'Open Help Center & Shortcuts (F1)', cmd: 'help', icon: Globe, color: 'text-sky-400' },
+    { id: 'terms', title: 'View Terms of Service', cmd: 'terms', icon: Globe, color: 'text-amber-400' },
+    { id: 'privacy', title: 'View Privacy Policy', cmd: 'privacy', icon: Globe, color: 'text-emerald-400' },
+    { id: 'licenses', title: 'View Open-Source Licenses', cmd: 'licenses', icon: Globe, color: 'text-indigo-400' },
     { id: 'history', title: 'Open Browsing History', cmd: 'history', icon: History, color: 'text-orange-400' },
     { id: 'downloads', title: 'Open Downloads Manager', cmd: 'downloads', icon: Download, color: 'text-lime-400' },
     { id: 'fullscreen', title: 'Toggle Fullscreen Mode', cmd: 'fullscreen', icon: Maximize, color: 'text-violet-400' },
@@ -96,13 +103,12 @@ export const parseUrlInput = (input, activeBang = null, customBangs = []) => {
 
     // Windows local drive paths (e.g. C:\Users, D:/Documents)
     if (/^[a-zA-Z]:[\\/]/i.test(trimmed)) {
-        const normalized = trimmed.replace(/\\/g, '/');
-        return `file:///${normalized}`;
+        return pathToSafeFileUrl(trimmed);
     }
 
     // Unix absolute paths (/home, /usr, /etc, /tmp) or Home directory (~/)
     if (/^(\/|~\/)/.test(trimmed)) {
-        return `file://${trimmed}`;
+        return pathToSafeFileUrl(trimmed);
     }
 
     // Explicit scheme with a host (e.g. http://site.com or https://site.com)
@@ -151,8 +157,7 @@ export const getCompletedSuggestionText = (target, currentInput) => {
         if (input.startsWith('file://')) {
             let fileUrl = target.url;
             if (!fileUrl) {
-                const norm = raw.replace(/\\/g, '/');
-                fileUrl = norm.startsWith('/') ? `file://${norm}` : `file:///${norm}`;
+                fileUrl = pathToSafeFileUrl(raw);
             }
             if (target.isDirectory && !fileUrl.endsWith('/')) {
                 fileUrl += '/';
@@ -223,7 +228,9 @@ export default function useOmniboxEngine({
 
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
-    const liveSearch = useUIStore(state => state.settings?.liveSearch);
+    const settings = useUIStore(state => state.settings);
+    const liveSearch = settings?.liveSearch;
+    const liveSuggestionsAllowed = isBackgroundServiceAllowed(settings, 'liveSuggestions');
     const smartCalc = useUIStore(state => state.settings?.smartCalc);
     const searchInNewTab = useUIStore(state => state.settings?.searchInNewTab);
     const searchEngine = useUIStore(state => state.settings?.searchEngine) || 'google';
@@ -281,10 +288,10 @@ export default function useOmniboxEngine({
         const trimmedQ = (inputValue || '').trim();
         const isLocalPath = /^file:\/\//i.test(trimmedQ) || /^[a-zA-Z]:[\\/]/.test(trimmedQ) || /^(\/|~\/)/.test(trimmedQ);
 
-        if (isTor || isIncognito || !trimmedQ || trimmedQ.startsWith('>') || isBangSuggestionMode || liveSearch === false) {
+        if (isTor || isIncognito || !trimmedQ || trimmedQ.startsWith('>') || isBangSuggestionMode || liveSearch === false || !liveSuggestionsAllowed) {
             setLiveSuggestions([]);
             if (!isLocalPath) setLocalSuggestions([]);
-            if (liveSearch === false && !isLocalPath) return;
+            if ((liveSearch === false || !liveSuggestionsAllowed) && !isLocalPath) return;
         }
 
         // Live Local Path Autocomplete
@@ -357,7 +364,7 @@ export default function useOmniboxEngine({
                 activeScript.remove();
             }
         };
-    }, [inputValue, isBangSuggestionMode, isTor, isIncognito, liveSearch, isActive]);
+    }, [inputValue, isBangSuggestionMode, isTor, isIncognito, liveSearch, liveSuggestionsAllowed, isActive]);
 
     // Scroll active item into view
     useEffect(() => {
@@ -788,6 +795,22 @@ export default function useOmniboxEngine({
                 showToast(t('chrome.toastCmdSettings', 'Terminal: Settings opened'));
                 break;
 
+            case 'help':
+                uiStore.openHelpModal('help');
+                break;
+
+            case 'terms':
+                uiStore.openHelpModal('terms');
+                break;
+
+            case 'privacy':
+                uiStore.openHelpModal('privacy');
+                break;
+
+            case 'licenses':
+                uiStore.openHelpModal('licenses');
+                break;
+
             case 'history':
                 uiStore.openModal('history');
                 showToast(t('chrome.toastCmdHistory', 'Terminal: History opened'));
@@ -912,24 +935,30 @@ export default function useOmniboxEngine({
         if (onNavigate) {
             onNavigate(targetUrl, cleanTitle);
         } else {
-            const isSplit = useUIStore.getState().isSplitView;
-            const focusedPane = useUIStore.getState().focusedPane;
-            const splitRightTabId = useUIStore.getState().splitRightTabId;
-
-            const currentTabs = activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'tor' ? torTabs : ghostTabs));
-            let targetTab = null;
-
-            if (isSplit && focusedPane === 'right' && splitRightTabId) {
-                targetTab = currentTabs.find(t => t.id === splitRightTabId);
-            }
-            if (!targetTab) {
-                targetTab = currentTabs.find(t => t.active);
-            }
+            const ui = useUIStore.getState();
+            const tabState = useTabStore.getState();
+            const currentTabs = tabState.getActiveList ? tabState.getActiveList() : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'tor' ? torTabs : ghostTabs)));
+            const targetTab = getFocusedSplitTab({
+                spaceTabs: currentTabs,
+                isSplitView: ui.isSplitView,
+                splitOrientation: ui.splitOrientation,
+                splitPaneTabIds: ui.splitPaneTabIds,
+                splitRightTabId: ui.splitRightTabId,
+                focusedPane: ui.focusedPane
+            });
 
             if (targetTab && !searchInNewTab) {
-                useTabStore.getState().handleNavigateTab(targetTab.id, targetUrl, cleanTitle);
+                if (targetTab.pinnedId) {
+                    const pin = tabState.getPinById?.(targetTab.pinnedId, activeSpace);
+                    if (pin && !isUrlAllowedInPin(targetUrl, pin)) {
+                        tabState.handleNewTab(targetUrl, true);
+                        onClose?.(true);
+                        return;
+                    }
+                }
+                tabState.handleNavigateTab(targetTab.id, targetUrl, cleanTitle);
             } else {
-                useTabStore.getState().handleNewTab(targetUrl);
+                tabState.handleNewTab(targetUrl);
             }
         }
 

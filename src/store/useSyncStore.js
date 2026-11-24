@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { t } from '../i18n/index';
 import useUIStore from './useUIStore';
+import { isBackgroundServiceAllowed } from '../utils/networkPrivacy';
 import useVaultStore from './useVaultStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from './useTabStore';
 import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
@@ -2392,6 +2393,7 @@ const useSyncStore = create((set, get) => ({
 
         const ms = Math.max(5, intervalMinutes) * 60 * 1000;
         autoSyncIntervalTimer = setInterval(() => {
+            if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
             const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
             if (autoSyncEnabled && user && masterPassword && !isSyncing && !isApplyingCloudUpdate && !isApplyingRemoteSync) {
                 get().syncNow({ silent: true }).catch(() => {});
@@ -2400,6 +2402,7 @@ const useSyncStore = create((set, get) => ({
 
         // Silent warm-up sync after 12 seconds if ready and not recently synced
         setTimeout(() => {
+            if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
             const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
             if (
                 autoSyncEnabled &&
@@ -2427,6 +2430,7 @@ const useSyncStore = create((set, get) => ({
     },
 
     triggerDebouncedSync: (delayMs = 25000) => {
+        if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
         const { autoSyncEnabled, user, masterPassword, isSyncing } = get();
         if (!autoSyncEnabled || !user || !masterPassword || isSyncing || isApplyingCloudUpdate || isApplyingRemoteSync) {
             return;
@@ -2439,6 +2443,7 @@ const useSyncStore = create((set, get) => ({
         const effectiveDelay = Math.max(delayMs, cooldownRemaining, 10000);
         debounceSyncTimer = setTimeout(() => {
             debounceSyncTimer = null;
+            if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
             const state = get();
             if (state.autoSyncEnabled && state.user && state.masterPassword && !state.isSyncing && !isApplyingCloudUpdate && !isApplyingRemoteSync) {
                 state.syncNow({ silent: true }).catch(() => {});
@@ -2450,6 +2455,7 @@ const useSyncStore = create((set, get) => ({
         if (debounceSyncTimer) {
             clearTimeout(debounceSyncTimer);
             debounceSyncTimer = null;
+            if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
             const state = get();
             if (state.autoSyncEnabled && state.user && state.masterPassword && !state.isSyncing && !isApplyingCloudUpdate && !isApplyingRemoteSync) {
                 state.syncNow({ silent: true }).catch(() => {});
@@ -2726,6 +2732,9 @@ const useSyncStore = create((set, get) => ({
 
     syncNow: async (options = false) => {
         const silent = typeof options === 'boolean' ? options : Boolean(options?.silent);
+        if (silent && !isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) {
+            return;
+        }
         const isInitialLogin = typeof options === 'object' && options !== null ? Boolean(options.isInitialLogin) : false;
         const { user, masterPassword, syncCategories, isSyncing } = get();
         if (!user) {
@@ -4167,6 +4176,7 @@ const useSyncStore = create((set, get) => ({
     },
 
     listenToCloudSync: () => {
+        if (!isBackgroundServiceAllowed(useUIStore.getState().settings, 'cloudSync')) return;
         const { user, masterPassword, syncCategories } = get();
         if (!user || !masterPassword) return;
 

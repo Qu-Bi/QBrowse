@@ -6,13 +6,23 @@ import {
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
-    Columns, Layers, Sparkles, CornerDownLeft, Plus
+    Columns, LayoutGrid, SplitSquareHorizontal, SplitSquareVertical, Layers, Sparkles, CornerDownLeft, Plus
 } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import ElementEraserHUD from '../common/ElementEraserHUD';
+import SlidingPillSwitcher from '../common/SlidingPillSwitcher';
+import SplitPaneLauncher from '../features/SplitPaneLauncher';
 import { findDarkModeExclusionMatch } from '../../utils/darkModeWhitelist';
 import { useTranslation } from '../../i18n/index';
 import { formatTabCount } from '../../i18n/domains/chrome';
+import { isBackgroundServiceAllowed, getSafeFaviconUrl } from '../../utils/networkPrivacy';
+import {
+    getFocusedSlotIndex,
+    getSlotRectCss,
+    isBlankSplitTab,
+    resolveSplitSlotTabs,
+    slotIndexToFocusedPane
+} from '../../utils/splitLayoutHelpers';
 
 function getToastIcon(message, isBright = false) {
     const iconClass = isBright ? "text-zinc-700 flex-shrink-0" : "text-white/80 flex-shrink-0";
@@ -314,6 +324,8 @@ export default function MainFrame() {
     const { t, resolvedLanguage, intlLocale } = useTranslation();
     const isFullscreen = useUIStore(state => state.isFullscreen);
     const setIsFullscreen = useUIStore(state => state.setIsFullscreen);
+    const isFramelessMode = useUIStore(state => state.isFramelessMode);
+    const isChromeHidden = isFullscreen || isFramelessMode;
     const theme = useUIStore(state => state.theme);
     const setTheme = useUIStore(state => state.setTheme);
     const isForceDark = useUIStore(state => state.isForceDark);
@@ -352,15 +364,30 @@ export default function MainFrame() {
     }, []);
     const isSplitView = useUIStore(state => state.isSplitView);
     const splitRightTabId = useUIStore(state => state.splitRightTabId);
-    const setSplitRightTabId = useUIStore(state => state.setSplitRightTabId);
+    const splitPaneTabIds = useUIStore(state => state.splitPaneTabIds);
+    const setSplitPaneTabId = useUIStore(state => state.setSplitPaneTabId);
+    const swapSplitPanes = useUIStore(state => state.swapSplitPanes);
     const focusedPane = useUIStore(state => state.focusedPane);
     const setFocusedPane = useUIStore(state => state.setFocusedPane);
     const splitRatio = useUIStore(state => state.splitRatio);
     const setSplitRatio = useUIStore(state => state.setSplitRatio);
+    const splitRatioY = useUIStore(state => state.splitRatioY);
+    const setSplitRatioY = useUIStore(state => state.setSplitRatioY);
+    const splitOrientation = useUIStore(state => state.splitOrientation);
+    const setSplitOrientation = useUIStore(state => state.setSplitOrientation);
+    const isDraggingSplit = useUIStore(state => state.isDraggingSplit);
+    const setIsDraggingSplit = useUIStore(state => state.setIsDraggingSplit);
+    const isSplitAxisAnimating = useUIStore(state => state.isSplitAxisAnimating);
+    const setIsSplitAxisAnimating = useUIStore(state => state.setIsSplitAxisAnimating);
+    const setIsSplitClosingStore = useUIStore(state => state.setIsSplitClosing);
+    const setSplitTransitionMode = useUIStore(state => state.setSplitTransitionMode);
+    const isVerticalSplit = splitOrientation === 'vertical';
+    const isQuadSplit = splitOrientation === 'quad';
     const toggleSplitView = useUIStore(state => state.toggleSplitView);
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const refresh = useUIStore(state => state.refresh);
     const openOmnibox = useUIStore(state => state.openOmnibox);
+    const settings = useUIStore(state => state.settings);
     const isReducedMotion = useUIStore(state => Boolean(state.settings?.a11yReducedMotion || state.isSystemReducedMotion));
     const topBarPosition = useUIStore(state => state.settings?.topBarPosition || 'top');
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
@@ -401,10 +428,17 @@ export default function MainFrame() {
     const isBright = theme === 'light' && !isIncognito && !isTor;
 
     const getEffectiveLeftTab = (tabs) => {
-        if (isSplitView && splitRightTabId) {
-            return tabs.find(t => t.active && t.id !== splitRightTabId) || tabs.find(t => t.id !== splitRightTabId);
+        if (isSplitView) {
+            const { slots } = resolveSplitSlotTabs({
+                spaceTabs: tabs || [],
+                isSplitView: true,
+                splitOrientation,
+                splitPaneTabIds,
+                splitRightTabId
+            });
+            return slots[0];
         }
-        return tabs.find(t => t.active) || tabs[0];
+        return (tabs || []).find(t => t.active) || (tabs || [])[0];
     };
 
     const isSpaceEmpty = (spaceId) => {
@@ -502,149 +536,161 @@ export default function MainFrame() {
         );
     };
 
-    const [splitSearchUrl, setSplitSearchUrl] = useState('');
-    const [splitLiveSuggestions, setSplitLiveSuggestions] = useState([]);
-    const [splitSelectedSuggestion, setSplitSelectedSuggestion] = useState(-1);
-    const splitSuggestDebounceRef = useRef(null);
-    const historyStoreData = useHistoryStore(state => state.history) || [];
-
-    const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+    const [isSplitMenuHovered, setIsSplitMenuHovered] = useState(false);
+    const [isSplitMenuPinned, setIsSplitMenuPinned] = useState(false);
+    const [isSplitClosing, setIsSplitClosing] = useState(false);
+    const [isInstantSplitSwitch, setIsInstantSplitSwitch] = useState(false);
+    const [splitFadeNonce, setSplitFadeNonce] = useState(0);
+    const splitMenuLeaveTimerRef = useRef(null);
+    const splitAxisAnimTimerRef = useRef(null);
+    const splitCloseTimerRef = useRef(null);
+    const splitInstantTimerRef = useRef(null);
+    const prevSplitViewRef = useRef(isSplitView);
+    const closingSplitSnapshotRef = useRef({ orientation: splitOrientation, slots: [], slotCount: 2 });
+    const splitDragDistanceRef = useRef(0);
+    const splitDragStartRef = useRef({ x: 0, y: 0 });
+    const dragAxisRef = useRef('x'); // 'x' | 'y' | 'both'
     const mainContainerRef = useRef(null);
-    const leftPaneRef = useRef(null);
-    const rightPaneRef = useRef(null);
-    const splitInputWrapperRef = useRef(null);
-    const currentRatioRef = useRef(splitRatio);
+    const viewportFrameRef = useRef(null);
+    const spacesLayerRef = useRef(null);
+    const currentRatioXRef = useRef(splitRatio);
+    const currentRatioYRef = useRef(splitRatioY);
+
+    useEffect(() => {
+        currentRatioXRef.current = splitRatio;
+    }, [splitRatio]);
+
+    useEffect(() => {
+        currentRatioYRef.current = splitRatioY;
+    }, [splitRatioY]);
+
+    const triggerSplitAxisAnim = useCallback((durationMs = 520) => {
+        if (isReducedMotion) return;
+        if (splitAxisAnimTimerRef.current) clearTimeout(splitAxisAnimTimerRef.current);
+        setIsSplitAxisAnimating(true);
+        splitAxisAnimTimerRef.current = setTimeout(() => {
+            setIsSplitAxisAnimating(false);
+        }, durationMs);
+    }, [isReducedMotion, setIsSplitAxisAnimating]);
+
+    useEffect(() => {
+        return () => {
+            if (splitMenuLeaveTimerRef.current) clearTimeout(splitMenuLeaveTimerRef.current);
+            if (splitAxisAnimTimerRef.current) clearTimeout(splitAxisAnimTimerRef.current);
+            if (splitCloseTimerRef.current) clearTimeout(splitCloseTimerRef.current);
+            if (splitInstantTimerRef.current) clearTimeout(splitInstantTimerRef.current);
+        };
+    }, []);
 
     useLayoutEffect(() => {
-        if (leftPaneRef.current) {
-            leftPaneRef.current.scrollLeft = 0;
+        const wasSplit = prevSplitViewRef.current;
+        prevSplitViewRef.current = isSplitView;
+        const mode = useUIStore.getState().splitTransitionMode;
+
+        if (isSplitView !== wasSplit && mode === 'instant') {
+            // Instant tab-switch crossfade between standalone tab and Split Group (no resizing glide)
+            if (splitCloseTimerRef.current) {
+                clearTimeout(splitCloseTimerRef.current);
+                splitCloseTimerRef.current = null;
+            }
+            if (splitInstantTimerRef.current) clearTimeout(splitInstantTimerRef.current);
+            setIsSplitClosing(false);
+            setIsSplitClosingStore(false);
+            setIsInstantSplitSwitch(true);
+            setIsSplitAxisAnimating(true);
+            if (isSplitView) {
+                setSplitFadeNonce(n => n + 1);
+            }
+            splitInstantTimerRef.current = setTimeout(() => {
+                setIsInstantSplitSwitch(false);
+                setIsSplitAxisAnimating(false);
+                setSplitTransitionMode('animate');
+            }, 60);
+            return;
+        }
+
+        if (isSplitView && !wasSplit) {
+            if (splitCloseTimerRef.current) {
+                clearTimeout(splitCloseTimerRef.current);
+                splitCloseTimerRef.current = null;
+            }
+            setIsSplitClosing(false);
+            setIsSplitClosingStore(false);
+            triggerSplitAxisAnim(520);
+        } else if (!isSplitView && wasSplit) {
+            setIsSplitMenuHovered(false);
+            setIsSplitMenuPinned(false);
+            if (isReducedMotion) {
+                setIsSplitClosing(false);
+                setIsSplitClosingStore(false);
+                setIsSplitAxisAnimating(false);
+            } else {
+                triggerSplitAxisAnim(440);
+                setIsSplitClosing(true);
+                setIsSplitClosingStore(true);
+                if (splitCloseTimerRef.current) clearTimeout(splitCloseTimerRef.current);
+                splitCloseTimerRef.current = setTimeout(() => {
+                    setIsSplitClosing(false);
+                    setIsSplitClosingStore(false);
+                }, 440);
+            }
+        }
+    }, [isSplitView, isReducedMotion, setIsSplitAxisAnimating, setIsSplitClosingStore, setSplitTransitionMode, triggerSplitAxisAnim]);
+
+    const openSplitMenuHover = () => {
+        if (splitMenuLeaveTimerRef.current) {
+            clearTimeout(splitMenuLeaveTimerRef.current);
+            splitMenuLeaveTimerRef.current = null;
+        }
+        setIsSplitMenuHovered(true);
+    };
+
+    const scheduleSplitMenuClose = () => {
+        if (splitMenuLeaveTimerRef.current) clearTimeout(splitMenuLeaveTimerRef.current);
+        splitMenuLeaveTimerRef.current = setTimeout(() => {
+            setIsSplitMenuHovered(false);
+        }, 320);
+    };
+
+    useLayoutEffect(() => {
+        if (spacesLayerRef.current) {
+            spacesLayerRef.current.scrollLeft = 0;
+            spacesLayerRef.current.scrollTop = 0;
+        }
+        if (viewportFrameRef.current) {
+            viewportFrameRef.current.scrollLeft = 0;
+            viewportFrameRef.current.scrollTop = 0;
         }
     }, [activeSpace, visibleSpaces.length]);
 
     const spaceTabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : (activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs)));
-    const activeLeftTab = isSplitView && splitRightTabId
-        ? (spaceTabs.find(t => t.active && t.id !== splitRightTabId) || spaceTabs.find(t => t.id !== splitRightTabId) || spaceTabs[0])
-        : (spaceTabs.find(t => t.active) || spaceTabs[0]);
-    const rightTab = isSplitView && splitRightTabId ? spaceTabs.find(t => t.id === splitRightTabId) : null;
-    const availableRightTabs = spaceTabs.filter(t => t.id !== activeLeftTab?.id);
+    const { slots: splitSlots, slotCount: splitSlotCount, tabSlotMap: splitTabSlotMap } = resolveSplitSlotTabs({
+        spaceTabs,
+        isSplitView,
+        splitOrientation,
+        splitPaneTabIds,
+        splitRightTabId
+    });
+    const activeLeftTab = splitSlots[0] || null;
+    const rightTab = splitSlots[1] || null;
+    const availableRightTabs = spaceTabs.filter(t => !splitTabSlotMap.has(t.id) && !isBlankSplitTab(t));
+    const focusedSlotIndex = getFocusedSlotIndex(focusedPane);
 
-    // Live search & autocomplete for split screen input
-    useEffect(() => {
-        setSplitSelectedSuggestion(-1);
-        const q = splitSearchUrl.trim();
-        if (!q) {
-            setSplitLiveSuggestions([]);
-            return;
-        }
-
-        const lowerQ = q.toLowerCase();
-        const siteMatches = topSites
-            .filter(site => site.toLowerCase().includes(lowerQ))
-            .slice(0, 3)
-            .map(site => ({
-                title: site,
-                url: site.startsWith('http') ? site : `https://${site}`,
-                isSite: true
-            }));
-
-        const historyMatches = (isTor || isIncognito) ? [] : historyStoreData
-            .filter(h => (h.title && h.title.toLowerCase().includes(lowerQ)) || (h.url && h.url.toLowerCase().includes(lowerQ)))
-            .slice(0, 3)
-            .map(h => ({
-                title: h.title || h.url,
-                url: h.url,
-                isHistory: true
-            }));
-
-        const localItems = [...siteMatches, ...historyMatches];
-
-        let activeCallback = null;
-        let activeScript = null;
-
-        if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
-        splitSuggestDebounceRef.current = setTimeout(() => {
-            if (/^(https?:\/\/|file:\/\/|qbrowse:\/\/|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$)/i.test(q) || q.length > 150) {
-                setSplitLiveSuggestions(localItems);
-                return;
-            }
-
-            const callbackName = 'splitSuggestCb_' + Math.round(100000 * Math.random());
-            activeCallback = callbackName;
-            window[callbackName] = (data) => {
-                try {
-                    if (data && data[1]) {
-                        const searchItems = data[1].slice(0, 6).map(s => ({
-                            title: s,
-                            url: `https://www.google.com/search?q=${encodeURIComponent(s)}`,
-                            isSearch: true
-                        }));
-                        const combined = [...localItems];
-                        searchItems.forEach(item => {
-                            if (!combined.some(c => c.title.toLowerCase() === item.title.toLowerCase())) {
-                                combined.push(item);
-                            }
-                        });
-                        setSplitLiveSuggestions(combined);
-                    } else {
-                        setSplitLiveSuggestions(localItems);
-                    }
-                } catch (err) {
-                    console.warn('Error processing split suggestions:', err);
-                } finally {
-                    try { delete window[callbackName]; } catch (_) {}
-                    const scriptEl = document.getElementById(callbackName);
-                    if (scriptEl && scriptEl.parentNode) scriptEl.remove();
-                }
-            };
-
-            const script = document.createElement('script');
-            script.id = callbackName;
-            script.src = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(q)}&callback=${callbackName}`;
-            script.onerror = () => {
-                try { delete window[callbackName]; } catch (_) {}
-                if (script.parentNode) script.remove();
-            };
-            activeScript = script;
-            document.body.appendChild(script);
-        }, 120);
-
-        return () => {
-            if (splitSuggestDebounceRef.current) clearTimeout(splitSuggestDebounceRef.current);
-            if (activeCallback) {
-                window[activeCallback] = () => {
-                    try { delete window[activeCallback]; } catch (_) {}
-                };
-                setTimeout(() => {
-                    try { delete window[activeCallback]; } catch (_) {}
-                }, 10000);
-            }
-            if (activeScript && activeScript.parentNode) {
-                activeScript.remove();
-            }
+    if (isSplitView) {
+        closingSplitSnapshotRef.current = {
+            orientation: splitOrientation,
+            slots: splitSlots,
+            slotCount: splitSlotCount
         };
-    }, [splitSearchUrl, isTor, isIncognito]);
+    }
 
-    const handleSplitKeyDown = (e) => {
-        if (!splitLiveSuggestions.length) return;
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setSplitSelectedSuggestion(prev => (prev + 1) % splitLiveSuggestions.length);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setSplitSelectedSuggestion(prev => (prev - 1 + splitLiveSuggestions.length) % splitLiveSuggestions.length);
-        } else if (e.key === 'Escape') {
-            setSplitLiveSuggestions([]);
-        } else if (e.key === 'Enter') {
-            if (splitSelectedSuggestion >= 0 && splitSelectedSuggestion < splitLiveSuggestions.length) {
-                e.preventDefault();
-                const chosen = splitLiveSuggestions[splitSelectedSuggestion];
-                handleOpenSplitUrl(chosen.url || chosen.title);
-            }
-        }
-    };
-
-    const handleSplitMouseDown = (e) => {
+    const handleSplitMouseDown = (e, axis = 'x') => {
+        if (e.button !== 0) return;
         e.preventDefault();
+        e.stopPropagation();
+        dragAxisRef.current = axis;
+        splitDragStartRef.current = { x: e.clientX, y: e.clientY };
+        splitDragDistanceRef.current = 0;
         setIsDraggingSplit(true);
     };
 
@@ -653,28 +699,46 @@ export default function MainFrame() {
         let animationFrameId = null;
 
         const handleMouseMove = (e) => {
-            if (!mainContainerRef.current) return;
+            if (!viewportFrameRef.current) return;
+            const dx = e.clientX - splitDragStartRef.current.x;
+            const dy = e.clientY - splitDragStartRef.current.y;
+            splitDragDistanceRef.current = Math.max(splitDragDistanceRef.current, Math.hypot(dx, dy));
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
             animationFrameId = requestAnimationFrame(() => {
-                const rect = mainContainerRef.current.getBoundingClientRect();
-                const offsetX = e.clientX - rect.left;
-                const newRatio = Math.min(80, Math.max(20, (offsetX / rect.width) * 100));
-                
-                const primaryRatio = isSplitLeft ? (100 - newRatio) : newRatio;
-                const secondaryRatio = isSplitLeft ? newRatio : (100 - newRatio);
+                const rect = viewportFrameRef.current.getBoundingClientRect();
+                const axis = dragAxisRef.current;
 
-                currentRatioRef.current = primaryRatio;
-                if (leftPaneRef.current) leftPaneRef.current.style.width = `${primaryRatio}%`;
-                if (rightPaneRef.current) rightPaneRef.current.style.width = `${secondaryRatio}%`;
+                if (axis === 'x' || axis === 'both') {
+                    const offsetX = e.clientX - rect.left;
+                    const rawX = Math.min(80, Math.max(20, (offsetX / Math.max(1, rect.width)) * 100));
+                    const primaryX = (!isQuadSplit && isSplitLeft) ? (100 - rawX) : rawX;
+                    currentRatioXRef.current = primaryX;
+                    viewportFrameRef.current.style.setProperty('--split-x', `${primaryX}%`);
+                }
+
+                if (axis === 'y' || axis === 'both') {
+                    const offsetY = e.clientY - rect.top;
+                    const rawY = Math.min(80, Math.max(20, (offsetY / Math.max(1, rect.height)) * 100));
+                    currentRatioYRef.current = rawY;
+                    viewportFrameRef.current.style.setProperty('--split-y', `${rawY}%`);
+                }
             });
         };
 
         const handleMouseUp = () => {
             setIsDraggingSplit(false);
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
-            if (currentRatioRef.current !== null) {
-                setSplitRatio(currentRatioRef.current);
+            if (splitDragDistanceRef.current < 4) {
+                setIsSplitMenuPinned(prev => !prev);
+            } else {
+                const axis = dragAxisRef.current;
+                if (axis === 'x' || axis === 'both') {
+                    setSplitRatio(currentRatioXRef.current);
+                }
+                if (axis === 'y' || axis === 'both') {
+                    setSplitRatioY(currentRatioYRef.current);
+                }
             }
         };
 
@@ -685,27 +749,56 @@ export default function MainFrame() {
             window.removeEventListener('mouseup', handleMouseUp);
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
         };
-    }, [isDraggingSplit, setSplitRatio, isSplitLeft]);
+    }, [isDraggingSplit, setIsDraggingSplit, setSplitRatio, setSplitRatioY, isSplitLeft, isQuadSplit]);
 
-    const handleSwapPanes = (e) => {
+    const handleSwapPanes = (e, slotA = 0, slotB = 1) => {
         if (e) e.stopPropagation();
-        if (!isSplitView || !activeLeftTab) return;
-        if (rightTab) {
-            const oldLeftId = activeLeftTab.id;
-            const oldRightId = rightTab.id;
-            useTabStore.getState().handleSwitchToTab(oldRightId, activeSpace);
-            setSplitRightTabId(oldLeftId);
-        }
+        if (!isSplitView) return;
+        swapSplitPanes(slotA, slotB);
     };
 
-    const handleOpenSplitUrl = (eOrUrl) => {
+    const handleSelectSplitLayout = (mode) => {
+        setSplitOrientation(mode);
+        const labelMap = {
+            horizontal: t('stores.ui.splitHorizontal', null, 'Split View: Side-by-Side'),
+            vertical: t('stores.ui.splitVertical', null, 'Split View: Stacked (Top/Bottom)'),
+            quad: t('stores.ui.splitQuad', null, 'Split View: 2×2 Quad Grid')
+        };
+        showToast(labelMap[mode] || labelMap.horizontal);
+    };
+
+    const handleReloadBothSplitPanes = (e) => {
+        if (e) e.stopPropagation();
+        const reloadById = (id) => {
+            if (!id) return;
+            const wv = (window.qbrowseWebviews && window.qbrowseWebviews[id]) || document.querySelector(`webview#webview-${id}`);
+            if (wv && typeof wv.reload === 'function') {
+                try { wv.reload(); } catch (_) {}
+            }
+        };
+        splitSlots.slice(0, splitSlotCount).forEach(tabObj => reloadById(tabObj?.id));
+        showToast(t('chrome.splitReloadedBoth', null, 'Reloaded all split panes'));
+        setIsSplitMenuPinned(false);
+    };
+
+    const handlePromoteSecondaryPane = (e, slotIdx = 1) => {
+        if (e) e.stopPropagation();
+        const targetTab = splitSlots[slotIdx] || rightTab;
+        if (!targetTab) return;
+        const targetId = targetTab.id;
+        setIsSplitMenuPinned(false);
+        toggleSplitView();
+        useTabStore.getState().handleSwitchToTab(targetId, activeSpace);
+    };
+
+    const handleOpenSplitUrl = (eOrUrl, slotIdx = 1, titleOverride = null) => {
         if (eOrUrl && typeof eOrUrl.preventDefault === 'function') {
             eOrUrl.preventDefault();
         }
-        const raw = (typeof eOrUrl === 'string' ? eOrUrl : splitSearchUrl).trim();
+        const raw = (typeof eOrUrl === 'string' ? eOrUrl : '').trim();
         if (!raw) return;
         let url = raw;
-        if (!url.includes('://') && !url.startsWith('about:')) {
+        if (!url.includes('://') && !url.startsWith('about:') && !url.startsWith('qbrowse://')) {
             if (url.includes('.') && !url.includes(' ')) {
                 url = 'https://' + url;
             } else {
@@ -714,15 +807,13 @@ export default function MainFrame() {
         }
         const newTab = useTabStore.getState().addTab({
             id: 't-' + Date.now(),
-            title: url.replace(/^https?:\/\//, ''),
+            title: titleOverride || url.replace(/^https?:\/\//, ''),
             url,
             active: false,
             folderId: null
         });
-        setSplitRightTabId(newTab.id);
-        setFocusedPane('right');
-        setSplitSearchUrl('');
-        setSplitLiveSuggestions([]);
+        setSplitPaneTabId(slotIdx, newTab.id);
+        setFocusedPane(slotIndexToFocusedPane(slotIdx));
     };
 
     return (
@@ -1125,6 +1216,43 @@ export default function MainFrame() {
             {(() => {
                 const isZenActive = isSpaceEmpty(activeSpace);
                 const activeIndex = Math.max(0, visibleSpaces.findIndex(s => s.id === activeSpace));
+                const slot0Rect = getSlotRectCss({
+                    isSplitView,
+                    splitOrientation,
+                    isSplitLeft,
+                    slotIndex: 0
+                });
+                const renderSplitActive = isSplitView || isSplitClosing;
+                const effectiveSplitOrientation = isSplitView ? splitOrientation : closingSplitSnapshotRef.current.orientation;
+                const effectiveSlots = isSplitView ? splitSlots : closingSplitSnapshotRef.current.slots;
+                const effectiveIsVertical = effectiveSplitOrientation === 'vertical';
+                const effectiveIsQuad = effectiveSplitOrientation === 'quad';
+                const secondarySlotIndices = renderSplitActive
+                    ? (effectiveIsQuad ? [1, 2, 3] : [1])
+                    : [];
+                const dividerXPercent = (!isQuadSplit && isSplitLeft) ? (100 - splitRatio) : splitRatio;
+                const dividerYPercent = splitRatioY;
+                const isMenuOpen = (isSplitMenuHovered || isSplitMenuPinned) && !isDraggingSplit;
+                const activeAxisPct = isVerticalSplit ? splitRatioY : splitRatio;
+                const activePreset = isQuadSplit
+                    ? ([30, 50, 70].find(p => Math.abs(splitRatio - p) <= 4 && Math.abs(splitRatioY - p) <= 4) ?? null)
+                    : ([30, 50, 70].find(p => Math.abs(activeAxisPct - p) <= 4) ?? null);
+                const hasAnySecondaryTab = secondarySlotIndices.some(idx => Boolean(splitSlots[idx]));
+
+                const pillOpaqueStyle = isBright
+                    ? {
+                        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                        borderColor: 'rgba(0, 0, 0, 0.12)',
+                        color: '#27272a',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.14)'
+                    }
+                    : {
+                        backgroundColor: 'rgba(18, 19, 28, 0.96)',
+                        borderColor: 'rgba(255, 255, 255, 0.14)',
+                        color: 'rgba(255, 255, 255, 0.88)',
+                        boxShadow: '0 10px 28px rgba(0, 0, 0, 0.65)'
+                    };
+
                 return (
                     <div 
                         ref={mainContainerRef} 
@@ -1132,10 +1260,21 @@ export default function MainFrame() {
                     >
                         <div 
                             id="qbrowse-viewport-frame"
-                            className={`relative w-full h-full overflow-hidden transition-[border-radius,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex ${
-                                isSplitLeft ? 'flex-row-reverse' : 'flex-row'
-                            } ${
-                                isFullscreen 
+                            ref={viewportFrameRef}
+                            onScroll={(e) => {
+                                if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0;
+                                if (e.currentTarget.scrollTop !== 0) e.currentTarget.scrollTop = 0;
+                            }}
+                            style={{
+                                overflow: 'clip',
+                                '--split-x': (isSplitView && (!isVerticalSplit || isQuadSplit)) ? `${splitRatio}%` : '100%',
+                                '--split-y': (isSplitView && (isVerticalSplit || isQuadSplit)) ? `${splitRatioY}%` : '100%',
+                                transition: (isDraggingSplit || isReducedMotion || isInstantSplitSwitch)
+                                    ? 'border-radius 300ms ease, box-shadow 300ms ease, border-color 300ms ease'
+                                    : 'border-radius 300ms ease, box-shadow 300ms ease, border-color 300ms ease, --split-x 500ms cubic-bezier(0.22,1,0.36,1), --split-y 500ms cubic-bezier(0.22,1,0.36,1)'
+                            }}
+                            className={`relative w-full h-full overflow-hidden ${
+                                isChromeHidden 
                                     ? 'is-fullscreen-frame rounded-none border-transparent shadow-none !border-0 !shadow-none' 
                                     : frameCurvature === 'square'
                                     ? `rounded-none !rounded-none ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
@@ -1156,23 +1295,16 @@ export default function MainFrame() {
                     <ReaderModeOverlay />
                     <BrowserDialogOverlay />
 
-                    {/* LEFT PANE CONTAINER */}
+                    {/* UNIFIED FULL-VIEWPORT SPACES & WEBVIEW LAYER (ZERO RELOADS) */}
                     <div 
-                        ref={leftPaneRef}
-                        onClick={() => setFocusedPane('left')}
+                        ref={spacesLayerRef}
+                        onClick={() => { if (isSplitView) setFocusedPane('left'); }}
                         onScroll={(e) => {
-                            if (e.currentTarget.scrollLeft !== 0) {
-                                e.currentTarget.scrollLeft = 0;
-                            }
+                            if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0;
+                            if (e.currentTarget.scrollTop !== 0) e.currentTarget.scrollTop = 0;
                         }}
-                        className={`relative h-full overflow-hidden ${
-                            isDraggingSplit ? 'pointer-events-none select-none' : (isReducedMotion ? 'transition-none' : 'transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]')
-                        }`}
-                        style={{ 
-                            width: isSplitView ? `${splitRatio}%` : '100%', 
-                            contain: 'strict',
-                            overflowX: 'clip' 
-                        }}
+                        style={{ contain: 'strict', overflow: 'clip' }}
+                        className={`absolute inset-0 w-full h-full ${isDraggingSplit ? 'pointer-events-none select-none' : ''}`}
                     >
                         <div 
                             className={`absolute inset-y-0 left-0 flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
@@ -1187,6 +1319,7 @@ export default function MainFrame() {
                                 const isSpaceTor = sp.id === 'tor';
                                 const isSpaceGhost = sp.id === 'ghost';
                                 const visualOrder = visibleSpaces.findIndex(v => v.id === sp.id);
+                                const zenRect = (isActive && isSplitView) ? slot0Rect : { left: '0%', top: '0%', width: '100%', height: '100%' };
 
                                 return (
                                     <div 
@@ -1201,7 +1334,19 @@ export default function MainFrame() {
                                         {...(!isActive ? { inert: '' } : {})}
                                     >
                                         {isEmpty && (
-                                            <div key="dash" className={`absolute inset-0 z-10 ${isActive ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                                            <div
+                                                key="dash"
+                                                className={`absolute z-10 ${isActive ? 'pointer-events-auto' : 'pointer-events-none'}`}
+                                                style={{
+                                                    left: zenRect.left,
+                                                    top: zenRect.top,
+                                                    width: zenRect.width,
+                                                    height: zenRect.height,
+                                                    transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
+                                                        ? 'none'
+                                                        : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1)'
+                                                }}
+                                            >
                                                 {renderZenDashboard(sp.id)}
                                             </div>
                                         )}
@@ -1228,325 +1373,424 @@ export default function MainFrame() {
                         </div>
                     </div>
 
-                    {/* FULLSCREEN MOUSE TRAP OVERLAY DURING DRAGGING */}
-                    {isDraggingSplit && (
-                        <div className="fixed inset-0 z-[99999] cursor-col-resize select-none bg-transparent" />
-                    )}
+                    {/* SECONDARY SPLIT PANE OVERLAYS (HEADER BARS & LAUNCHERS) */}
+                    {secondarySlotIndices.map((slotIdx) => {
+                        const slotTab = effectiveSlots[slotIdx] || null;
+                        const rectCss = getSlotRectCss({
+                            isSplitView: renderSplitActive,
+                            splitOrientation: effectiveSplitOrientation,
+                            isSplitLeft,
+                            slotIndex: slotIdx
+                        });
+                        if (!rectCss.visible) return null;
 
-                    {/* RESIZABLE SPLITTER HANDLE (Zero-width floating hairline) */}
-                    {isSplitView && (
-                        <div 
-                            onMouseDown={handleSplitMouseDown}
-                            className="relative w-0 h-full z-40 flex items-center justify-center cursor-col-resize group shrink-0"
-                            title={t('chrome.dragResizeSplit', null, 'Drag to resize split panes')}
-                        >
-                            {/* Sleek 1px Hairline */}
-                            <div className={`absolute top-0 bottom-0 w-[1px] pointer-events-none transition-all duration-200 ${
-                                isDraggingSplit 
-                                    ? 'bg-accent shadow-[0_0_12px_var(--accent)]' 
-                                    : (!isBright ? 'bg-white/[0.08] group-hover:bg-accent/60' : 'bg-black/[0.08] group-hover:bg-accent/60')
-                            }`} />
+                        const isSlotFocused = isSplitView && focusedSlotIndex === slotIdx;
+                        const paneBarHeight = effectiveIsQuad ? 'h-[34px]' : 'h-[36px]';
+                        const slotHeaderBg = isBright ? 'rgba(250, 250, 252, 0.96)' : 'rgba(16, 17, 24, 0.96)';
+                        const slotHeaderBorder = isBright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
 
-                            {/* Floating Grab Pill Handle */}
-                            <div className={`absolute w-4 h-10 rounded-full flex items-center justify-center transition-all duration-200 cursor-col-resize shadow-md ${
-                                isDraggingSplit 
-                                    ? 'bg-accent border border-accent text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' 
-                                    : (isBright
-                                        ? 'liquid-pill-bright hover:scale-105 border-black/10'
-                                        : 'liquid-pill-dark hover:scale-105 border-white/15')
-                            }`}>
-                                <div className="flex flex-col gap-0.5 items-center pointer-events-none">
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
-                                    <div className="w-1 h-1 rounded-full bg-current opacity-60" />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* RIGHT PANE CONTAINER */}
-                    <div 
-                        id="tour-splitview-rightpane"
-                        ref={rightPaneRef}
-                        onClick={() => setFocusedPane('right')}
-                        className={`relative h-full overflow-hidden flex flex-col bg-transparent ${
-                            isDraggingSplit 
-                                ? 'pointer-events-none select-none' 
-                                : (isReducedMotion ? 'transition-none' : 'transition-[width,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]')
-                        } ${isSplitView ? 'opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}
-                        style={{ width: isSplitView ? `${100 - splitRatio}%` : '0%', contain: 'layout paint' }}
-                    >
-                            {rightTab ? (
-                                <div className="relative w-full h-full flex flex-col">
-                                    {/* Right Pane Overlay Controls */}
+                        return (
+                            <div
+                                key={`split-overlay-${slotIdx}-${splitFadeNonce}`}
+                                id={slotIdx === 1 ? 'tour-splitview-rightpane' : `qbrowse-split-pane-${slotIdx}`}
+                                onMouseDown={() => { if (isSplitView) setFocusedPane(slotIndexToFocusedPane(slotIdx)); }}
+                                style={{
+                                    left: rectCss.left,
+                                    top: rectCss.top,
+                                    width: rectCss.width,
+                                    height: rectCss.height,
+                                    opacity: isSplitClosing ? 0 : 1,
+                                    transform: isSplitClosing ? 'scale(0.96)' : 'scale(1)',
+                                    transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
+                                        ? 'opacity 220ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
+                                        : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1), opacity 280ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
+                                }}
+                                className={`absolute z-20 overflow-hidden ${slotTab || isSplitClosing ? 'pointer-events-none' : 'pointer-events-auto'} ${(!isReducedMotion && splitFadeNonce > 0 && !isSplitClosing) ? 'animate-pane-fade-in' : ''}`}
+                            >
+                                {slotTab ? (
+                                    /* Slim opaque pane header bar; webview below remains 100% interactive */
                                     <div
-                                        style={getLiquidGlassInlineStyle(isBright)}
-                                        className={`h-10 border-b px-3.5 flex items-center justify-between text-xs z-30 shrink-0 transition-colors !rounded-none !shadow-xs ${getLiquidGlassSurfaceClasses(isBright)}`}
+                                        style={{
+                                            backgroundColor: slotHeaderBg,
+                                            borderBottom: `1px solid ${slotHeaderBorder}`,
+                                            boxShadow: isSlotFocused ? 'inset 0 -1.5px 0 0 var(--accent)' : 'none'
+                                        }}
+                                        className={`pointer-events-auto ${paneBarHeight} px-3 flex items-center justify-between text-xs transition-colors ${isReducedMotion ? '' : 'animate-slide-down-fade'}`}
                                     >
-                                        <div className="flex items-center gap-2.5 truncate max-w-[65%]">
+                                        <div className="flex items-center gap-2 truncate min-w-0 pr-2">
+                                            {isQuadSplit && (
+                                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                    isSlotFocused
+                                                        ? 'bg-accent text-zinc-950'
+                                                        : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/60')
+                                                }`}>
+                                                    P{slotIdx + 1}
+                                                </span>
+                                            )}
                                             <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
                                                 isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10'
                                             }`}>
-                                                {rightTab.url ? (
-                                                    <img 
-                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${rightTab.url}`} 
-                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
-                                                        onError={e=>e.target.style.display='none'} 
+                                                {getSafeFaviconUrl(slotTab.url, settings, 32) ? (
+                                                    <img
+                                                        src={getSafeFaviconUrl(slotTab.url, settings, 32)}
+                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                                                        onError={e => { e.target.style.display = 'none'; }}
                                                     />
                                                 ) : (
                                                     <Globe size={11} className={isBright ? 'text-zinc-600' : 'text-white/55'} />
                                                 )}
                                             </div>
-                                            <span className="font-semibold truncate text-xs">{rightTab.title}</span>
-                                            {rightTab.url && (
+                                            <span className="font-semibold truncate text-xs">{slotTab.title}</span>
+                                            {!isQuadSplit && slotTab.url && (
                                                 <span className={`hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full border truncate max-w-[140px] ${
                                                     isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/55'
                                                 }`}>
-                                                    {rightTab.url.replace(/^https?:\/\//, '').split('/')[0]}
+                                                    {slotTab.url.replace(/^https?:\/\//, '').split('/')[0]}
                                                 </span>
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-1.5">
-                                            <button 
-                                                onClick={handleSwapPanes} 
-                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleSwapPanes(e, 0, slotIdx)}
+                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
                                                     isBright
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
                                                         : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
-                                                }`} 
-                                                title={t('chrome.swapPanesTooltip', null, 'Swap Left/Right Panes')}
+                                                }`}
+                                                title={t('chrome.swapPanesTooltip', null, 'Swap with Primary Pane')}
                                             >
-                                                <ArrowLeftRight size={12} />
+                                                <ArrowLeftRight size={11} className="transition-transform duration-300 hover:rotate-180" />
                                             </button>
-                                            <button 
-                                                onClick={() => setSplitRightTabId(null)} 
-                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSplitPaneTabId(slotIdx, null);
+                                                }}
+                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
                                                     isBright
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
                                                         : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
-                                                }`} 
+                                                }`}
                                                 title={t('chrome.changeSplitTabTooltip', null, 'Change Split Tab')}
                                             >
-                                                <Search size={12} />
+                                                <Search size={11} />
                                             </button>
-                                            <button 
-                                                onClick={() => toggleSplitView()} 
-                                                className={`w-7 h-7 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (isQuadSplit) {
+                                                        setSplitPaneTabId(slotIdx, null);
+                                                    } else {
+                                                        toggleSplitView();
+                                                    }
+                                                }}
+                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
                                                     isBright
                                                         ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/25'
                                                         : 'border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/75 hover:text-rose-300'
-                                                }`} 
-                                                title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
+                                                }`}
+                                                title={isQuadSplit ? t('chrome.clearSplitSlotTooltip', null, 'Clear Pane') : t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
                                             >
-                                                <X size={12} />
+                                                <X size={11} />
                                             </button>
                                         </div>
                                     </div>
-
-                                    {/* Right Pane Webview */}
-                                    <div className="relative flex-1 w-full h-full">
-                                        <WebViewContainer space={activeSpace} targetTabId={splitRightTabId} isSplitPane={true} />
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Split Screen Launcher / Picker */
-                                <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden z-10 w-full h-full pointer-events-auto">
-                                    <div 
-                                        className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] pointer-events-none z-0 ${!isBright ? 'opacity-20 invert' : ''}`} 
-                                        style={{ backgroundSize: '24px 24px' }}
+                                ) : (
+                                    <SplitPaneLauncher
+                                        slotIdx={slotIdx}
+                                        isFocusedSlot={isSlotFocused}
+                                        isQuadSplit={isQuadSplit}
+                                        isVerticalSplit={isVerticalSplit}
+                                        isSplitLeft={isSplitLeft}
+                                        isBright={isBright}
+                                        isTor={isTor}
+                                        isDark={!isBright}
+                                        isReducedMotion={isReducedMotion}
+                                        zoomLevel={zoomLevel}
+                                        availableTabs={availableRightTabs}
+                                        settings={settings}
+                                        resolvedLanguage={resolvedLanguage}
+                                        onSelectTab={(tabId) => setSplitPaneTabId(slotIdx, tabId)}
+                                        onOpenUrl={(url, title) => handleOpenSplitUrl(url, slotIdx, title)}
                                     />
-                                    
-                                    <div className="relative z-10 flex flex-col items-center w-full max-w-lg px-6 mt-[-10vh]" style={{ transform: `scale(${zoomLevel / 100})` }}>
-                                        {/* Header Block matching Zen Dashboard clock header height exactly */}
-                                        <div className="flex flex-col items-center mb-10 md:mb-14 px-4 w-full text-center select-none">
-                                            <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${
-                                                isTor ? 'text-purple-300/60' : (!isBright ? 'text-white/50' : 'text-zinc-700 font-bold')
-                                            }`}>
-                                                {t('chrome.dualWorkspace', null, 'DUAL WORKSPACE')}
-                                            </span>
-                                            <div className="h-[5rem] md:h-[8rem] flex flex-col items-center justify-center">
-                                                <h2 className={`text-3xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b leading-tight ${
-                                                    isTor 
-                                                        ? 'from-purple-200 via-purple-300/80 to-purple-500/20' 
-                                                        : (!isBright 
-                                                            ? 'from-white via-white/90 to-white/20' 
-                                                            : 'from-zinc-900 via-zinc-800 to-zinc-700')
-                                                }`} style={{ textShadow: !isBright ? '0 10px 30px rgba(0,0,0,0.4)' : 'none' }}>
-                                                    {t('chrome.splitScreen', null, 'Split Screen')}
-                                                </h2>
-                                                <p className={`text-xs ${isBright ? 'text-zinc-500' : 'text-white/45'} mt-2 max-w-xs font-normal leading-relaxed`}>
-                                                    {t('chrome.splitScreenDesc', null, 'Search the web or choose an open tab to browse side-by-side')}
-                                                </p>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    {/* FULLSCREEN MOUSE TRAP OVERLAY DURING DRAGGING */}
+                    {isDraggingSplit && (
+                        <div
+                            className={`fixed inset-0 z-[99999] select-none bg-transparent ${
+                                dragAxisRef.current === 'both'
+                                    ? 'cursor-move'
+                                    : (dragAxisRef.current === 'y' ? 'cursor-row-resize' : 'cursor-col-resize')
+                            }`}
+                        />
+                    )}
+
+                    {/* RESIZABLE SPLIT HAIRLINES + SEGMENTED FLOATING PILLS */}
+                    {renderSplitActive && (
+                        <>
+                            {/* Vertical Divider Hairline (Horizontal & Quad) */}
+                            {(!effectiveIsVertical || effectiveIsQuad) && (
+                                <div
+                                    onMouseDown={(e) => handleSplitMouseDown(e, 'x')}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        triggerSplitAxisAnim(520);
+                                        setSplitRatio(50);
+                                        if (isQuadSplit) setSplitRatioY(50);
+                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                    }}
+                                    style={{
+                                        left: 'var(--split-x, 50%)',
+                                        opacity: isSplitClosing ? 0 : 1,
+                                        pointerEvents: isSplitClosing ? 'none' : undefined,
+                                        transition: 'opacity 280ms ease-out',
+                                        ...(isSplitLeft && !effectiveIsQuad ? { left: 'calc(100% - var(--split-x, 50%))' } : {})
+                                    }}
+                                    className="absolute top-0 bottom-0 w-3 -ml-1.5 z-40 cursor-col-resize flex items-center justify-center group"
+                                    title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
+                                >
+                                    <div className={`w-[1px] h-full pointer-events-none transition-all duration-200 ${
+                                        isDraggingSplit
+                                            ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
+                                            : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
+                                    }`} />
+                                    {!effectiveIsQuad && (
+                                        <div
+                                            onMouseEnter={openSplitMenuHover}
+                                            onMouseLeave={scheduleSplitMenuClose}
+                                            style={{
+                                                backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
+                                                borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
+                                            }}
+                                            className={`absolute w-4 h-10 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${
+                                                isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
+                                            }`}
+                                        >
+                                            <div className="flex flex-col gap-0.5 items-center pointer-events-none">
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
                                             </div>
                                         </div>
-
-                                        {/* URL Input Form - clean sleek liquid pill */}
-                                        <form onSubmit={handleOpenSplitUrl} className="w-full relative z-50">
-                                            <div ref={splitInputWrapperRef} className="relative w-full">
-                                                <input 
-                                                    type="text"
-                                                    placeholder={isSplitLeft
-                                                        ? t('chrome.splitSearchLeftPlaceholder', null, 'Search or enter URL for Left Pane...')
-                                                        : t('chrome.splitSearchRightPlaceholder', null, 'Search or enter URL for Right Pane...')}
-                                                    value={splitSearchUrl}
-                                                    onChange={e => setSplitSearchUrl(e.target.value)}
-                                                    onKeyDown={handleSplitKeyDown}
-                                                    className={`w-full h-11 pl-4 pr-11 rounded-full text-xs outline-none transition-all duration-200 ${
-                                                        isBright 
-                                                            ? 'liquid-pill-bright focus:border-accent/60 placeholder-zinc-500 text-zinc-900' 
-                                                            : 'liquid-pill-dark focus:border-accent/60 placeholder-white/40 text-white'
-                                                    }`}
-                                                />
-                                                <button 
-                                                    type="submit" 
-                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-accent text-zinc-950 font-bold hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-                                                    title={isSplitLeft
-                                                        ? t('chrome.splitOpenLeftTooltip', null, 'Open in Left Pane (Enter)')
-                                                        : t('chrome.splitOpenRightTooltip', null, 'Open in Right Pane (Enter)')}
-                                                >
-                                                    <Search size={13} />
-                                                </button>
-                                            </div>
-
-                                            {/* Live Autocomplete Dropdown (Portaled so zoom transform/backdrop-filter never breaks blur) */}
-                                            {splitLiveSuggestions.length > 0 && typeof document !== 'undefined' && (() => {
-                                                const rect = splitInputWrapperRef.current?.getBoundingClientRect();
-                                                const dropTop = rect ? Math.max(12, rect.bottom + 8) : 200;
-                                                const dropLeft = rect ? Math.max(12, Math.min(rect.left, window.innerWidth - Math.max(240, rect.width) - 12)) : 12;
-                                                const dropWidth = rect ? rect.width : 360;
-                                                const maxH = Math.max(120, Math.min(240, window.innerHeight - dropTop - 16));
-                                                return createPortal(
-                                                    <div 
-                                                        style={{
-                                                            ...getLiquidGlassInlineStyle(isBright),
-                                                            top: `${dropTop}px`,
-                                                            left: `${dropLeft}px`,
-                                                            width: `${dropWidth}px`,
-                                                            maxHeight: `${maxH}px`
-                                                        }}
-                                                        className={`fixed p-1.5 rounded-2xl z-[99995] overflow-y-auto hide-scroll text-left animate-pop-in ${getLiquidGlassSurfaceClasses(isBright)}`}
-                                                    >
-                                                        {splitLiveSuggestions.map((item, idx) => (
-                                                            <div
-                                                                key={idx}
-                                                                onClick={() => handleOpenSplitUrl(item.url || item.title)}
-                                                                onMouseEnter={() => setSplitSelectedSuggestion(idx)}
-                                                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all duration-150 outline-none ${
-                                                                    splitSelectedSuggestion === idx
-                                                                        ? (isBright ? 'bg-black/[0.06] text-zinc-950 font-semibold' : 'bg-white/10 text-accent font-semibold')
-                                                                        : (isBright ? 'hover:bg-black/[0.05] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/[0.08] text-white/85 hover:text-white')
-                                                                }`}
-                                                            >
-                                                                <div className="flex items-center gap-2.5 truncate min-w-0">
-                                                                    {item.isSite || item.isHistory ? (
-                                                                        <Globe size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-500' : 'text-white/45')}`} />
-                                                                    ) : (
-                                                                        <Search size={14} className={`shrink-0 ${splitSelectedSuggestion === idx ? 'text-accent' : (isBright ? 'text-zinc-500' : 'text-white/45')}`} />
-                                                                    )}
-                                                                    <span className="truncate">{item.title}</span>
-                                                                </div>
-                                                                <span className={`text-[10px] font-mono ml-2 shrink-0 ${
-                                                                    isBright ? 'text-zinc-500' : 'text-white/40'
-                                                                }`}>
-                                                                    {item.isSite ? t('chrome.splitSuggestWebsite', null, 'Website') : (item.isHistory ? t('nav.history', null, 'History') : 'Google')}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>,
-                                                    document.body
-                                                );
-                                            })()}
-                                        </form>
-
-                                        {/* Available Tabs List - Absolute, so it NEVER alters the vertical center calculation! */}
-                                        <div className="absolute top-[calc(100%+1.25rem)] left-6 right-6 flex flex-col gap-2 max-h-[30vh] overflow-y-auto hide-scroll text-left">
-                                            <div className="flex items-center justify-between w-full mb-1 px-1">
-                                                <span className={`text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-1.5 ${isBright ? 'text-zinc-600' : 'text-white/45'}`}>
-                                                    <Layers size={11} className="text-accent" />
-                                                    {t('chrome.openTabsInSpace', null, 'Open Tabs in this Space')}
-                                                </span>
-                                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${isBright ? 'bg-black/[0.04] text-zinc-600' : 'bg-white/[0.04] text-white/45'}`}>
-                                                    {formatTabCount(availableRightTabs.length, resolvedLanguage, t)}
-                                                </span>
-                                            </div>
-
-                                            {availableRightTabs.length === 0 ? (
-                                                <div className={`w-full p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-1 shadow-xs ${
-                                                    isBright 
-                                                        ? 'bg-black/[0.02] text-zinc-600 border-black/[0.06]' 
-                                                        : 'bg-white/[0.02] text-white/45 border-white/[0.06]'
-                                                }`}>
-                                                    <div className={`w-8 h-8 rounded-full border flex items-center justify-center mb-0.5 ${
-                                                        isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/45'
-                                                    }`}>
-                                                        <Sparkles size={13} />
-                                                    </div>
-                                                    <span className={`text-xs font-semibold ${isBright ? 'text-zinc-800' : 'text-white/75'}`}>{t('chrome.noOtherOpenTabs', null, 'No other open tabs')}</span>
-                                                    <span className={`text-[11px] max-w-[240px] ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                                        {t('chrome.noOtherOpenTabsDesc', null, 'Type a search query or URL above to browse side-by-side.')}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                availableRightTabs.map(tabItem => (
-                                                    <div 
-                                                        key={tabItem.id} 
-                                                        onClick={() => setSplitRightTabId(tabItem.id)}
-                                                        className={`flex items-center justify-between px-3.5 py-2 rounded-2xl border cursor-pointer transition-all duration-200 group relative ${
-                                                            isBright 
-                                                                ? 'bg-black/[0.02] hover:bg-black/[0.05] border-black/[0.06] hover:border-accent/50 text-zinc-900 shadow-xs' 
-                                                                : 'bg-white/[0.025] hover:bg-white/[0.06] border-white/[0.06] hover:border-accent/40 text-white shadow-xs'
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-center gap-3 truncate min-w-0 pr-2">
-                                                            <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 group-hover:border-accent/30 transition-all ${
-                                                                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.04] border-white/[0.06]'
-                                                            }`}>
-                                                                {tabItem.url ? (
-                                                                    <img 
-                                                                        src={`https://www.google.com/s2/favicons?sz=32&domain=${tabItem.url}`} 
-                                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
-                                                                        onError={e => e.target.style.display = 'none'} 
-                                                                    />
-                                                                ) : (
-                                                                    <Globe size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                                                )}
-                                                            </div>
-                                                            <div className="flex flex-col text-left truncate min-w-0">
-                                                                <span className={`text-xs font-semibold truncate transition-colors ${
-                                                                    isBright ? 'text-zinc-900 group-hover:text-accent' : 'text-white/90 group-hover:text-accent'
-                                                                }`}>
-                                                                    {tabItem.title}
-                                                                </span>
-                                                                {tabItem.url && (
-                                                                    <span className={`text-[10px] font-mono truncate mt-0.5 ${
-                                                                        isBright ? 'text-zinc-500' : 'text-white/40'
-                                                                    }`}>
-                                                                        {tabItem.url}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <button 
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSplitRightTabId(tabItem.id);
-                                                            }}
-                                                            className="px-3 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent group-hover:bg-accent group-hover:text-zinc-950 text-[11px] font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0"
-                                                        >
-                                                            <Columns size={12} strokeWidth={2.5} />
-                                                            <span>{t('chrome.open', null, 'Open')}</span>
-                                                        </button>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             )}
-                    </div>
+
+                            {/* Horizontal Divider Hairline (Vertical & Quad) */}
+                            {(effectiveIsVertical || effectiveIsQuad) && (
+                                <div
+                                    onMouseDown={(e) => handleSplitMouseDown(e, 'y')}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        triggerSplitAxisAnim(520);
+                                        setSplitRatioY(50);
+                                        if (isQuadSplit) setSplitRatio(50);
+                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                    }}
+                                    style={{
+                                        top: 'var(--split-y, 50%)',
+                                        opacity: isSplitClosing ? 0 : 1,
+                                        pointerEvents: isSplitClosing ? 'none' : undefined,
+                                        transition: 'opacity 280ms ease-out'
+                                    }}
+                                    className="absolute left-0 right-0 h-3 -mt-1.5 z-40 cursor-row-resize flex items-center justify-center group"
+                                    title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
+                                >
+                                    <div className={`h-[1px] w-full pointer-events-none transition-all duration-200 ${
+                                        isDraggingSplit
+                                            ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
+                                            : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
+                                    }`} />
+                                    {!effectiveIsQuad && (
+                                        <div
+                                            onMouseEnter={openSplitMenuHover}
+                                            onMouseLeave={scheduleSplitMenuClose}
+                                            style={{
+                                                backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
+                                                borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
+                                            }}
+                                            className={`absolute w-10 h-4 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${
+                                                isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
+                                            }`}
+                                        >
+                                            <div className="flex flex-row gap-0.5 items-center pointer-events-none">
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Quad Center Crosshair Handle */}
+                            {effectiveIsQuad && (
+                                <div
+                                    onMouseDown={(e) => handleSplitMouseDown(e, 'both')}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        triggerSplitAxisAnim(520);
+                                        setSplitRatio(50);
+                                        setSplitRatioY(50);
+                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                    }}
+                                    onMouseEnter={openSplitMenuHover}
+                                    onMouseLeave={scheduleSplitMenuClose}
+                                    style={{
+                                        left: 'var(--split-x, 50%)',
+                                        top: 'var(--split-y, 50%)',
+                                        opacity: isSplitClosing ? 0 : 1,
+                                        pointerEvents: isSplitClosing ? 'none' : undefined,
+                                        transition: 'opacity 280ms ease-out',
+                                        backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.96)' : 'rgba(20,21,30,0.96)'),
+                                        borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)')
+                                    }}
+                                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border z-40 cursor-move flex items-center justify-center shadow-lg transition-transform duration-200 ${
+                                        isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-110'
+                                    }`}
+                                    title={t('chrome.dragResizeQuadTooltip', null, 'Drag to resize 2×2 grid • Click for options • Double-click to reset')}
+                                >
+                                    <LayoutGrid size={12} className="pointer-events-none opacity-80" />
+                                </div>
+                            )}
+
+                            {/* Segmented Floating Split Divider Pills (2-Row Staggered Spring Stack) */}
+                            {isSplitView && !isSplitClosing && (
+                            <div
+                                onMouseEnter={openSplitMenuHover}
+                                onMouseLeave={scheduleSplitMenuClose}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                                style={{
+                                    left: isVerticalSplit ? '50%' : `clamp(100px, ${dividerXPercent}%, calc(100% - 100px))`,
+                                    top: isVerticalSplit
+                                        ? `clamp(48px, calc(${dividerYPercent}% + 14px), calc(100% - 82px))`
+                                        : (isQuadSplit
+                                            ? `clamp(48px, calc(${dividerYPercent}% + 18px), calc(100% - 82px))`
+                                            : 'calc(50% + 22px)')
+                                }}
+                                className={`absolute -translate-x-1/2 z-50 pt-1.5 ${
+                                    isMenuOpen
+                                        ? 'pointer-events-auto'
+                                        : 'pointer-events-none'
+                                }`}
+                            >
+                                <div className="flex flex-col items-center gap-1">
+                                    {/* Row 1: Layout + Ratio SlidingPillSwitchers */}
+                                    <div className={`flex items-center justify-center gap-1 transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                        isMenuOpen
+                                            ? 'opacity-100 translate-y-0 scale-100'
+                                            : 'opacity-0 -translate-y-1.5 scale-95'
+                                    }`}>
+                                        <SlidingPillSwitcher
+                                            size="xs"
+                                            opaque
+                                            isBright={isBright}
+                                            value={splitOrientation}
+                                            onChange={handleSelectSplitLayout}
+                                            options={[
+                                                { id: 'horizontal', icon: SplitSquareHorizontal, title: t('chrome.splitHorizontalTooltip', null, 'Side-by-Side (2-Col)') },
+                                                { id: 'vertical', icon: SplitSquareVertical, title: t('chrome.splitVerticalTooltip', null, 'Stacked (2-Row)') },
+                                                { id: 'quad', icon: LayoutGrid, title: t('chrome.splitQuadTooltip', null, 'Quad Grid (2×2)') }
+                                            ]}
+                                        />
+
+                                        <SlidingPillSwitcher
+                                            size="xs"
+                                            opaque
+                                            allowNone
+                                            isBright={isBright}
+                                            className="font-mono"
+                                            value={activePreset}
+                                            onChange={(pct) => {
+                                                triggerSplitAxisAnim(520);
+                                                if (isQuadSplit) {
+                                                    setSplitRatio(pct);
+                                                    setSplitRatioY(pct);
+                                                } else if (isVerticalSplit) {
+                                                    setSplitRatioY(pct);
+                                                } else {
+                                                    setSplitRatio(pct);
+                                                }
+                                            }}
+                                            options={[
+                                                { id: 30, label: '30', title: '30 / 70' },
+                                                { id: 50, label: '50', title: t('chrome.splitResetTooltip', null, 'Reset 50/50') },
+                                                { id: 70, label: '70', title: '70 / 30' }
+                                            ]}
+                                        />
+                                    </div>
+
+                                    {/* Row 2: Centered Quick Actions Capsule (staggered 45ms reveal) */}
+                                    <div
+                                        style={pillOpaqueStyle}
+                                        className={`h-7 flex items-center justify-center gap-0.5 p-0.5 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                            isMenuOpen
+                                                ? 'opacity-100 translate-y-0 scale-100 delay-[45ms]'
+                                                : 'opacity-0 -translate-y-1.5 scale-95 delay-0'
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleSwapPanes(e, 0, 1)}
+                                            disabled={!hasAnySecondaryTab}
+                                            className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
+                                                isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                            }`}
+                                            title={t('chrome.swapPanesTooltip', null, 'Swap Panes (Ctrl+Alt+\\)')}
+                                        >
+                                            <ArrowLeftRight size={11} className="transition-transform duration-300 group-hover/btn:rotate-180" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleReloadBothSplitPanes}
+                                            className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
+                                                isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                            }`}
+                                            title={t('chrome.splitReloadBothTooltip', null, 'Reload All Panes')}
+                                        >
+                                            <RefreshCw size={11} className="transition-transform duration-300 group-hover/btn:rotate-90" />
+                                        </button>
+                                        {hasAnySecondaryTab && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handlePromoteSecondaryPane(e, splitSlots[1] ? 1 : ([2, 3].find(i => splitSlots[i]) || 1))}
+                                                className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
+                                                    isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                                }`}
+                                                title={t('chrome.splitKeepSecondaryTooltip', null, 'Focus Secondary as Full Tab')}
+                                            >
+                                                <Maximize size={11} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsSplitMenuPinned(false);
+                                                toggleSplitView();
+                                            }}
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
+                                                isBright ? 'hover:bg-rose-500/15 hover:text-rose-600' : 'hover:bg-rose-500/20 hover:text-rose-300'
+                                            }`}
+                                            title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
+                                        >
+                                            <X size={11} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            )}
+                        </>
+                    )}
                 </div>
             </div>
             );

@@ -758,6 +758,26 @@ const AuthModal = () => {
                                 {t('pop.auth.continueAsGuest', null, 'Continue as Guest (Offline Local Mode)')}
                             </button>
 
+                            <p className={`text-[10px] leading-relaxed ${isBright ? 'text-zinc-500' : 'text-white/40'}`}>
+                                By using Cloud Sync, you agree to our{' '}
+                                <button
+                                    type="button"
+                                    onClick={() => useUIStore.getState().openHelpModal('terms')}
+                                    className="text-accent hover:underline cursor-pointer font-medium"
+                                >
+                                    Terms of Service
+                                </button>{' '}
+                                &amp;{' '}
+                                <button
+                                    type="button"
+                                    onClick={() => useUIStore.getState().openHelpModal('privacy')}
+                                    className="text-accent hover:underline cursor-pointer font-medium"
+                                >
+                                    Privacy Policy
+                                </button>
+                                .
+                            </p>
+
                             <button
                                 type="button"
                                 onClick={() => setShowConfigDrawer(!showConfigDrawer)}

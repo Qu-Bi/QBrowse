@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, Volume2, Ghost, Layers, ArrowRight } from 'lucide-react';
+import { Globe, Volume2, Ghost, Layers, ArrowRight, SplitSquareHorizontal, SplitSquareVertical, LayoutGrid } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 export default function TabSwitcherOverlay() {
     const { t } = useTranslation();
@@ -181,9 +182,29 @@ export default function TabSwitcherOverlay() {
                                 {/* Card Title Header */}
                                 <div className={`h-10 ${isBright ? 'bg-white/90 border-b border-black/5' : 'bg-black/50 border-b border-white/10'} flex items-center px-4 justify-between flex-shrink-0`}>
                                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                                        {tab.url && tab.url !== 'about:blank' ? (
+                                        {tab.isSplitGroupEntry ? (
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                {tab.splitOrientation === 'quad' ? (
+                                                    <LayoutGrid size={13} className="text-accent" />
+                                                ) : tab.splitOrientation === 'vertical' ? (
+                                                    <SplitSquareVertical size={13} className="text-accent" />
+                                                ) : (
+                                                    <SplitSquareHorizontal size={13} className="text-accent" />
+                                                )}
+                                                <div className="flex -space-x-1">
+                                                    {(tab.splitMemberTabs || []).slice(0, 4).map((m, mIdx) => {
+                                                        const fav = getSafeFaviconUrl(m.url, settings, 32);
+                                                        return fav ? (
+                                                            <img key={m.id || mIdx} src={fav} alt="" className="w-3.5 h-3.5 rounded-full bg-zinc-900 ring-1 ring-white/20" onError={(e) => { e.target.style.display = 'none'; }} />
+                                                        ) : (
+                                                            <Globe key={m.id || mIdx} size={12} className="text-white/50" />
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : getSafeFaviconUrl(tab.url, settings, 64) ? (
                                             <img 
-                                                src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                                                src={getSafeFaviconUrl(tab.url, settings, 64)} 
                                                 alt="" 
                                                 className="w-4 h-4 rounded-sm flex-shrink-0" 
                                                 onError={(e) => { e.target.style.display = 'none'; }} 
@@ -196,6 +217,11 @@ export default function TabSwitcherOverlay() {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        {tab.isSplitGroupEntry && (
+                                            <span className="text-[10px] uppercase font-bold tracking-wider text-accent bg-accent/15 border border-accent/30 px-2 py-0.5 rounded-full">
+                                                {tab.splitGroupName || (tab.splitOrientation === 'quad' ? '2×2' : t('chrome.splitShortLabel', null, 'Split'))}
+                                            </span>
+                                        )}
                                         {tab.isAudible && (
                                             <Volume2 size={13} className="text-emerald-500 animate-pulse" />
                                         )}
@@ -209,7 +235,50 @@ export default function TabSwitcherOverlay() {
 
                                 {/* Preview Canvas */}
                                 <div className={`relative flex-1 w-full ${isBright ? 'bg-zinc-100/90' : 'bg-[#0d0d10]'} overflow-hidden flex items-center justify-center`}>
-                                    {tab.thumbnail ? (
+                                    {tab.isSplitGroupEntry ? (
+                                        <div className={`w-full h-full grid gap-1 p-1.5 ${
+                                            tab.splitOrientation === 'vertical'
+                                                ? 'grid-rows-2'
+                                                : tab.splitOrientation === 'quad'
+                                                    ? 'grid-cols-2 grid-rows-2'
+                                                    : 'grid-cols-2'
+                                        }`}>
+                                            {(tab.splitMemberTabs || []).slice(0, tab.splitOrientation === 'quad' ? 4 : 2).map((m, mIdx) => (
+                                                <div
+                                                    key={m.id || mIdx}
+                                                    className={`relative rounded-xl overflow-hidden border flex flex-col items-center justify-center ${
+                                                        isBright ? 'bg-white/75 border-black/[0.08]' : 'bg-white/[0.03] border-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    {m.thumbnail ? (
+                                                        <img src={m.thumbnail} alt={m.title} className="w-full h-full object-cover object-top" />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center justify-center p-3 text-center">
+                                                            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center mb-1.5 ${
+                                                                isBright ? 'bg-white border-black/10' : 'bg-white/[0.06] border-white/10'
+                                                            }`}>
+                                                                {getSafeFaviconUrl(m.url, settings, 64) ? (
+                                                                    <img src={getSafeFaviconUrl(m.url, settings, 64)} alt="" className="w-5 h-5 rounded" onError={(e) => { e.target.style.display = 'none'; }} />
+                                                                ) : (
+                                                                    <Globe size={16} className={isBright ? 'text-zinc-400' : 'text-white/35'} />
+                                                                )}
+                                                            </div>
+                                                            <span className={`text-[11px] font-medium truncate max-w-[160px] ${isBright ? 'text-zinc-800' : 'text-white/80'}`}>
+                                                                {m.title || t('chrome.blankPage', null, 'Blank Page')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-start pointer-events-none">
+                                                        <span className={`text-[9px] font-mono truncate max-w-full px-2 py-0.5 rounded-full border backdrop-blur-md ${
+                                                            isBright ? 'bg-white/90 border-black/10 text-zinc-700' : 'bg-black/65 border-white/10 text-white/75'
+                                                        }`}>
+                                                            {m.url || 'about:blank'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : tab.thumbnail ? (
                                         <img 
                                             src={tab.thumbnail} 
                                             alt={tab.title} 
@@ -218,9 +287,9 @@ export default function TabSwitcherOverlay() {
                                     ) : (
                                         <div className={`w-full h-full flex flex-col items-center justify-center p-6 ${isBright ? 'bg-gradient-to-br from-black/[0.02] via-transparent to-black/[0.05]' : 'bg-gradient-to-br from-white/[0.05] via-transparent to-black/40'} text-center`}>
                                             <div className={`w-12 h-12 rounded-2xl ${isBright ? 'bg-white/80 border border-black/10 shadow-sm' : 'bg-white/[0.06] border border-white/10 shadow-inner'} flex items-center justify-center mb-3`}>
-                                                {tab.url && tab.url !== 'about:blank' ? (
+                                                {getSafeFaviconUrl(tab.url, settings, 64) ? (
                                                     <img 
-                                                        src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                                                        src={getSafeFaviconUrl(tab.url, settings, 64)} 
                                                         alt="" 
                                                         className="w-6 h-6 rounded" 
                                                         onError={(e) => { e.target.style.display = 'none'; }} 

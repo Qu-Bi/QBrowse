@@ -1,31 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Archive, Search, X, ExternalLink, Copy, Check, Trash2, Globe } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useHistoryStore from '../../store/useHistoryStore';
 import useTabStore from '../../store/useTabStore';
 import { cleanAndDeduplicateHistory, formatDisplayDomain } from '../../utils/historyExtractors';
 import { useTranslation } from '../../i18n/index';
-
-const formatTime = (timestamp, intlLocale) => {
-    if (!timestamp) return '';
-    try {
-        const d = new Date(timestamp);
-        return d.toLocaleTimeString(intlLocale || undefined, { hour: '2-digit', minute: '2-digit' });
-    } catch {
-        return '';
-    }
-};
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 export default function HistoryModal() {
     const { t, intlLocale } = useTranslation();
-    const {
-        activeModal,
-        isModalClosing,
-        closeModal,
-        historySearchQuery,
-        setHistorySearchQuery,
-        theme
-    } = useUIStore();
+    const isHistoryOpen = useUIStore(state => state.activeModal === 'history');
+    const isModalClosing = useUIStore(state => state.isModalClosing);
+    const isClosingThis = useUIStore(state => state.isModalClosing && state.closingModal === 'history');
+    const closeModal = useUIStore(state => state.closeModal);
+    const historySearchQuery = useUIStore(state => state.historySearchQuery);
+    const setHistorySearchQuery = useUIStore(state => state.setHistorySearchQuery);
+    const theme = useUIStore(state => state.theme);
+    const settings = useUIStore(state => state.settings);
+
     const history = useHistoryStore(state => state.history);
     const clearHistory = useHistoryStore(state => state.clearHistory);
     const deleteEntry = useHistoryStore(state => state.deleteEntry);
@@ -33,11 +25,33 @@ export default function HistoryModal() {
 
     const [copiedUrl, setCopiedUrl] = useState(null);
     const [selectedSegment, setSelectedSegment] = useState('all');
+    const [visibleLimit, setVisibleLimit] = useState(60);
+    const scrollContainerRef = useRef(null);
+    const sentinelRef = useRef(null);
 
+    const shouldRender = isHistoryOpen || isClosingThis;
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
-    const isClosingThis = isModalClosing && useUIStore.getState().closingModal === 'history';
+
+    const timeFormatter = useMemo(() => {
+        try {
+            return new Intl.DateTimeFormat(intlLocale || undefined, { hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return null;
+        }
+    }, [intlLocale]);
+
+    const formatTime = (timestamp) => {
+        if (!timestamp) return '';
+        try {
+            const d = new Date(timestamp);
+            return timeFormatter ? timeFormatter.format(d) : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return '';
+        }
+    };
 
     useEffect(() => {
+        if (!isHistoryOpen) return;
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 closeModal();
@@ -45,13 +59,13 @@ export default function HistoryModal() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [closeModal]);
+    }, [isHistoryOpen, closeModal]);
 
-    // Cleaned, intelligently enriched, and deduplicated history items
-    // Coalesces Google Maps pan/zoom spam, search redirect spam, and SPA states
+    // Cleaned, intelligently enriched, and deduplicated history items (computed only when open)
     const cleanedHistory = useMemo(() => {
+        if (!shouldRender) return [];
         return cleanAndDeduplicateHistory(history);
-    }, [history]);
+    }, [shouldRender, history]);
 
     const handleClearHistory = () => {
         clearHistory();
@@ -92,6 +106,7 @@ export default function HistoryModal() {
     // Filter by search query
     const query = (historySearchQuery || '').trim().toLowerCase();
     const searchedHistory = useMemo(() => {
+        if (!shouldRender) return [];
         if (!query) return cleanedHistory;
         return cleanedHistory.filter(item => 
             (item.displayTitle && item.displayTitle.toLowerCase().includes(query)) ||
@@ -99,17 +114,37 @@ export default function HistoryModal() {
             (item.url && item.url.toLowerCase().includes(query)) ||
             (item.domain && item.domain.toLowerCase().includes(query))
         );
-    }, [cleanedHistory, query]);
+    }, [shouldRender, cleanedHistory, query]);
+
+    useEffect(() => {
+        setVisibleLimit(60);
+    }, [shouldRender, query, selectedSegment]);
+
+    useEffect(() => {
+        if (!shouldRender) return;
+        const sentinel = sentinelRef.current;
+        const root = scrollContainerRef.current;
+        if (!sentinel || !root || typeof IntersectionObserver === 'undefined') return;
+        const obs = new IntersectionObserver((entries) => {
+            if (entries[0]?.isIntersecting) {
+                setVisibleLimit(prev => (prev < searchedHistory.length ? prev + 80 : prev));
+            }
+        }, { root, rootMargin: '220px' });
+        obs.observe(sentinel);
+        return () => obs.disconnect();
+    }, [shouldRender, searchedHistory.length, selectedSegment, query]);
 
     // Grouping by time
     const groups = useMemo(() => {
+        const res = { Today: [], Yesterday: [], 'Last 7 Days': [], Older: [] };
+        if (!shouldRender) return res;
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const yesterday = today - 86400000;
         const lastWeek = today - 86400000 * 7;
 
-        const res = { Today: [], Yesterday: [], 'Last 7 Days': [], Older: [] };
-        searchedHistory.forEach(item => {
+        for (let i = 0; i < searchedHistory.length; i++) {
+            const item = searchedHistory[i];
             const time = item.lastVisit || 0;
             if (time >= today) {
                 res.Today.push(item);
@@ -120,9 +155,9 @@ export default function HistoryModal() {
             } else {
                 res.Older.push(item);
             }
-        });
+        }
         return res;
-    }, [searchedHistory]);
+    }, [shouldRender, searchedHistory]);
 
     // Segments with accurate live counts
     const availableSegments = useMemo(() => [
@@ -148,11 +183,24 @@ export default function HistoryModal() {
         });
     }, [groups, selectedSegment, t]);
 
-    if (activeModal !== 'history' && !isClosingThis) return null;
+    if (!shouldRender) return null;
 
-    let globalRowIndex = 0;
+    let remainingBudget = visibleLimit;
+    let totalShown = 0;
+    const pagedGroups = [];
+    for (const group of displayedGroups) {
+        if (remainingBudget <= 0) break;
+        const slice = group.items.slice(0, remainingBudget);
+        remainingBudget -= slice.length;
+        totalShown += slice.length;
+        pagedGroups.push({ ...group, visibleItems: slice, totalCount: group.items.length });
+    }
+    const totalFilteredInView = displayedGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const hasMoreItems = totalShown < totalFilteredInView;
 
-    const renderHistoryRow = (item, animIndex) => (
+    const renderHistoryRow = (item, animIndex) => {
+        const faviconUrl = getSafeFaviconUrl(item.url, settings, 32);
+        return (
         <div 
             key={`${item.url}-${item.lastVisit || animIndex}`}
             onClick={(e) => {
@@ -163,8 +211,8 @@ export default function HistoryModal() {
                     handleOpenUrl(item.url, false);
                 }
             }}
-            style={{ animationDelay: `${Math.min(animIndex * 15, 300)}ms` }}
-            className={`group flex items-center justify-between p-2.5 px-3 rounded-xl cursor-pointer transition-all border border-transparent animate-tab-fade select-none ${
+            style={{ contentVisibility: 'auto', containIntrinsicSize: '52px' }}
+            className={`group flex items-center justify-between p-2.5 px-3 rounded-xl cursor-pointer transition-colors border border-transparent select-none ${
                 isBright 
                     ? 'hover:bg-black/[0.04] hover:border-black/[0.06] active:bg-black/[0.06]' 
                     : 'hover:bg-white/[0.05] hover:border-white/[0.08] active:bg-white/[0.08]'
@@ -176,18 +224,22 @@ export default function HistoryModal() {
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden border ${
                     isBright ? 'bg-black/[0.03] border-black/[0.06]' : 'bg-white/[0.04] border-white/[0.08]'
                 }`}>
-                    <img 
-                        src={`https://www.google.com/s2/favicons?sz=64&domain=${item.url}`} 
-                        alt="" 
-                        className="w-4 h-4 object-contain"
-                        onError={(e) => { 
-                            e.currentTarget.style.display = 'none';
-                            if (e.currentTarget.nextSibling) {
-                                e.currentTarget.nextSibling.style.display = 'block';
-                            }
-                        }} 
-                    />
-                    <Globe size={13} className={`hidden ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`} />
+                    {faviconUrl ? (
+                        <img 
+                            src={faviconUrl} 
+                            alt="" 
+                            loading="lazy"
+                            decoding="async"
+                            className="w-4 h-4 object-contain"
+                            onError={(e) => { 
+                                e.currentTarget.style.display = 'none';
+                                if (e.currentTarget.nextSibling) {
+                                    e.currentTarget.nextSibling.style.display = 'block';
+                                }
+                            }} 
+                        />
+                    ) : null}
+                    <Globe size={13} className={`${faviconUrl ? 'hidden' : ''} ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`} />
                 </div>
 
                 {/* Clean Title & Domain */}
@@ -252,16 +304,17 @@ export default function HistoryModal() {
                 <span className={`text-[11px] tabular-nums font-mono text-right min-w-12 ${
                     isBright ? 'text-zinc-400' : 'text-zinc-500'
                 }`}>
-                    {formatTime(item.lastVisit, intlLocale)}
+                    {formatTime(item.lastVisit)}
                 </span>
             </div>
         </div>
-    );
+        );
+    };
 
     return (
         <div 
             className={`absolute inset-0 z-[200] flex items-center justify-center p-6 ${
-                isBright ? 'bg-black/30 backdrop-blur-xl text-zinc-900' : 'bg-black/50 backdrop-blur-2xl text-white'
+                isBright ? 'bg-black/30 backdrop-blur-md text-zinc-900' : 'bg-black/50 backdrop-blur-md text-white'
             } font-sans ${isModalClosing ? 'animate-modal-out' : 'animate-modal'}`} 
             onClick={closeModal}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
@@ -272,8 +325,8 @@ export default function HistoryModal() {
                     isModalClosing ? 'animate-modal-dialog-out' : 'animate-modal-dialog'
                 } ${
                     isBright 
-                        ? 'bg-white/80 backdrop-blur-3xl border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
-                        : 'bg-[#0c0d14]/78 backdrop-blur-3xl border border-white/12 shadow-[0_35px_90px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.18)] ring-1 ring-white/[0.06] text-white'
+                        ? 'bg-white/92 border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] ring-1 ring-black/[0.04] text-zinc-900' 
+                        : 'bg-[#0c0d14]/92 border border-white/12 shadow-[0_35px_90px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.18)] ring-1 ring-white/[0.06] text-white'
                 }`} 
                 onClick={e => e.stopPropagation()}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}
@@ -391,9 +444,9 @@ export default function HistoryModal() {
                 )}
 
                 {/* Segmented Content Cards */}
-                <div className="flex-1 overflow-y-auto hide-scroll p-6 space-y-5">
-                    {displayedGroups.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center py-28 animate-tab-fade">
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto hide-scroll p-6 space-y-5">
+                    {pagedGroups.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center py-28">
                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 border shadow-xs ${
                                 isBright ? 'bg-black/[0.03] border-black/[0.06] text-zinc-400' : 'bg-white/[0.03] border-white/[0.06] text-zinc-500'
                             }`}>
@@ -411,7 +464,8 @@ export default function HistoryModal() {
                             </p>
                         </div>
                     ) : (
-                        displayedGroups.map(group => (
+                        <>
+                        {pagedGroups.map(group => (
                             <div 
                                 key={group.id}
                                 className={`rounded-2xl border overflow-hidden ${
@@ -428,18 +482,34 @@ export default function HistoryModal() {
                                         {group.name}
                                     </span>
                                     <span className={`text-[11px] font-mono ${isBright ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                        {group.items.length === 1
-                                            ? t('tools.history.itemSingular', { count: group.items.length }, `${group.items.length} item`)
-                                            : t('tools.history.itemPlural', { count: group.items.length }, `${group.items.length} items`)}
+                                        {group.totalCount === 1
+                                            ? t('tools.history.itemSingular', { count: group.totalCount }, `${group.totalCount} item`)
+                                            : t('tools.history.itemPlural', { count: group.totalCount }, `${group.totalCount} items`)}
                                     </span>
                                 </div>
 
                                 {/* Segment Card Items */}
                                 <div className="p-1.5 flex flex-col gap-0.5">
-                                    {group.items.map((item) => renderHistoryRow(item, globalRowIndex++))}
+                                    {group.visibleItems.map((item, idx) => renderHistoryRow(item, idx))}
                                 </div>
                             </div>
-                        ))
+                        ))}
+                        {hasMoreItems && (
+                            <div ref={sentinelRef} className="flex justify-center pt-1 pb-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setVisibleLimit(prev => prev + 80)}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-medium border transition cursor-pointer ${
+                                        isBright
+                                            ? 'bg-black/[0.03] hover:bg-black/[0.06] border-black/10 text-zinc-600'
+                                            : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-white/60'
+                                    }`}
+                                >
+                                    {t('tools.history.loadMore', null, `Load more (${totalFilteredInView - totalShown} remaining)`)}
+                                </button>
+                            </div>
+                        )}
+                        </>
                     )}
                 </div>
             </div>

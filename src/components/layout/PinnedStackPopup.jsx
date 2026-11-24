@@ -1,25 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Volume2, Globe, Trash2, PinOff } from 'lucide-react';
+import { X, Plus, Volume2, Globe, Trash2, PinOff, SplitSquareHorizontal } from 'lucide-react';
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
 import { formatTabCount } from '../../i18n/domains/chrome';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
+import { getPinDomain as _getPinDomain, isTabForPin as _isTabForPin, getPinHomeUrl } from '../../utils/pinnedAppHelpers';
 
-export const getPinDomain = (pin) => {
-    if (!pin || !pin.domain) return '';
-    return pin.domain.toLowerCase().trim().replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./i, '');
-};
-
-export const isTabForPin = (tab, pin) => {
-    if (!tab || !pin) return false;
-    if (tab.pinnedId === pin.id) return true;
-    if (!tab.url || typeof tab.url !== 'string') return false;
-    const domain = getPinDomain(pin);
-    if (!domain) return false;
-    return tab.url.toLowerCase().includes(domain);
-};
+export const getPinDomain = _getPinDomain;
+export const isTabForPin = _isTabForPin;
 
 export default function PinnedStackPopup() {
     const { t, resolvedLanguage } = useTranslation();
@@ -28,6 +19,7 @@ export default function PinnedStackPopup() {
     const setCurrentUrl = useUIStore(state => state.setCurrentUrl);
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
+    const settings = useUIStore(state => state.settings);
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
 
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -107,14 +99,21 @@ export default function PinnedStackPopup() {
 
     const { pin, rect } = displayedStack;
 
-    // Get current space tabs
-    const currentTabs = activeSpace === 'personal' ? privateTabs : 
-                       (activeSpace === 'work' ? workTabs : 
-                       (activeSpace === 'ghost' ? ghostTabs : torTabs));
+    // Get current space tabs (including custom spaces)
+    const getTabsForSpace = useTabStore(state => state.getTabsForSpace);
+    const setTabsForSpace = useTabStore(state => state.setTabsForSpace);
+    const openPinInSplitView = useTabStore(state => state.openPinInSplitView);
+    const currentTabs = getTabsForSpace ? (getTabsForSpace(activeSpace) || []) : (
+        activeSpace === 'personal' ? privateTabs :
+        (activeSpace === 'work' ? workTabs :
+        (activeSpace === 'ghost' ? ghostTabs : torTabs))
+    );
 
-    const setTabs = activeSpace === 'personal' ? setPrivateTabs : 
-                   (activeSpace === 'work' ? setWorkTabs : 
-                   (activeSpace === 'ghost' ? setGhostTabs : setTorTabs));
+    const setTabs = (updater) => setTabsForSpace
+        ? setTabsForSpace(activeSpace, updater)
+        : (activeSpace === 'personal' ? setPrivateTabs(updater) :
+          (activeSpace === 'work' ? setWorkTabs(updater) :
+          (activeSpace === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
 
     const pinTabs = currentTabs.filter(t => isTabForPin(t, pin));
 
@@ -132,6 +131,10 @@ export default function PinnedStackPopup() {
     }
 
     const handleSelectTab = (tab) => {
+        const ui = useUIStore.getState();
+        if (ui.isSplitView) {
+            ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+        }
         setTabs(currentTabs.map(t => ({ 
             ...t, 
             active: t.id === tab.id,
@@ -151,7 +154,11 @@ export default function PinnedStackPopup() {
     };
 
     const handleNewTabForPin = () => {
-        const targetUrl = pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`;
+        const ui = useUIStore.getState();
+        if (ui.isSplitView) {
+            ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+        }
+        const targetUrl = getPinHomeUrl(pin);
         addTab({
             id: `t-${Date.now()}`,
             pinnedId: pin.id,
@@ -203,12 +210,16 @@ export default function PinnedStackPopup() {
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center p-1 flex-shrink-0 shadow-inner ${
                             isBright ? 'bg-black/5 border border-black/10' : 'bg-white/5 border border-white/10'
                         }`}>
-                            <img 
-                                src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
-                                alt="" 
-                                className="w-4 h-4 rounded-sm object-contain"
-                                onError={(e) => { e.target.style.display = 'none'; }}
-                            />
+                            {getSafeFaviconUrl(pin.domain, settings, 64) ? (
+                                <img 
+                                    src={getSafeFaviconUrl(pin.domain, settings, 64)} 
+                                    alt="" 
+                                    className="w-4 h-4 rounded-sm object-contain"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                            ) : (
+                                <Globe size={13} className={isBright ? 'text-zinc-500' : 'text-white/45'} />
+                            )}
                         </div>
                         <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-2">
@@ -225,6 +236,15 @@ export default function PinnedStackPopup() {
 
                     {/* Header Action Buttons */}
                     <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => openPinInSplitView(pin)}
+                            className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                isBright ? 'text-zinc-500 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/50 hover:text-white hover:bg-white/10'
+                            }`}
+                            title={t('pop.ctx.openInSplitView', null, 'Open in Split View')}
+                        >
+                            <SplitSquareHorizontal size={13} />
+                        </button>
                         {pinTabs.length > 1 && (
                             <button
                                 onClick={handleCloseAllInStack}
@@ -288,9 +308,9 @@ export default function PinnedStackPopup() {
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 pr-2">
                                         <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
-                                            {tab.url && tab.url !== 'about:blank' ? (
+                                            {getSafeFaviconUrl(tab.url, settings, 64) ? (
                                                 <img 
-                                                    src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                                                    src={getSafeFaviconUrl(tab.url, settings, 64)} 
                                                     alt="" 
                                                     className="w-3.5 h-3.5 rounded-sm object-contain"
                                                     onError={(e) => { e.target.style.display = 'none'; }}

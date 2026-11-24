@@ -14,10 +14,11 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useAIStore from '../../store/useAIStore';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
-import { isTabForPin } from '../layout/PinnedStackPopup';
+import { isTabForPin, getPinHomeUrl, isSamePinHomeUrl } from '../../utils/pinnedAppHelpers';
 import { buildSearchEngineUrl, getSearchEngineById, isLikelyWebUrl } from '../../utils/searchEngines';
 import { isLikelyDownloadUrl } from '../../utils/downloadHelpers';
 import { useTranslation } from '../../i18n/index';
+import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 // Helper: Search URL generation based on active space and user settings
 const getSearchUrl = (query) => {
@@ -578,6 +579,7 @@ export const TOPBAR_EXTENSION_ICONS = [
 
 export default function ContextMenuProvider({ children }) {
     const { t } = useTranslation();
+    const settings = useUIStore(state => state.settings);
     const contextMenu = useUIStore(state => state.contextMenu);
     const isContextMenuClosing = useUIStore(state => state.isContextMenuClosing);
     const closeContextMenu = useUIStore(state => state.closeContextMenu);
@@ -988,7 +990,7 @@ export default function ContextMenuProvider({ children }) {
                                         const isLikelyDownload = isLikelyDownloadUrl(linkURL);
                                         handleNewTab(linkURL, !isLikelyDownload, {
                                             isOpenedByNewWindow: true,
-                                            openerTabId: tabId,
+                                            openerTabId: cm.tabId || activeTab?.id || null,
                                             isDownloadTab: isLikelyDownload
                                         });
                                         closeContextMenu();
@@ -1000,7 +1002,7 @@ export default function ContextMenuProvider({ children }) {
                                     onClick={() => {
                                         handleNewTab(linkURL, false, {
                                             isOpenedByNewWindow: true,
-                                            openerTabId: tabId,
+                                            openerTabId: cm.tabId || activeTab?.id || null,
                                             isDownloadTab: isLikelyDownloadUrl(linkURL)
                                         });
                                         closeContextMenu();
@@ -1446,7 +1448,8 @@ export default function ContextMenuProvider({ children }) {
                         title: t('pop.ctx.openInSplitView', null, 'Open in Split View'),
                         accent: true,
                         onClick: () => {
-                            useUIStore.getState().toggleSplitView(tab.id);
+                            const isBlank = !tab?.url || tab.url === '' || tab.url === 'about:blank' || tab.url === 'qbrowse://newtab';
+                            useUIStore.getState().toggleSplitView(isBlank ? null : tab.id);
                             closeTabContextMenu();
                         }
                     },
@@ -1597,25 +1600,34 @@ export default function ContextMenuProvider({ children }) {
             {(pinnedContextMenu || isPinnedContextMenuClosing) && (() => {
                 const pm = pinnedContextMenu || {};
                 const pin = pm.pin || {};
-                const pinUrl = pin.domain ? (pin.domain.startsWith('http') ? pin.domain : `https://${pin.domain}`) : '';
+                const pinUrl = getPinHomeUrl(pin);
 
-                const currentTabs = activeSpace === 'personal' ? privateTabs : 
-                                   (activeSpace === 'work' ? workTabs : 
-                                   (activeSpace === 'ghost' ? ghostTabs : torTabs));
-                const setTabs = activeSpace === 'personal' ? setPrivateTabs : 
-                               (activeSpace === 'work' ? setWorkTabs : 
-                               (activeSpace === 'ghost' ? setGhostTabs : setTorTabs));
+                const tabState = useTabStore.getState();
+                const currentTabs = tabState.getTabsForSpace ? (tabState.getTabsForSpace(activeSpace) || []) : (
+                    activeSpace === 'personal' ? privateTabs :
+                    (activeSpace === 'work' ? workTabs :
+                    (activeSpace === 'ghost' ? ghostTabs : torTabs))
+                );
+                const setTabs = (updater) => tabState.setTabsForSpace
+                    ? tabState.setTabsForSpace(activeSpace, updater)
+                    : (activeSpace === 'personal' ? setPrivateTabs(updater) :
+                      (activeSpace === 'work' ? setWorkTabs(updater) :
+                      (activeSpace === 'ghost' ? setGhostTabs(updater) : setTorTabs(updater))));
 
                 const pinTabs = currentTabs.filter(t => isTabForPin(t, pin));
 
                 const handleSelectTab = (tab) => {
+                    const ui = useUIStore.getState();
+                    if (ui.isSplitView) {
+                        ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+                    }
                     setTabs(currentTabs.map(t => ({ 
                         ...t, 
                         active: t.id === tab.id,
                         suspended: t.id === tab.id ? false : t.suspended,
                         lastActiveAt: t.id === tab.id ? Date.now() : t.lastActiveAt
                     })));
-                    useUIStore.getState().setCurrentUrl(tab.url || '');
+                    ui.setCurrentUrl(tab.url || '');
                     closePinnedContextMenu();
 
                     setTimeout(() => {
@@ -1627,6 +1639,10 @@ export default function ContextMenuProvider({ children }) {
                 };
 
                 const handleNewTabForPin = () => {
+                    const ui = useUIStore.getState();
+                    if (ui.isSplitView) {
+                        ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
+                    }
                     addTab({
                         id: `t-${Date.now()}`,
                         pinnedId: pin.id,
@@ -1661,12 +1677,16 @@ export default function ContextMenuProvider({ children }) {
                                 <div className={`w-6 h-6 rounded-lg border flex items-center justify-center p-1 flex-shrink-0 ${
                                     isBright ? 'bg-black/[0.04] border-black/10' : 'bg-white/5 border-white/10'
                                 }`}>
-                                    <img 
-                                        src={`https://www.google.com/s2/favicons?sz=64&domain=${pin.domain}`} 
-                                        alt="" 
-                                        className="w-3.5 h-3.5 rounded-sm object-contain"
-                                        onError={(e) => { e.target.style.display = 'none'; }}
-                                    />
+                                    {getSafeFaviconUrl(pin.domain, settings, 64) ? (
+                                        <img 
+                                            src={getSafeFaviconUrl(pin.domain, settings, 64)} 
+                                            alt="" 
+                                            className="w-3.5 h-3.5 rounded-sm object-contain"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                    ) : (
+                                        <Globe size={11} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
+                                    )}
                                 </div>
                                 <div className="flex flex-col min-w-0">
                                     <span className={`text-xs font-semibold truncate max-w-[120px] ${
@@ -1712,9 +1732,9 @@ export default function ContextMenuProvider({ children }) {
                                             >
                                                 <div className="flex items-center gap-2 min-w-0 pr-1">
                                                     <div className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center">
-                                                        {tab.url && tab.url !== 'about:blank' ? (
+                                                        {getSafeFaviconUrl(tab.url, settings, 64) ? (
                                                             <img 
-                                                                src={`https://www.google.com/s2/favicons?sz=64&domain=${tab.url}`} 
+                                                                src={getSafeFaviconUrl(tab.url, settings, 64)} 
                                                                 alt="" 
                                                                 className="w-3 h-3 rounded-sm object-contain"
                                                                 onError={(e) => { e.target.style.display = 'none'; }}
@@ -1770,18 +1790,21 @@ export default function ContextMenuProvider({ children }) {
                             icon={MonitorPlay}
                             label={t('pop.ctx.openInSplitView', null, 'Open in Split View')}
                             onClick={() => {
-                                const newTabId = `t-${Date.now()}`;
-                                useTabStore.getState().addTab({
-                                    id: newTabId,
-                                    title: pin.title || t('pop.ctx.pinnedApp', null, 'Pinned App'),
-                                    url: pinUrl,
-                                    active: false,
-                                    folderId: null
-                                });
-                                useUIStore.getState().toggleSplitView(newTabId);
+                                useTabStore.getState().openPinInSplitView(pin);
                                 closePinnedContextMenu();
                             }}
                         />
+
+                        {pinTabs.length > 0 && !isSamePinHomeUrl(pinTabs[0].url, pin) && (
+                            <MenuItem
+                                icon={RotateCcw}
+                                label={t('pop.ctx.resetPinHome', null, 'Reset to Home URL')}
+                                onClick={() => {
+                                    useTabStore.getState().handleNavigateTab(pinTabs[0].id, pinUrl, pin.title || pinTabs[0].title, { allowExternal: true });
+                                    closePinnedContextMenu();
+                                }}
+                            />
+                        )}
 
                         <MenuItem
                             icon={Copy}

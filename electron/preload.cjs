@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Platform & Hardware Specs
@@ -241,8 +241,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteDownloadFile: (filePath) => ipcRenderer.invoke('delete-download-file', filePath),
 
     // Navigation Shortcuts / Mouse 4 and 5
-    onGlobalNavigateBack: (callback) => ipcRenderer.on('global-navigate-back', callback),
-    onGlobalNavigateForward: (callback) => ipcRenderer.on('global-navigate-forward', callback),
+    onGlobalNavigateBack: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('global-navigate-back', handler);
+        return () => ipcRenderer.removeListener('global-navigate-back', handler);
+    },
+    onGlobalNavigateForward: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('global-navigate-forward', handler);
+        return () => ipcRenderer.removeListener('global-navigate-forward', handler);
+    },
 
     // Cookies & Site Settings
     getCookies: (filter) => ipcRenderer.invoke('get-cookies', filter),
@@ -282,6 +290,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveSetting: (key, value) => ipcRenderer.invoke('save-setting', { key, value }),
     saveSettingsBatch: (batch) => ipcRenderer.invoke('save-setting', { batch }),
     syncSmartDarkState: (state) => ipcRenderer.send('sync-smart-dark-state', state),
+    syncTextHighlightState: (state) => ipcRenderer.send('sync-text-highlight-state', state),
     getAppMetrics: () => ipcRenderer.invoke('get-app-metrics'),
     killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
     openNewWindow: (options) => ipcRenderer.invoke('open-new-window', options),
@@ -386,6 +395,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveFirebaseConfig: (config) => ipcRenderer.invoke('save-firebase-config', config),
 
     // Local Files & Directory Browsing (file:// support)
+    getPathForFile: (file) => {
+        try {
+            return webUtils?.getPathForFile ? webUtils.getPathForFile(file) : (file?.path || '');
+        } catch {
+            return file?.path || '';
+        }
+    },
     openFileDialog: (opts) => ipcRenderer.invoke('open-file-dialog', opts),
     listLocalDirectory: (path) => ipcRenderer.invoke('list-local-directory', path),
     autocompleteLocalPath: (query) => ipcRenderer.invoke('autocomplete-local-path', query),

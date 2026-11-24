@@ -104,14 +104,16 @@ export const listenToEvent = async (event, handler) => {
   
   export const onGlobalNavigateBack = (callback) => {
     if (window.electronAPI && window.electronAPI.onGlobalNavigateBack) {
-      window.electronAPI.onGlobalNavigateBack(callback);
+      return window.electronAPI.onGlobalNavigateBack(callback);
     }
+    return () => {};
   };
 
   export const onGlobalNavigateForward = (callback) => {
     if (window.electronAPI && window.electronAPI.onGlobalNavigateForward) {
-      window.electronAPI.onGlobalNavigateForward(callback);
+      return window.electronAPI.onGlobalNavigateForward(callback);
     }
+    return () => {};
   };
   
   // Browser Webview APIs - OBSOLETE (Now handled natively by <webview>)

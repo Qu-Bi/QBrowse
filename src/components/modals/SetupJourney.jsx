@@ -4,7 +4,7 @@ import {
     Download, Compass, Lock, User, Sparkles, Layers,
     CheckCircle2, FolderInput, FileCode, Sliders, ChevronRight,
     KeyRound, UploadCloud, Shield, RefreshCw, Mail, Eye, EyeOff,
-    AlertCircle, UserCheck, Code, Feather, Languages
+    AlertCircle, UserCheck, Code, Feather, Languages, WifiOff
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
@@ -17,6 +17,8 @@ import qbrowseLogo from '../../assets/icon.png';
 import { useTranslation, SUPPORTED_LANGUAGES, getSystemLanguage } from '../../i18n/index';
 import LanguageFlag from '../common/LanguageFlag';
 import ZeroGravityLanguageOrbit from '../common/ZeroGravityLanguageOrbit';
+import HelpLegalContent from '../common/HelpLegalContent';
+import { QBROWSE_META } from '../../utils/helpLegalContent';
 
 // Apple/Tesla-style synthesized unlock chime using Web Audio API
 const playUnlockChime = () => {
@@ -85,11 +87,21 @@ export default function SetupJourney({ onFinish, onStartTour }) {
 
     const { 
         theme, setTheme, setAccentColor, accentColor, 
-        showToast, isAdblockActive, setIsAdblockActive 
+        showToast, isAdblockActive, setIsAdblockActive,
+        settings, toggleSetting
     } = useUIStore();
 
     const [currentStep, setCurrentStep] = useState(0);
     const [slideDirection, setSlideDirection] = useState('forward');
+    const [legalAccepted, setLegalAccepted] = useState(() => {
+        try {
+            return Boolean(localStorage.getItem('qbrowse_legal_accepted_v1'));
+        } catch (_) {
+            return false;
+        }
+    });
+    const [legalHighlight, setLegalHighlight] = useState(false);
+    const [legalPreviewTab, setLegalPreviewTab] = useState(null);
 
     const goToStep = (nextStep) => {
         setSlideDirection(nextStep >= currentStep ? 'forward' : 'backward');
@@ -462,6 +474,18 @@ export default function SetupJourney({ onFinish, onStartTour }) {
     };
 
     const handleFinishSetup = (startTour = false) => {
+        if (!legalAccepted) {
+            setLegalHighlight(true);
+            setTimeout(() => setLegalHighlight(false), 1600);
+            showToast('Please acknowledge the Terms of Service and Privacy Policy to continue.', 'error');
+            return;
+        }
+        try {
+            localStorage.setItem('qbrowse_legal_accepted_v1', JSON.stringify({
+                acceptedAt: Date.now(),
+                version: QBROWSE_META.version
+            }));
+        } catch (_) {}
         if (defaultPollRef.current) {
             clearInterval(defaultPollRef.current);
             defaultPollRef.current = null;
@@ -1083,6 +1107,30 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                                         {t('tools.setup.ready', null, 'Ready')}
                                     </span>
                                 </div>
+
+                                {/* Zero-Background-Requests (Strict Offline) */}
+                                <div className="p-5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between">
+                                    <div className="flex items-start gap-3.5 pr-4">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center justify-center shrink-0">
+                                            <WifiOff size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-white">{t('tools.setup.strictOfflineTitle', null, 'Zero-Background-Requests (Strict Offline)')}</h4>
+                                            <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
+                                                {t('tools.setup.strictOfflineDesc', null, 'Disable all optional background network traffic (update checks, filter refreshes, live suggestions, remote favicons, and cloud sync).')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => toggleSetting('strictOfflineMode')}
+                                        className={`w-12 h-7 rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                                            settings?.strictOfflineMode ? 'bg-emerald-500' : 'bg-white/20'
+                                        }`}
+                                    >
+                                        <div className={`w-5 h-5 rounded-full bg-white transition-transform ${settings?.strictOfflineMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1702,6 +1750,42 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     {t('common.back', null, 'Back')}
                 </button>
 
+                <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border transition-all duration-300 ${
+                    legalHighlight
+                        ? 'border-rose-500/70 bg-rose-500/15 ring-2 ring-rose-500/30 animate-pulse'
+                        : (isBright ? 'border-black/10 bg-black/[0.03]' : 'border-white/10 bg-white/[0.03]')
+                }`}>
+                    <label className="flex items-center gap-2 cursor-pointer text-[11px] leading-tight">
+                        <input
+                            type="checkbox"
+                            checked={legalAccepted}
+                            onChange={(e) => {
+                                setLegalAccepted(e.target.checked);
+                                if (e.target.checked) setLegalHighlight(false);
+                            }}
+                            className="w-3.5 h-3.5 accent-[var(--accent)] rounded cursor-pointer shrink-0"
+                        />
+                        <span className={isBright ? 'text-zinc-700' : 'text-white/75'}>
+                            I accept the{' '}
+                            <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLegalPreviewTab('terms'); }}
+                                className="text-accent font-semibold hover:underline cursor-pointer"
+                            >
+                                Terms of Service
+                            </button>{' '}
+                            &amp;{' '}
+                            <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLegalPreviewTab('privacy'); }}
+                                className="text-accent font-semibold hover:underline cursor-pointer"
+                            >
+                                Privacy Policy
+                            </button>
+                        </span>
+                    </label>
+                </div>
+
                 <div className="flex items-center gap-3">
                     {currentStep < steps.length - 1 ? (
                         <button
@@ -1718,7 +1802,9 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                             onClick={() => handleFinishSetup(false)}
                             className={`${
                                 isCompact ? 'px-5 py-2' : 'px-6 py-2.5'
-                            } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer`}
+                            } bg-accent hover:brightness-105 active:scale-95 text-zinc-950 font-bold text-xs rounded-xl transition shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer ${
+                                !legalAccepted ? 'opacity-55' : ''
+                            }`}
                         >
                             <span>{profileMode === 'sync' && !syncUser ? t('tools.setup.skipSyncComplete', null, 'Skip Sync & Complete') : t('setup.finish', null, 'Complete Setup & Launch')}</span>
                             <ArrowRight size={14} />
@@ -1726,6 +1812,28 @@ export default function SetupJourney({ onFinish, onStartTour }) {
                     )}
                 </div>
             </footer>
+
+            {/* In-Setup Terms & Privacy Preview Overlay */}
+            {legalPreviewTab && (
+                <div
+                    onClick={() => setLegalPreviewTab(null)}
+                    className="fixed inset-0 z-[600000] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 sm:p-6 animate-fade-in"
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`w-full max-w-4xl h-[80vh] rounded-3xl overflow-hidden flex flex-col border shadow-2xl animate-pop-in ${
+                            isBright ? 'bg-white/95 border-black/10' : 'bg-[#0c0d14]/95 border-white/15'
+                        }`}
+                    >
+                        <HelpLegalContent
+                            activeTab={legalPreviewTab}
+                            onTabChange={setLegalPreviewTab}
+                            onClose={() => setLegalPreviewTab(null)}
+                            mode="page"
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Modal for Master Password when importing into a locked vault */}
             {showVaultPassModal && (

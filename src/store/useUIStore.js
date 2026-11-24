@@ -10,6 +10,11 @@ import {
 } from '../utils/experiencePresets.js';
 import { getNextZoomStep, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } from '../utils/zoomSteps.js';
 import { applyAppFont } from '../utils/appFontManager.js';
+import { applyTextHighlightToDocument } from '../utils/textHighlight.js';
+import {
+    pruneTabsFromParkedGroups,
+    upsertParkedSplitGroup
+} from '../utils/splitGroupHelpers.js';
 import {
     DEFAULT_DARK_EXCLUSIONS,
     normalizeWhitelist,
@@ -24,6 +29,11 @@ import {
     resolveMediaStateClearForTab,
     resolveMediaCommandTargetTabId
 } from '../utils/mediaStateHelpers.js';
+import {
+    SPLIT_ORIENTATIONS,
+    isBlankSplitTab,
+    getNextSplitOrientation
+} from '../utils/splitLayoutHelpers.js';
 
 const tr = (path, paramsOrFallback, fallback) => {
     if (typeof window !== 'undefined' && typeof window.__qbrowseT === 'function') {
@@ -140,6 +150,29 @@ const saveDownloadsToStorage = (downloads) => {
     } catch (_) {}
 };
 
+const loadCustomShortcuts = () => {
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            const raw = localStorage.getItem('qbrowse_custom_shortcuts');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    return parsed;
+                }
+            }
+        }
+    } catch (_) {}
+    return {};
+};
+
+const saveCustomShortcutsToStorage = (shortcuts) => {
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem('qbrowse_custom_shortcuts', JSON.stringify(shortcuts || {}));
+        }
+    } catch (_) {}
+};
+
 const defaultSettings = {
     sidebarPosition: 'left', // 'left' | 'right'
     topBarPosition: 'top',    // 'top' | 'bottom'
@@ -173,6 +206,7 @@ const defaultSettings = {
     adblockFilterLists: { easylist: true, easyprivacy: true, annoyances: true, malware: true, peterlowe: true },
     adblockAllowlist: [],
     adblockCustomBlockedDomains: [],
+    adblockCnameUncloaking: false,
     searchEngine: 'google',
     customSearchEngines: [],
     smartCalc: true,
@@ -260,6 +294,14 @@ const defaultSettings = {
     // Passkey & Hardware Security Key Routing
     passkeyProviderMode: 'qvault', // 'qvault' (QVault with hardware fallback) | 'hardware' (Always use Hardware / System Key)
     passkeyHardwareFallback: true, // Automatically fall back to Hardware/OS authenticator when QVault has no matching passkey or is unavailable
+
+    // Network Privacy & Background Services Kill Switch
+    strictOfflineMode: false,
+    bgAllowAutoUpdates: true,
+    bgAllowFilterUpdates: true,
+    bgAllowLiveSuggestions: true,
+    bgAllowRemoteFavicons: true,
+    bgAllowCloudSync: true,
 };
 
 const loadSettings = () => {
@@ -338,6 +380,35 @@ const loadSettings = () => {
 };
 
 const useUIStore = create((set, get) => ({
+  // Custom Keyboard Shortcuts
+  customShortcuts: loadCustomShortcuts(),
+  setCustomShortcut: (actionId, combo) => {
+    if (!actionId || typeof actionId !== 'string') return;
+    set((state) => {
+      const next = { ...(state.customShortcuts || {}) };
+      if (!combo || typeof combo !== 'string' || !combo.trim()) {
+        delete next[actionId];
+      } else {
+        next[actionId] = combo.trim().toLowerCase();
+      }
+      saveCustomShortcutsToStorage(next);
+      return { customShortcuts: next };
+    });
+  },
+  resetCustomShortcut: (actionId) => {
+    if (!actionId) return;
+    set((state) => {
+      const next = { ...(state.customShortcuts || {}) };
+      delete next[actionId];
+      saveCustomShortcutsToStorage(next);
+      return { customShortcuts: next };
+    });
+  },
+  resetAllCustomShortcuts: () => {
+    saveCustomShortcutsToStorage({});
+    set({ customShortcuts: {} });
+  },
+
   // Omnibox
   isOmniboxOpen: false,
   isOmniboxClosing: false,
@@ -363,19 +434,86 @@ const useUIStore = create((set, get) => ({
   // View States
   isSplitView: false,
   splitRightTabId: null,
-  focusedPane: 'left', // 'left' | 'right'
-  splitRatio: 50, // 50% width
+  splitPaneTabIds: [null, null, null], // Secondary slots 1, 2, 3 (slot 1 mirrors splitRightTabId)
+  focusedPane: 'left', // 'left' | 'right' | 'pane-2' | 'pane-3'
+  splitRatio: 50, // Horizontal split % (20..80)
+  splitRatioY: 50, // Vertical / Quad-Y split % (20..80)
+  isDraggingSplit: false,
+  isSplitAxisAnimating: false,
+  isSplitClosing: false,
+  splitTransitionMode: 'animate', // 'animate' | 'instant'
+  activeSplitGroupId: null,
+  activeSplitGroupName: '',
+  parkedSplitGroups: [], // Array<{ id, space, name, primaryTabId, paneTabIds, orientation, splitRatio, splitRatioY }>
+  splitOrientation: (() => {
+    try {
+      const saved = typeof window !== 'undefined' ? window.localStorage?.getItem('qbrowse_split_orientation') : null;
+      return SPLIT_ORIENTATIONS.includes(saved) ? saved : 'horizontal';
+    } catch (_) {
+      return 'horizontal';
+    }
+  })(),
   setIsSplitView: (val) => set({ isSplitView: val }),
-  setSplitRightTabId: (id) => {
-    set({ splitRightTabId: id });
+  setIsDraggingSplit: (val) => set({ isDraggingSplit: Boolean(val) }),
+  setIsSplitAxisAnimating: (val) => set({ isSplitAxisAnimating: Boolean(val) }),
+  setIsSplitClosing: (val) => set({ isSplitClosing: Boolean(val) }),
+  setSplitTransitionMode: (mode) => set({ splitTransitionMode: mode === 'instant' ? 'instant' : 'animate' }),
+  setSplitOrientation: (orient) => {
+    const next = SPLIT_ORIENTATIONS.includes(orient) ? orient : 'horizontal';
+    try { localStorage.setItem('qbrowse_split_orientation', next); } catch (_) {}
+    set({ splitOrientation: next });
+  },
+  toggleSplitOrientation: () => {
+    const state = useUIStore.getState();
+    const next = getNextSplitOrientation(state.splitOrientation);
+    try { localStorage.setItem('qbrowse_split_orientation', next); } catch (_) {}
+
+    const labelMap = {
+      horizontal: tr('stores.ui.splitHorizontal', 'Split View: Side-by-Side'),
+      vertical: tr('stores.ui.splitVertical', 'Split View: Stacked (Top/Bottom)'),
+      quad: tr('stores.ui.splitQuad', 'Split View: 2×2 Quad Grid')
+    };
+
+    if (!state.isSplitView) {
+      // Enable Split View cleanly with the tab-selection launcher instead of corrupting layout
+      set({
+        isSplitView: true,
+        splitOrientation: next,
+        splitTransitionMode: 'animate',
+        splitRightTabId: null,
+        splitPaneTabIds: [null, null, null],
+        focusedPane: 'right'
+      });
+    } else {
+      set({ splitOrientation: next, splitTransitionMode: 'animate' });
+    }
+    useUIStore.getState().showToast(labelMap[next] || labelMap.horizontal);
+  },
+  setSplitPaneTabId: (slotIndex, id) => {
+    if (slotIndex < 1 || slotIndex > 3) return;
+    const state = useUIStore.getState();
+    const prevSlots = [...(state.splitPaneTabIds || [state.splitRightTabId || null, null, null])];
+
     if (id && typeof window !== 'undefined' && window.__tabStore) {
       try {
         const tabStore = window.__tabStore.getState();
+        const list = tabStore.getActiveList();
+        const targetTab = list.find(t => t.id === id);
+        if (!targetTab || isBlankSplitTab(targetTab)) return;
+
+        // Remove from any other secondary slot to avoid duplicate panes
+        for (let i = 0; i < prevSlots.length; i++) {
+          if (i !== slotIndex - 1 && prevSlots[i] === id) {
+            prevSlots[i] = null;
+          }
+        }
+
+        // If target tab is currently primary active tab, switch primary to a distinct tab first
         const currentActive = tabStore.getActiveTab();
         if (currentActive && currentActive.id === id) {
-          const list = tabStore.getActiveList();
           const setList = tabStore.getActiveSetList();
-          const candidate = list.find(t => t.id !== id);
+          const occupied = new Set([id, ...prevSlots.filter(Boolean)]);
+          const candidate = list.find(t => !occupied.has(t.id)) || list.find(t => t.id !== id);
           if (candidate) {
             setList(list.map(t => ({
               ...t,
@@ -384,55 +522,317 @@ const useUIStore = create((set, get) => ({
               lastActiveAt: t.id === candidate.id ? Date.now() : t.lastActiveAt
             })));
           }
+        } else if (targetTab.suspended) {
+          // Ensure secondary pane tab is unsuspended
+          const setList = tabStore.getActiveSetList();
+          setList(list.map(t => (t.id === id ? { ...t, suspended: false, lastActiveAt: Date.now() } : t)));
         }
       } catch (_) {}
     }
+
+    prevSlots[slotIndex - 1] = id || null;
+    set({
+      splitPaneTabIds: prevSlots,
+      splitRightTabId: prevSlots[0] || null,
+      ...(id ? { parkedSplitGroups: pruneTabsFromParkedGroups(state.parkedSplitGroups, [id]) } : {})
+    });
+  },
+  setSplitRightTabId: (id) => {
+    useUIStore.getState().setSplitPaneTabId(1, id);
+  },
+  clearSplitTabFromPanes: (tabId) => {
+    if (!tabId) return;
+    const state = useUIStore.getState();
+    const prevSlots = state.splitPaneTabIds || [state.splitRightTabId || null, null, null];
+    const updates = {};
+
+    if (prevSlots.includes(tabId) || state.splitRightTabId === tabId) {
+      const nextSlots = prevSlots.map(id => (id === tabId ? null : id));
+      updates.splitPaneTabIds = nextSlots;
+      updates.splitRightTabId = nextSlots[0] || null;
+    }
+
+    if (Array.isArray(state.parkedSplitGroups) && state.parkedSplitGroups.length > 0) {
+      const pruned = pruneTabsFromParkedGroups(state.parkedSplitGroups, [tabId]);
+      if (pruned !== state.parkedSplitGroups) {
+        updates.parkedSplitGroups = pruned;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      set(updates);
+    }
+  },
+  parkOrCloseSplitViewForTabSwitch: ({ instant = true } = {}) => {
+    const state = useUIStore.getState();
+    if (!state.isSplitView) return;
+
+    const secondaryIds = [...(state.splitPaneTabIds || [state.splitRightTabId || null, null, null])];
+    const hasSecondaryTab = secondaryIds.some(Boolean);
+    let nextParkedGroups = state.parkedSplitGroups || [];
+
+    if (hasSecondaryTab && typeof window !== 'undefined' && window.__tabStore) {
+      try {
+        const tabStore = window.__tabStore.getState();
+        const space = tabStore.activeSpace;
+        const list = tabStore.getActiveList() || [];
+        const secondarySet = new Set(secondaryIds.filter(Boolean));
+        const primaryTab =
+          list.find(t => t.active && !secondarySet.has(t.id)) ||
+          list.find(t => !secondarySet.has(t.id)) ||
+          list[0];
+        if (primaryTab) {
+          nextParkedGroups = upsertParkedSplitGroup(nextParkedGroups, {
+            id: state.activeSplitGroupId || `sg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            space,
+            name: state.activeSplitGroupName || '',
+            primaryTabId: primaryTab.id,
+            paneTabIds: secondaryIds,
+            orientation: state.splitOrientation || 'horizontal',
+            splitRatio: state.splitRatio || 50,
+            splitRatioY: state.splitRatioY || 50
+          });
+        }
+      } catch (_) {}
+    }
+
+    set({
+      isSplitView: false,
+      activeSplitGroupId: null,
+      activeSplitGroupName: '',
+      splitTransitionMode: instant ? 'instant' : 'animate',
+      splitRightTabId: null,
+      splitPaneTabIds: [null, null, null],
+      focusedPane: 'left',
+      parkedSplitGroups: nextParkedGroups
+    });
+  },
+  renameSplitGroup: (groupId, nextName) => {
+    const clean = typeof nextName === 'string' ? nextName.trim().slice(0, 40) : '';
+    set((state) => {
+      if (!groupId || groupId === 'active' || (state.isSplitView && groupId === state.activeSplitGroupId)) {
+        return { activeSplitGroupName: clean };
+      }
+      return {
+        parkedSplitGroups: (state.parkedSplitGroups || []).map(g =>
+          g && g.id === groupId ? { ...g, name: clean } : g
+        )
+      };
+    });
+  },
+  restoreParkedSplitGroup: (groupIdOrSlotIdx = null, focusSlotIdx = 0, { instant = true } = {}) => {
+    const state = useUIStore.getState();
+    if (typeof window === 'undefined' || !window.__tabStore) return;
+    const tabStore = window.__tabStore.getState();
+
+    // Support both restoreParkedSplitGroup(groupId, slotIdx, opts) and legacy restoreParkedSplitGroup(slotIdx, opts)
+    let targetGroupId = typeof groupIdOrSlotIdx === 'string' ? groupIdOrSlotIdx : null;
+    let resolvedSlotIdx = typeof groupIdOrSlotIdx === 'number' ? groupIdOrSlotIdx : focusSlotIdx;
+    let resolvedOpts = (typeof groupIdOrSlotIdx === 'number' && typeof focusSlotIdx === 'object' && focusSlotIdx !== null)
+      ? focusSlotIdx
+      : { instant };
+    const useInstant = resolvedOpts?.instant !== false;
+
+    const groups = state.parkedSplitGroups || [];
+    const pg = targetGroupId
+      ? groups.find(g => g.id === targetGroupId)
+      : groups.find(g => g.space === tabStore.activeSpace);
+    if (!pg) return;
+
+    // If another Split View is currently active, park it first into parkedSplitGroups
+    let nextParkedGroups = groups;
+    if (state.isSplitView) {
+      const curSecondary = [...(state.splitPaneTabIds || [state.splitRightTabId || null, null, null])];
+      if (curSecondary.some(Boolean)) {
+        const curList = tabStore.getActiveList() || [];
+        const curSecSet = new Set(curSecondary.filter(Boolean));
+        const curPrimary = curList.find(t => t.active && !curSecSet.has(t.id)) || curList.find(t => !curSecSet.has(t.id)) || curList[0];
+        if (curPrimary) {
+          nextParkedGroups = upsertParkedSplitGroup(nextParkedGroups, {
+            id: state.activeSplitGroupId || `sg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            space: tabStore.activeSpace,
+            name: state.activeSplitGroupName || '',
+            primaryTabId: curPrimary.id,
+            paneTabIds: curSecondary,
+            orientation: state.splitOrientation || 'horizontal',
+            splitRatio: state.splitRatio || 50,
+            splitRatioY: state.splitRatioY || 50
+          });
+        }
+      }
+    }
+    nextParkedGroups = nextParkedGroups.filter(g => g.id !== pg.id);
+
+    if (tabStore.activeSpace !== pg.space) {
+      tabStore.setActiveSpace(pg.space, { skipAutoSplitRestore: true });
+    }
+    const freshTabStore = window.__tabStore.getState();
+    const list = freshTabStore.getTabsForSpace
+      ? freshTabStore.getTabsForSpace(pg.space)
+      : freshTabStore.getActiveList();
+    const validIds = new Set((list || []).map(t => t.id));
+    const paneIds = (pg.paneTabIds || [null, null, null]).map(id => (id && validIds.has(id) ? id : null));
+    const primaryId = pg.primaryTabId && validIds.has(pg.primaryTabId) ? pg.primaryTabId : null;
+
+    if (!primaryId || !paneIds.some(Boolean)) {
+      set({ parkedSplitGroups: nextParkedGroups });
+      return;
+    }
+
+    const setList = freshTabStore.setTabsForSpace
+      ? (updater) => freshTabStore.setTabsForSpace(pg.space, updater)
+      : freshTabStore.getActiveSetList();
+    const nowTs = Date.now();
+    const activeSet = new Set([primaryId, ...paneIds.filter(Boolean)]);
+    setList((list || []).map(t => ({
+      ...t,
+      active: t.id === primaryId,
+      suspended: activeSet.has(t.id) ? false : t.suspended,
+      lastActiveAt: activeSet.has(t.id) ? nowTs : t.lastActiveAt
+    })));
+
+    const focusedPaneMap = { 0: 'left', 1: 'right', 2: 'pane-2', 3: 'pane-3' };
+    const focusedTabObj = (list || []).find(t => t.id === (resolvedSlotIdx === 0 ? primaryId : (paneIds[resolvedSlotIdx - 1] || primaryId)));
+    set({
+      isSplitView: true,
+      activeSplitGroupId: pg.id,
+      activeSplitGroupName: pg.name || '',
+      splitTransitionMode: useInstant ? 'instant' : 'animate',
+      splitOrientation: pg.orientation || 'horizontal',
+      splitRatio: pg.splitRatio || 50,
+      splitRatioY: pg.splitRatioY || 50,
+      splitPaneTabIds: paneIds,
+      splitRightTabId: paneIds[0] || null,
+      focusedPane: focusedPaneMap[resolvedSlotIdx] || 'left',
+      parkedSplitGroups: nextParkedGroups,
+      ...(focusedTabObj ? { currentUrl: focusedTabObj.url || '' } : {})
+    });
+  },
+  clearParkedSplitGroup: (groupId = null) => set((state) => ({
+    parkedSplitGroups: groupId
+      ? (state.parkedSplitGroups || []).filter(g => g.id !== groupId)
+      : []
+  })),
+  swapSplitPanes: (slotA = 0, slotB = 1) => {
+    const state = useUIStore.getState();
+    if (!state.isSplitView || typeof window === 'undefined' || !window.__tabStore) return;
+    const tabStore = window.__tabStore.getState();
+    const list = tabStore.getActiveList();
+    const setList = tabStore.getActiveSetList();
+    const spaceTabs = list || [];
+
+    const prevSlots = [...(state.splitPaneTabIds || [state.splitRightTabId || null, null, null])];
+    const secondarySet = new Set(prevSlots.filter(Boolean));
+    const slot0Tab =
+      spaceTabs.find(t => t.active && !secondarySet.has(t.id)) ||
+      spaceTabs.find(t => !secondarySet.has(t.id)) ||
+      spaceTabs[0] ||
+      null;
+
+    const slots = [slot0Tab?.id || null, prevSlots[0] || null, prevSlots[1] || null, prevSlots[2] || null];
+    let idxA = slotA;
+    let idxB = slotB;
+
+    // In 2-pane or generic shortcut swap, if slotB is empty try first populated secondary slot
+    if (!slots[idxB]) {
+      const firstPopulated = [1, 2, 3].find(i => i !== idxA && slots[i]);
+      if (firstPopulated !== undefined) idxB = firstPopulated;
+    }
+    if (idxA === idxB || !slots[idxA] || !slots[idxB]) return;
+
+    const tmp = slots[idxA];
+    slots[idxA] = slots[idxB];
+    slots[idxB] = tmp;
+
+    const nextPrimaryId = slots[0];
+    const nextSecondary = [slots[1] || null, slots[2] || null, slots[3] || null];
+
+    if (nextPrimaryId) {
+      const nowTs = Date.now();
+      setList(spaceTabs.map(t => ({
+        ...t,
+        active: t.id === nextPrimaryId,
+        suspended: (t.id === nextPrimaryId || nextSecondary.includes(t.id)) ? false : t.suspended,
+        lastActiveAt: t.id === nextPrimaryId ? nowTs : t.lastActiveAt
+      })));
+      const primaryObj = spaceTabs.find(t => t.id === nextPrimaryId);
+      if (primaryObj) {
+        set({ currentUrl: primaryObj.url || '' });
+      }
+    }
+
+    set({
+      splitPaneTabIds: nextSecondary,
+      splitRightTabId: nextSecondary[0] || null
+    });
+    useUIStore.getState().showToast(tr('stores.shortcuts.splitSwapped', 'Swapped Split Panes'));
   },
   setFocusedPane: (pane) => set({ focusedPane: pane }),
-  setSplitRatio: (ratio) => set({ splitRatio: ratio }),
+  setSplitRatio: (ratio) => set({ splitRatio: Math.min(80, Math.max(20, Number(ratio) || 50)) }),
+  setSplitRatioY: (ratio) => set({ splitRatioY: Math.min(80, Math.max(20, Number(ratio) || 50)) }),
   toggleSplitView: (targetRightId = null) => {
     const currentState = useUIStore.getState();
     const nextState = !currentState.isSplitView;
 
     if (!nextState) {
-      useUIStore.setState({ isSplitView: false, splitRightTabId: null, focusedPane: 'left' });
+      useUIStore.setState({
+        isSplitView: false,
+        activeSplitGroupId: null,
+        activeSplitGroupName: '',
+        splitTransitionMode: 'animate',
+        splitRightTabId: null,
+        splitPaneTabIds: [null, null, null],
+        focusedPane: 'left'
+      });
       useUIStore.getState().showToast(tr('stores.ui.splitDisabled', 'Split View: Disabled'));
       return;
     }
 
     let rightId = targetRightId;
-    let spaceTabs = [];
     let activeTab = null;
-    try {
-      const tabStore = window.__tabStore?.getState();
-      if (tabStore) {
-        const space = tabStore.activeSpace;
-        spaceTabs = space === 'personal' ? tabStore.privateTabs : (space === 'work' ? tabStore.workTabs : (space === 'tor' ? (tabStore.torTabs || []) : tabStore.ghostTabs));
-        activeTab = spaceTabs.find(t => t.active);
-      }
-    } catch (_) {}
-
-    if (rightId && (!spaceTabs.some(t => t.id === rightId) || (activeTab && rightId === activeTab.id))) {
-      rightId = null;
-    }
-
-    if (!rightId) {
-      if (currentState.splitRightTabId && spaceTabs.some(t => t.id === currentState.splitRightTabId) && (!activeTab || currentState.splitRightTabId !== activeTab.id)) {
-        rightId = currentState.splitRightTabId;
-      } else {
-        const candidate = spaceTabs.find(t => t.id !== activeTab?.id);
-        if (candidate) {
-          rightId = candidate.id;
+    if (rightId) {
+      let spaceTabs = [];
+      try {
+        const tabStore = window.__tabStore?.getState();
+        if (tabStore) {
+          spaceTabs = tabStore.getActiveList();
+          activeTab = spaceTabs.find(t => t.active);
         }
+      } catch (_) {}
+
+      const targetObj = spaceTabs.find(t => t.id === rightId);
+      if (!targetObj || (activeTab && rightId === activeTab.id) || isBlankSplitTab(targetObj)) {
+        rightId = null;
       }
+    } else {
+      try {
+        activeTab = window.__tabStore?.getState()?.getActiveTab?.() || null;
+      } catch (_) {}
     }
 
-    useUIStore.setState({ 
-      isSplitView: true, 
+    const nextGroupId = `sg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nextParkedGroups = pruneTabsFromParkedGroups(
+      currentState.parkedSplitGroups,
+      [activeTab?.id, rightId].filter(Boolean)
+    );
+
+    // When toggled without an explicit target tab (Ctrl+\ or TopBar button),
+    // always open the Split Screen tab-selection launcher instead of auto-picking a tab.
+    useUIStore.setState({
+      isSplitView: true,
+      activeSplitGroupId: nextGroupId,
+      activeSplitGroupName: '',
+      splitTransitionMode: 'animate',
       splitRightTabId: rightId || null,
-      focusedPane: rightId ? 'right' : 'left'
+      splitPaneTabIds: [rightId || null, null, null],
+      focusedPane: 'right',
+      parkedSplitGroups: nextParkedGroups
     });
-    useUIStore.getState().showToast(rightId ? tr('stores.ui.splitEnabled', 'Split View: Enabled') : tr('stores.ui.splitSelectTab', 'Split View: Select a tab'));
+    useUIStore.getState().showToast(
+      rightId
+        ? tr('stores.ui.splitEnabled', 'Split View: Enabled')
+        : tr('stores.ui.splitSelectTab', 'Split View: Select a tab')
+    );
   },
   // Windows & OS Accessibility Sync
   isSystemReducedMotion: typeof window !== 'undefined' && typeof window.matchMedia === 'function' 
@@ -555,6 +955,17 @@ const useUIStore = create((set, get) => ({
   isFullscreen: false,
   setIsFullscreen: async (val) => {
     set({ isFullscreen: val, isSidebarPeeking: false, isTopBarPeeking: false });
+  },
+  isFramelessMode: false,
+  toggleFramelessMode: (forced) => {
+    const current = useUIStore.getState().isFramelessMode;
+    const next = typeof forced === 'boolean' ? forced : !current;
+    set({
+      isFramelessMode: next,
+      isSidebarPeeking: false,
+      isTopBarPeeking: false
+    });
+    return next;
   },
   // Authoritative OS BrowserWindow focus & visibility state (immune to <webview> focus steal)
   isWindowFocused: true,
@@ -1957,6 +2368,17 @@ const useUIStore = create((set, get) => ({
 
   settingsTab: 'appearance',
   setSettingsTab: (tab) => set({ settingsTab: tab }),
+  helpLegalTab: 'help',
+  setHelpLegalTab: (tab) => set({ helpLegalTab: tab || 'help' }),
+  openHelpModal: (tab = 'help') => {
+    set({ helpLegalTab: tab || 'help' });
+    const current = get().activeModal;
+    if (current && current !== 'help') {
+      get().switchModal('help');
+    } else {
+      get().openModal('help');
+    }
+  },
   openSettings: (tab = 'appearance') => {
     if (globalModalCloseTimeout) {
       clearTimeout(globalModalCloseTimeout);
@@ -2032,6 +2454,67 @@ const useUIStore = create((set, get) => ({
                   darkExcludeMedia: enabled
               });
           }
+      }
+  },
+
+  // Custom Text Highlight Color & Style
+  textHighlightStyle: localStorage.getItem('qbrowse_text_highlight_style') || 'tinted',
+  textHighlightColor: localStorage.getItem('qbrowse_text_highlight_color') || 'accent',
+  textHighlightApplyToWeb: localStorage.getItem('qbrowse_text_highlight_web') !== 'false',
+  setTextHighlightStyle: (style) => {
+      const valid = ['system', 'tinted', 'vibrant', 'glow', 'underline'].includes(style) ? style : 'tinted';
+      set({ textHighlightStyle: valid });
+      try {
+          localStorage.setItem('qbrowse_text_highlight_style', valid);
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+      } catch (_) {}
+      const state = get();
+      applyTextHighlightToDocument({ style: valid, color: state.textHighlightColor, accentColor: state.accentColor });
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          window.electronAPI.saveSetting?.('textHighlightStyle', valid);
+          window.electronAPI.syncTextHighlightState?.({
+              style: valid,
+              color: state.textHighlightColor,
+              accentColor: state.accentColor,
+              applyToWeb: state.textHighlightApplyToWeb
+          });
+      }
+  },
+  setTextHighlightColor: (color) => {
+      const val = typeof color === 'string' && color.trim() ? color.trim() : 'accent';
+      set({ textHighlightColor: val });
+      try {
+          localStorage.setItem('qbrowse_text_highlight_color', val);
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+      } catch (_) {}
+      const state = get();
+      applyTextHighlightToDocument({ style: state.textHighlightStyle, color: val, accentColor: state.accentColor });
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          window.electronAPI.saveSetting?.('textHighlightColor', val);
+          window.electronAPI.syncTextHighlightState?.({
+              style: state.textHighlightStyle,
+              color: val,
+              accentColor: state.accentColor,
+              applyToWeb: state.textHighlightApplyToWeb
+          });
+      }
+  },
+  setTextHighlightApplyToWeb: (val) => {
+      const enabled = Boolean(val);
+      set({ textHighlightApplyToWeb: enabled });
+      try {
+          localStorage.setItem('qbrowse_text_highlight_web', String(enabled));
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
+      } catch (_) {}
+      const state = get();
+      if (typeof window !== 'undefined' && window.electronAPI) {
+          window.electronAPI.saveSetting?.('textHighlightApplyToWeb', enabled);
+          window.electronAPI.syncTextHighlightState?.({
+              style: state.textHighlightStyle,
+              color: state.textHighlightColor,
+              accentColor: state.accentColor,
+              applyToWeb: enabled
+          });
       }
   },
   isAdblockActive: true,
@@ -3345,6 +3828,16 @@ const useUIStore = create((set, get) => ({
       });
       if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(validColor)) {
           syncRootAccentCssVariables(validColor, get().theme);
+          const st = get();
+          applyTextHighlightToDocument({ style: st.textHighlightStyle, color: st.textHighlightColor, accentColor: validColor });
+          if (typeof window !== 'undefined' && window.electronAPI?.syncTextHighlightState) {
+              window.electronAPI.syncTextHighlightState({
+                  style: st.textHighlightStyle,
+                  color: st.textHighlightColor,
+                  accentColor: validColor,
+                  applyToWeb: st.textHighlightApplyToWeb
+              });
+          }
       }
       if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.saveSetting) {
           window.electronAPI.saveSetting('accentColor', validColor);
@@ -3397,28 +3890,135 @@ const useUIStore = create((set, get) => ({
     const list = (rawList || []).filter(t => !t.isClosing);
     if (!list || list.length <= 1) return;
 
-    const settings = get().settings || {};
+    const uiState = get();
+    const settings = uiState.settings || {};
     const isVisual = settings.visualTabSwitcher !== false;
     const order = settings.tabSwitcherOrder || 'mru';
+    const activeSpace = tabStore.activeSpace;
 
-    const activeIndex = list.findIndex(t => t.active);
-    const activeTab = activeIndex !== -1 ? list[activeIndex] : list[0];
+    // Build switcher entries collapsing ALL active & parked Split Groups in activeSpace into 1 unified entry each
+    const byId = new Map(list.map(t => [t.id, t]));
+    const validIds = new Set(list.map(t => t.id));
+    const groupMemberIds = new Set();
+    const groupEntryByPrimaryId = new Map();
+
+    let groupNumCounter = 0;
+    const registerGroup = ({ splitGroupId, customName, primaryId, secondaryIds, orientation, isGroupActive }) => {
+      const members = [byId.get(primaryId), ...secondaryIds.map(id => byId.get(id))].filter(Boolean);
+      if (members.length < 2) return;
+      if (members.some(m => groupMemberIds.has(m.id))) return;
+      groupNumCounter += 1;
+      const resolvedOrient = orientation || 'horizontal';
+      const defaultGroupLabel = `${resolvedOrient === 'quad' ? 'Quad Split' : 'Split Group'} ${groupNumCounter}`;
+      members.forEach(m => groupMemberIds.add(m.id));
+      groupEntryByPrimaryId.set(members[0].id, {
+        ...members[0],
+        id: `split-group:${splitGroupId}:${members[0].id}`,
+        splitGroupId,
+        splitGroupName: customName || defaultGroupLabel,
+        targetTabId: members[0].id,
+        isSplitGroupEntry: true,
+        splitOrientation: resolvedOrient,
+        splitMemberTabs: members,
+        title: members.map(t => t.title || 'Tab').join('  |  '),
+        lastActiveAt: Math.max(...members.map(t => t.lastActiveAt || 0)),
+        active: isGroupActive
+      });
+    };
+
+    if (uiState.isSplitView) {
+      const sec = (uiState.splitPaneTabIds || [uiState.splitRightTabId || null, null, null]).filter(id => id && validIds.has(id));
+      if (sec.length > 0) {
+        const secSet = new Set(sec);
+        const pTab = list.find(t => t.active && !secSet.has(t.id)) || list.find(t => !secSet.has(t.id));
+        if (pTab) {
+          registerGroup({
+            splitGroupId: uiState.activeSplitGroupId || 'active',
+            customName: uiState.activeSplitGroupName || '',
+            primaryId: pTab.id,
+            secondaryIds: sec,
+            orientation: uiState.splitOrientation || 'horizontal',
+            isGroupActive: true
+          });
+        }
+      }
+    }
+
+    for (const pg of (uiState.parkedSplitGroups || [])) {
+      if (!pg || pg.space !== activeSpace) continue;
+      const sec = (pg.paneTabIds || []).filter(id => id && validIds.has(id));
+      if (pg.primaryTabId && validIds.has(pg.primaryTabId) && sec.length > 0) {
+        registerGroup({
+          splitGroupId: pg.id,
+          customName: pg.name || '',
+          primaryId: pg.primaryTabId,
+          secondaryIds: sec,
+          orientation: pg.orientation || 'horizontal',
+          isGroupActive: false
+        });
+      }
+    }
+
+    const entries = [];
+    for (const t of list) {
+      if (groupMemberIds.has(t.id)) {
+        const groupEntry = groupEntryByPrimaryId.get(t.id);
+        if (groupEntry) {
+          entries.push(groupEntry);
+        }
+      } else {
+        entries.push(t);
+      }
+    }
+
+    if (entries.length <= 1) return;
+
+    const activeIndex = entries.findIndex(e => e.active);
+    const activeEntry = activeIndex !== -1 ? entries[activeIndex] : entries[0];
 
     let orderedTabs = [];
     let initialIndex = 0;
 
     if (order === 'sidebar') {
-      orderedTabs = [...list];
+      orderedTabs = [...entries];
       const curIdx = activeIndex !== -1 ? activeIndex : 0;
       initialIndex = (curIdx + direction + orderedTabs.length) % orderedTabs.length;
     } else {
-      // 'mru'
-      const otherTabs = list.filter(t => t.id !== activeTab.id).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
-      orderedTabs = [activeTab, ...otherTabs];
+      const otherTabs = entries.filter(e => e.id !== activeEntry.id).sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+      orderedTabs = [activeEntry, ...otherTabs];
       initialIndex = direction === -1 ? orderedTabs.length - 1 : 1;
     }
 
-    const targetTab = orderedTabs[initialIndex];
+    const targetEntry = orderedTabs[initialIndex];
+
+    const activateSwitcherEntry = (entry) => {
+      if (!entry) return;
+      const ui = useUIStore.getState();
+      if (entry.isSplitGroupEntry) {
+        if (!ui.isSplitView || ui.activeSplitGroupId !== entry.splitGroupId) {
+          ui.restoreParkedSplitGroup(entry.splitGroupId, 0, { instant: true });
+        }
+        const focusId = entry.targetTabId || entry.splitMemberTabs?.[0]?.id;
+        setTimeout(() => {
+          const wv = focusId ? document.getElementById(`webview-${focusId}`) : null;
+          if (wv && typeof wv.focus === 'function') {
+            try { wv.focus(); } catch (_) {}
+          }
+        }, 25);
+      } else {
+        if (ui.isSplitView) {
+          ui.parkOrCloseSplitViewForTabSwitch({ instant: true });
+        }
+        tabStore.handleSwitchToTab(entry.id, tabStore.activeSpace);
+        ui.setCurrentUrl(entry.url || '');
+        setTimeout(() => {
+          const wv = document.getElementById(`webview-${entry.id}`);
+          if (wv && typeof wv.focus === 'function') {
+            try { wv.focus(); } catch (_) {}
+          }
+        }, 25);
+      }
+    };
 
     if (window.__switcherTimer) {
       clearTimeout(window.__switcherTimer);
@@ -3426,23 +4026,14 @@ const useUIStore = create((set, get) => ({
     }
 
     if (!isVisual) {
-      if (targetTab) {
-        tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
-        get().setCurrentUrl(targetTab.url || '');
-        setTimeout(() => {
-          const wv = document.getElementById('webview-' + targetTab.id);
-          if (wv && typeof wv.focus === 'function') {
-            try { wv.focus(); } catch (_) {}
-          }
-        }, 20);
-      }
+      activateSwitcherEntry(targetEntry);
       set({
         showSwitcher: true,
         showSwitcherUI: false,
         switcherStartTime: Date.now(),
         switcherTabs: orderedTabs,
         switcherIndex: initialIndex,
-        switcherOriginalTab: activeTab
+        switcherOriginalTab: activeEntry
       });
       return;
     }
@@ -3457,7 +4048,7 @@ const useUIStore = create((set, get) => ({
       switcherStartTime: Date.now(),
       switcherTabs: orderedTabs,
       switcherIndex: initialIndex,
-      switcherOriginalTab: activeTab
+      switcherOriginalTab: activeEntry
     });
   },
   cycleSwitcher: (direction = 1) => {
@@ -3476,18 +4067,31 @@ const useUIStore = create((set, get) => ({
     const isVisual = state.settings?.visualTabSwitcher !== false;
 
     if (!isVisual) {
-      const targetTab = state.switcherTabs[nextIdx];
-      if (targetTab) {
-        const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
-        if (tabStore) {
-          tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
-          useUIStore.getState().setCurrentUrl(targetTab.url || '');
+      const targetEntry = state.switcherTabs[nextIdx];
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      if (targetEntry && tabStore) {
+        const ui = useUIStore.getState();
+        if (targetEntry.isSplitGroupEntry) {
+          if (!ui.isSplitView || ui.activeSplitGroupId !== targetEntry.splitGroupId) {
+            ui.restoreParkedSplitGroup(targetEntry.splitGroupId, 0, { instant: true });
+          }
+          const focusId = targetEntry.targetTabId || targetEntry.splitMemberTabs?.[0]?.id;
           setTimeout(() => {
-            const wv = document.getElementById('webview-' + targetTab.id);
+            const wv = focusId ? document.getElementById(`webview-${focusId}`) : null;
             if (wv && typeof wv.focus === 'function') {
               try { wv.focus(); } catch (_) {}
             }
-          }, 20);
+          }, 25);
+        } else {
+          if (ui.isSplitView) ui.parkOrCloseSplitViewForTabSwitch({ instant: true });
+          tabStore.handleSwitchToTab(targetEntry.id, tabStore.activeSpace);
+          ui.setCurrentUrl(targetEntry.url || '');
+          setTimeout(() => {
+            const wv = document.getElementById(`webview-${targetEntry.id}`);
+            if (wv && typeof wv.focus === 'function') {
+              try { wv.focus(); } catch (_) {}
+            }
+          }, 25);
         }
       }
       set({ switcherIndex: nextIdx, showSwitcherUI: false });
@@ -3503,20 +4107,35 @@ const useUIStore = create((set, get) => ({
     const { showSwitcher, switcherTabs, switcherIndex } = useUIStore.getState();
     if (!showSwitcher) return;
 
-    const targetTab = switcherTabs[switcherIndex];
+    const targetEntry = switcherTabs[switcherIndex];
     set({ showSwitcher: false, showSwitcherUI: false, switcherStartTime: 0, switcherOriginalTab: null });
 
-    if (targetTab) {
+    if (targetEntry) {
       const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
       if (tabStore) {
-        tabStore.handleSwitchToTab(targetTab.id, tabStore.activeSpace);
-        useUIStore.getState().setCurrentUrl(targetTab.url || '');
-        setTimeout(() => {
-          const wv = document.getElementById(`webview-${targetTab.id}`);
-          if (wv && typeof wv.focus === 'function') {
-            try { wv.focus(); } catch (_) {}
+        const ui = useUIStore.getState();
+        if (targetEntry.isSplitGroupEntry) {
+          if (!ui.isSplitView || ui.activeSplitGroupId !== targetEntry.splitGroupId) {
+            ui.restoreParkedSplitGroup(targetEntry.splitGroupId, 0, { instant: true });
           }
-        }, 30);
+          const focusId = targetEntry.targetTabId || targetEntry.splitMemberTabs?.[0]?.id;
+          setTimeout(() => {
+            const wv = focusId ? document.getElementById(`webview-${focusId}`) : null;
+            if (wv && typeof wv.focus === 'function') {
+              try { wv.focus(); } catch (_) {}
+            }
+          }, 30);
+        } else {
+          if (ui.isSplitView) ui.parkOrCloseSplitViewForTabSwitch({ instant: true });
+          tabStore.handleSwitchToTab(targetEntry.id, tabStore.activeSpace);
+          ui.setCurrentUrl(targetEntry.url || '');
+          setTimeout(() => {
+            const wv = document.getElementById(`webview-${targetEntry.id}`);
+            if (wv && typeof wv.focus === 'function') {
+              try { wv.focus(); } catch (_) {}
+            }
+          }, 30);
+        }
       }
     }
   },
@@ -3528,18 +4147,18 @@ const useUIStore = create((set, get) => ({
     const state = useUIStore.getState();
     const isVisual = state.settings?.visualTabSwitcher !== false;
     if (!isVisual && state.switcherTabs && state.switcherTabs.length > 0) {
-      const originalTab = state.switcherOriginalTab || state.switcherTabs[0];
-      if (originalTab) {
-        const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
-        if (tabStore) {
-          tabStore.handleSwitchToTab(originalTab.id, tabStore.activeSpace);
-          useUIStore.getState().setCurrentUrl(originalTab.url || '');
-          setTimeout(() => {
-            const wv = document.getElementById(`webview-${originalTab.id}`);
-            if (wv && typeof wv.focus === 'function') {
-              try { wv.focus(); } catch (_) {}
-            }
-          }, 30);
+      const originalEntry = state.switcherOriginalTab || state.switcherTabs[0];
+      const tabStore = (typeof window !== 'undefined' && window.__tabStore) ? window.__tabStore.getState() : null;
+      if (originalEntry && tabStore) {
+        const ui = useUIStore.getState();
+        if (originalEntry.isSplitGroupEntry) {
+          if (!ui.isSplitView || ui.activeSplitGroupId !== originalEntry.splitGroupId) {
+            ui.restoreParkedSplitGroup(originalEntry.splitGroupId, 0, { instant: true });
+          }
+        } else {
+          if (ui.isSplitView) ui.parkOrCloseSplitViewForTabSwitch({ instant: true });
+          tabStore.handleSwitchToTab(originalEntry.id, tabStore.activeSpace);
+          ui.setCurrentUrl(originalEntry.url || '');
         }
       }
     }
@@ -3836,6 +4455,14 @@ export const syncInitialSettingsToElectron = () => {
           passkeyHardwareFallback: state.settings?.passkeyHardwareFallback !== false
         });
       }
+      if (window.electronAPI.syncTextHighlightState) {
+        window.electronAPI.syncTextHighlightState({
+          style: state.textHighlightStyle,
+          color: state.textHighlightColor,
+          accentColor: state.accentColor,
+          applyToWeb: state.textHighlightApplyToWeb
+        });
+      }
     } catch (_) {}
   }
 };
@@ -3844,6 +4471,12 @@ if (typeof window !== 'undefined') {
   window.__uiStore = useUIStore;
   try {
     applyAppFont(useUIStore.getState().settings);
+    const st = useUIStore.getState();
+    applyTextHighlightToDocument({
+      style: st.textHighlightStyle,
+      color: st.textHighlightColor,
+      accentColor: st.accentColor
+    });
   } catch (_) {}
 }
 
