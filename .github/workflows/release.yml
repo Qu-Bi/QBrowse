@@ -2,9 +2,11 @@ name: Build & Release QBrowse (Windows & Linux)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "rust-edition" ]
     tags:
       - "v*"
+  pull_request:
+    branches: [ "main", "rust-edition" ]
   release:
     types: [published]
   workflow_dispatch:
@@ -22,7 +24,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           cache: 'npm'
 
       - name: Setup Rust Toolchain
@@ -31,7 +33,7 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rust
+          workspaces: "rust -> target"
 
       - name: Sync version with Git tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -42,6 +44,14 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Build & Test Rust Core + Parity Suite
+        shell: bash
+        run: |
+          npm run build:rust
+          test -f electron/native/qbrowse-core.win32-x64-msvc.node
+          cargo test --workspace --release --manifest-path rust/Cargo.toml
+          node tests/verify_rust_parity.cjs
 
       - name: Build Windows Installer
         run: npm run build:win
@@ -73,7 +83,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           cache: 'npm'
 
       - name: Setup Rust Toolchain
@@ -82,7 +92,7 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rust
+          workspaces: "rust -> target"
 
       - name: Sync version with Git tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -90,24 +100,24 @@ jobs:
           TAG_VER="${GITHUB_REF_NAME#v}"
           npm version "$TAG_VER" --no-git-tag-version --allow-same-version
 
-      - name: Install system packaging tools
+      - name: Install system packaging & Rust build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools rpm
-
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
+          sudo apt-get install -y build-essential pkg-config libarchive-tools rpm
 
       - name: Install dependencies
         run: |
           npm install
           chmod +x node_modules/.bin/vite
           chmod +x node_modules/.bin/electron-builder || true
+
+      - name: Build & Test Rust Core + Parity Suite
+        run: |
+          npm run build:rust
+          test -f electron/native/qbrowse-core.linux-x64-gnu.node
+          cargo test --workspace --release --manifest-path rust/Cargo.toml
+          node test_linux_updater.cjs
+          node tests/verify_rust_parity.cjs
 
       - name: Download Linux AI Binaries
         run: |
