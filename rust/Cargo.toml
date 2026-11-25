@@ -79,7 +79,7 @@ data-encoding = "2"
 # Compression, Archives, Docs, Media, Sys
 brotli = "7"
 flate2 = "1.0"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 csv = "1.3"
 lopdf = "0.34"
