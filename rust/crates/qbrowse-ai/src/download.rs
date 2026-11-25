@@ -326,7 +326,10 @@ fn extract_zip_safe(archive_path: &Path, canonical_dest: &Path) -> Result<Vec<Pa
         let Some(enclosed) = entry.enclosed_name() else {
             return Err(anyhow!(
                 "Unsafe ZIP entry path (Zip-Slip detected): {}",
-                entry.name()
+                entry
+                    .name()
+                    .map(|name| name.into_owned())
+                    .unwrap_or_else(|error| format!("<invalid entry name: {error}>"))
             ));
         };
         let out_path = sanitize_archive_entry_path(canonical_dest, &enclosed)?;
