@@ -7,7 +7,7 @@ const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const MANIFEST_VERSION = '1.9.0';
-const PACKAGE_ID = 'Qu-Bi.QBrowse';
+const PACKAGE_ID = 'QuBI.QBrowse';
 const ZERO_SHA256 = '0'.repeat(64);
 
 function parseArgs(argv) {
