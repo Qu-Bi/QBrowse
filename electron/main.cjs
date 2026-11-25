@@ -1073,7 +1073,6 @@ ipcMain.handle('open-with-dialog', async (event, url) => {
 });
 const { spawn, execFile } = require('child_process');
 const { adblockEngine } = require('./adblockEngine.cjs');
-const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
 const torEngine = require('./torEngine.cjs');
 
