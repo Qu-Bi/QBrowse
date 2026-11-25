@@ -1,23 +1,5 @@
 // Modular domain translations: chrome namespace
-export function selectPluralForm(count, lang, one, few, many) {
-    if (lang === 'pl' || lang === 'ru' || lang === 'uk') {
-        const mod10 = count % 10;
-        const mod100 = count % 100;
-        if (count === 1) return one;
-        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
-        return many;
-    }
-    if (lang === 'fr' || lang === 'pt') {
-        return (count === 0 || count === 1) ? one : many;
-    }
-    return count === 1 ? one : many;
-}
-
-export function formatTabCount(count, lang, tFn) {
-    const key = selectPluralForm(count, lang, 'chrome.tabCountOne', 'chrome.tabCountFew', 'chrome.tabCountMany');
-    const fallback = count === 1 ? `${count} tab` : `${count} tabs`;
-    return tFn(key, { count }, fallback);
-}
+export { selectPluralForm, formatTabCount } from '../helpers.js';
 
 const en = {
     untitledTab: "Untitled",

@@ -2690,12 +2690,6 @@ const ko = {
 
 const storesDomain = { en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko };
 
-export const PLACEHOLDER_TAB_TITLE_SET = new Set(
-    Object.values(storesDomain).flatMap((lang) => [
-        String(lang?.tab?.newTab || '').trim().toLowerCase(),
-        String(lang?.tab?.newIncognitoTab || '').trim().toLowerCase(),
-        String(lang?.tab?.newTorTab || '').trim().toLowerCase()
-    ]).filter(Boolean)
-);
+export { PLACEHOLDER_TAB_TITLE_SET } from '../helpers.js';
 
 export default storesDomain;

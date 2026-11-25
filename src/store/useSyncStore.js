@@ -141,6 +141,12 @@ function generateSaltHex() {
 async function encryptData(payloadObj, passphrase) {
     try {
         const jsonStr = JSON.stringify(payloadObj);
+        if (typeof window !== 'undefined' && typeof window.electronAPI?.rustEncryptSync === 'function') {
+            try {
+                const rustEnc = await window.electronAPI.rustEncryptSync(jsonStr, passphrase);
+                if (rustEnc && rustEnc.salt && rustEnc.iv && rustEnc.cipher) return rustEnc;
+            } catch (_) {}
+        }
         const encoder = new TextEncoder();
         const dataBytes = encoder.encode(jsonStr);
         const saltHex = generateSaltHex();
@@ -328,6 +334,19 @@ async function decryptData(encryptedObj, passphrase) {
             const err = new Error(t('stores.sync.errMalformedPayload', "Malformed encrypted payload structure"));
             err.isStructureError = true;
             throw err;
+        }
+
+        if (typeof window !== 'undefined' && typeof window.electronAPI?.rustDecryptSync === 'function') {
+            try {
+                const rustJson = await window.electronAPI.rustDecryptSync({ salt, iv, cipher }, passphrase);
+                if (typeof rustJson === 'string') {
+                    let decoded = JSON.parse(rustJson);
+                    if (typeof decoded === 'string') {
+                        try { decoded = JSON.parse(decoded); } catch (_) {}
+                    }
+                    return decoded;
+                }
+            } catch (_) {}
         }
 
         const key = await deriveKey(passphrase, salt);

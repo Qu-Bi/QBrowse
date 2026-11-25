@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import useUIStore from './useUIStore';
 import { t } from '../i18n/index';
-import { PLACEHOLDER_TAB_TITLE_SET } from '../i18n/domains/stores.js';
+import { PLACEHOLDER_TAB_TITLE_SET } from '../i18n/helpers.js';
 import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
 import { extractLocalFileName } from '../utils/fileUrlHelpers.js';
 import { getHelpLegalPageTitle } from '../utils/helpLegalContent.js';

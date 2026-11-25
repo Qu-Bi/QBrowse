@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const rustBridge = require('./rustBridge.cjs');
 
 // Permissive agent to bypass self-signed certificates or corporate/educational proxies (e.g. OSE network)
 const httpsAgent = new https.Agent({
@@ -474,7 +475,6 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
         appendLog(`[AI ENGINE] Downloading native llama.cpp engine (${TARGET_ENGINE_TAG})...`);
         if (onStatusChange) onStatusChange({ status: 'downloading_engine' });
 
-        const AdmZip = require('adm-zip');
         const targetBinDir = getBinDir();
         const isWin = process.platform === 'win32';
         const zipPath = path.join(targetBinDir, isWin ? 'llama.zip' : 'llama.tar.gz');
@@ -521,18 +521,11 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
 
                     const fileStream = fs.createWriteStream(zipPath);
                     res.pipe(fileStream);
-                    fileStream.on('finish', () => {
+                    fileStream.on('finish', async () => {
                         fileStream.close();
                         try {
                             killStrayLlamaProcesses();
-
-                            if (downloadUrl.endsWith('.zip')) {
-                                const zip = new AdmZip(zipPath);
-                                zip.extractAllTo(targetBinDir, true);
-                            } else {
-                                const { execSync } = require('child_process');
-                                execSync(`tar -xzf "${zipPath}" -C "${targetBinDir}"`);
-                            }
+                            await rustBridge.aiExtractArchiveSafe(zipPath, targetBinDir);
                             try { fs.unlinkSync(zipPath); } catch (_) {}
                             
                             const finalExeName = isWin ? 'llama-server.exe' : 'llama-server';
@@ -839,7 +832,6 @@ async function updateEngine(onStatusChange = null) {
 
     // 2. Otherwise download latest engine from GitHub release
     const targetBinDir = getBinDir();
-    const AdmZip = require('adm-zip');
     const isWin = process.platform === 'win32';
     const zipPath = path.join(targetBinDir, isWin ? 'llama.zip' : 'llama.tar.gz');
     const hasVulkan = isWin && fs.existsSync(path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'vulkan-1.dll'));
@@ -881,17 +873,11 @@ async function updateEngine(onStatusChange = null) {
 
                 const fileStream = fs.createWriteStream(zipPath);
                 res.pipe(fileStream);
-                fileStream.on('finish', () => {
+                fileStream.on('finish', async () => {
                     fileStream.close();
                     try {
                         killStrayLlamaProcesses();
-                        if (downloadUrl.endsWith('.zip')) {
-                            const zip = new AdmZip(zipPath);
-                            zip.extractAllTo(targetBinDir, true);
-                        } else {
-                            const { execSync } = require('child_process');
-                            execSync(`tar -xzf "${zipPath}" -C "${targetBinDir}"`);
-                        }
+                        await rustBridge.aiExtractArchiveSafe(zipPath, targetBinDir);
                         try { fs.unlinkSync(zipPath); } catch (_) {}
                         
                         const finalExe = path.join(targetBinDir, isWin ? 'llama-server.exe' : 'llama-server');

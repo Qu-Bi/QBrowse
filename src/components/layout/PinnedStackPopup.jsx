@@ -5,7 +5,7 @@ import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
-import { formatTabCount } from '../../i18n/domains/chrome';
+import { formatTabCount } from '../../i18n/helpers.js';
 import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 import { getPinDomain as _getPinDomain, isTabForPin as _isTabForPin, getPinHomeUrl } from '../../utils/pinnedAppHelpers';
 

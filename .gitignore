@@ -2,6 +2,9 @@ node_modules
 dist_electron
 dist
 electron/bin
+electron/native/*.node
+electron/webview_preload.min.cjs
+rust/target
 *.exe
 *.AppImage
 *.zip

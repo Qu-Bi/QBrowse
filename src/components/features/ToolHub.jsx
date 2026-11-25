@@ -13,12 +13,7 @@ import useUIStore from '../../store/useUIStore';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useTabStore from '../../store/useTabStore';
 import { useAnnotationStore, normalizeAnnotationUrl, deduplicateAnnotationList, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
-import { startRecording, stopRecordingAndTranscribe } from '../../utils/whisperSTT';
-import * as pdfjsLib from 'pdfjs-dist';
 import { useTranslation } from '../../i18n/index';
-
-// Configure pdfjs worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 function formatBytes(bytes) {
     if (!bytes || bytes <= 0) return '0 B';
@@ -356,6 +351,8 @@ export default function ToolHub() {
             if (isPdf && parsePdfAsImage) {
                 showHubToast(t('tools.toolhub.toasts.parsingPdf', { name: file.name }, `Parsing PDF visually: ${file.name}`));
                 try {
+                    const pdfjsLib = await import('pdfjs-dist');
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                     
@@ -402,7 +399,14 @@ export default function ToolHub() {
                 previewDataUrl = await new Promise(r => { reader.onload = e => r(e.target.result); reader.readAsDataURL(file); });
             }
 
-            if (window.electronAPI && typeof window.electronAPI.parseFile === 'function' && file.path) {
+            if (isPdf && file.path && window.electronAPI && typeof window.electronAPI.rustExtractPdfText === 'function') {
+                try {
+                    contentText = await window.electronAPI.rustExtractPdfText(file.path);
+                } catch (_) {
+                    contentText = undefined;
+                }
+            }
+            if (contentText === undefined && window.electronAPI && typeof window.electronAPI.parseFile === 'function' && file.path) {
                 try {
                     // This extracts text from PDF, DOCX, Images via OCR, and regular files
                     contentText = await window.electronAPI.parseFile(file.path);
@@ -458,6 +462,7 @@ export default function ToolHub() {
     };
 
     const handleMicToggle = async () => {
+        const { startRecording, stopRecordingAndTranscribe } = await import('../../utils/whisperSTT');
         if (isRecording) {
             setIsTranscribing(true);
             setIsRecording(false);

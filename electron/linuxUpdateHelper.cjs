@@ -4,6 +4,7 @@ const path = require('path');
 const fsSync = require('fs');
 const fsPromisesDefault = require('fs/promises');
 const { execFileSync: defaultExecFileSync } = require('child_process');
+const rustBridge = require('./rustBridge.cjs');
 
 const ARCH_ALIASES = {
     x64: ['x64', 'amd64', 'x86_64'],
@@ -118,71 +119,24 @@ function comparePrerelease(preA, preB) {
 }
 
 function compareSemver(verA, verB) {
-    const cleanA = normalizeSemver(verA);
-    const cleanB = normalizeSemver(verB);
-    const dashIdxA = cleanA.indexOf('-');
-    const dashIdxB = cleanB.indexOf('-');
-    const mainA = dashIdxA === -1 ? cleanA : cleanA.slice(0, dashIdxA);
-    const preA = dashIdxA === -1 ? '' : cleanA.slice(dashIdxA + 1);
-    const mainB = dashIdxB === -1 ? cleanB : cleanB.slice(0, dashIdxB);
-    const preB = dashIdxB === -1 ? '' : cleanB.slice(dashIdxB + 1);
-
-    const partsA = mainA.split('.').map(n => parseInt(n, 10) || 0);
-    const partsB = mainB.split('.').map(n => parseInt(n, 10) || 0);
-    const len = Math.max(partsA.length, partsB.length, 3);
-
-    for (let i = 0; i < len; i++) {
-        const a = partsA[i] || 0;
-        const b = partsB[i] || 0;
-        if (a > b) return 1;
-        if (a < b) return -1;
-    }
-
-    return comparePrerelease(preA, preB);
+    return rustBridge.sysCompareSemver(String(verA || ''), String(verB || ''));
 }
 
 function normalizeLinuxArch(arch = process.arch) {
-    const raw = String(arch || 'x64').toLowerCase().trim();
-    if (raw === 'amd64' || raw === 'x86_64' || raw === 'x64') return 'x64';
-    if (raw === 'aarch64' || raw === 'arm64') return 'arm64';
-    if (raw === 'i386' || raw === 'i686' || raw === 'ia32' || raw === 'x86') return 'ia32';
-    if (raw === 'armv7l' || raw === 'armhf' || raw === 'arm') return 'arm';
-    return raw;
+    return rustBridge.sysLinuxNormalizeArch(String(arch || 'x64'));
 }
 
 function getLinuxMetadataFileName(arch = process.arch) {
-    const normArch = normalizeLinuxArch(arch);
-    if (normArch === 'x64') return 'latest-linux.yml';
-    return `latest-linux-${normArch}.yml`;
+    return rustBridge.sysLinuxMetadataFilename(String(arch || 'x64'));
 }
 
 function detectAssetArch(fileName) {
     if (!fileName || typeof fileName !== 'string') return null;
-    // Strip trailing archive extensions before matching arch tokens
-    const stripped = fileName.replace(/\.(tar\.gz|tar\.xz|tar\.bz2|appimage|deb|rpm|pacman|zip|blockmap)$/i, '');
-    for (const entry of ALL_ARCH_PATTERNS) {
-        if (entry.regex.test(stripped)) {
-            return entry.arch;
-        }
-    }
-    return null;
+    return rustBridge.sysLinuxDetectAssetArch(fileName) || null;
 }
 
 function isNonPackageArtifact(fileName) {
-    const lower = String(fileName || '').toLowerCase();
-    return (
-        lower.endsWith('.blockmap') ||
-        lower.endsWith('.yml') ||
-        lower.endsWith('.yaml') ||
-        lower.endsWith('.sha256') ||
-        lower.endsWith('.sha512') ||
-        lower.endsWith('.asc') ||
-        lower.endsWith('.sig') ||
-        lower.endsWith('.exe') ||
-        lower.endsWith('.msi') ||
-        lower.endsWith('.dmg') ||
-        lower.endsWith('.pkg')
-    );
+    return rustBridge.sysLinuxIsNonPackageArtifact(String(fileName || ''));
 }
 
 function sanitizeUpdateFileName(name, fallback = 'QBrowse-update.bin') {

@@ -14,7 +14,7 @@ import useTorStore from '../../store/useTorStore';
 import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import { topSites } from '../../utils/topSites';
 import { useTranslation } from '../../i18n/index';
-import { selectPluralForm } from '../../i18n/domains/chrome';
+import { selectPluralForm } from '../../i18n/helpers.js';
 import { 
     getAllBangs, 
     parseBangFromQuery, 

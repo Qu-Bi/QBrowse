@@ -1,44 +1,47 @@
 // QBrowse Modular Internationalization (i18n) Engine
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useUIStore from '../store/useUIStore';
 import { playLanguageSwitchChime } from '../utils/languageAudio';
+import en from './bundles/en.json';
 
-import en from './locales/en.js';
-import pl from './locales/pl.js';
-import fr from './locales/fr.js';
-import de from './locales/de.js';
-import es from './locales/es.js';
-import pt from './locales/pt.js';
-import zh from './locales/zh.js';
-import ja from './locales/ja.js';
-import ru from './locales/ru.js';
-import it from './locales/it.js';
-import uk from './locales/uk.js';
-import ko from './locales/ko.js';
+const LOCALE_LOADERS = import.meta.glob('./bundles/*.json');
 
-import chromeDomain from './domains/chrome.js';
-import popoversDomain from './domains/popovers.js';
-import toolsDomain from './domains/tools.js';
-import settingsDomain from './domains/settings.js';
-import storesDomain from './domains/stores.js';
+export const DICTIONARIES = { en };
+const IN_FLIGHT_LOADS = new Map();
 
-const BASE_LOCALES = {
-    en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko
-};
+export async function loadLocale(lang) {
+    if (!lang || DICTIONARIES[lang]) {
+        return DICTIONARIES[lang] || DICTIONARIES.en;
+    }
+    if (IN_FLIGHT_LOADS.has(lang)) {
+        return IN_FLIGHT_LOADS.get(lang);
+    }
+    const loader = LOCALE_LOADERS[`./bundles/${lang}.json`];
+    if (!loader) {
+        return DICTIONARIES.en;
+    }
+    const promise = loader()
+        .then((mod) => {
+            DICTIONARIES[lang] = mod?.default || mod;
+            return DICTIONARIES[lang];
+        })
+        .catch(() => DICTIONARIES.en)
+        .finally(() => {
+            IN_FLIGHT_LOADS.delete(lang);
+        });
+    IN_FLIGHT_LOADS.set(lang, promise);
+    return promise;
+}
 
-const LANG_CODES = Object.keys(BASE_LOCALES);
-
-export const DICTIONARIES = LANG_CODES.reduce((acc, code) => {
-    acc[code] = {
-        ...(BASE_LOCALES[code] || {}),
-        chrome: chromeDomain?.[code] || {},
-        pop: popoversDomain?.[code] || {},
-        tools: toolsDomain?.[code] || {},
-        cfg: settingsDomain?.[code] || {},
-        stores: storesDomain?.[code] || {}
-    };
-    return acc;
-}, {});
+export async function initI18n() {
+    try {
+        const rawSetting = useUIStore?.getState?.()?.settings?.appLanguage || 'auto';
+        const activeLang = resolveActiveLanguage(rawSetting);
+        await loadLocale(activeLang);
+    } catch (_) {
+        // Fallback to eager English bundle
+    }
+}
 
 export const INTL_LOCALE_MAP = {
     en: 'en-US',
@@ -194,14 +197,26 @@ export function useTranslation() {
     const isAuto = rawSetting === 'auto';
     const activeLanguage = useMemo(() => resolveActiveLanguage(rawSetting), [rawSetting]);
     const intlLocale = useMemo(() => getIntlLocale(activeLanguage), [activeLanguage]);
+    const [, setLocaleVersion] = useState(0);
+
+    useEffect(() => {
+        if (!DICTIONARIES[activeLanguage]) {
+            let cancelled = false;
+            loadLocale(activeLanguage).then(() => {
+                if (!cancelled) setLocaleVersion((v) => v + 1);
+            });
+            return () => { cancelled = true; };
+        }
+    }, [activeLanguage]);
 
     const translate = useMemo(() => {
         return (path, params, fallback) => formatTranslatedValue(path, params, fallback, activeLanguage);
     }, [activeLanguage]);
 
-    const setLanguage = (newCode) => {
+    const setLanguage = async (newCode) => {
         const store = useUIStore.getState();
         const resolved = resolveActiveLanguage(newCode);
+        await loadLocale(resolved);
         triggerLanguageWarp(resolved);
         store.setSettingValue('appLanguage', newCode);
     };
@@ -219,6 +234,8 @@ export function useTranslation() {
 
 export default {
     t,
+    initI18n,
+    loadLocale,
     useTranslation,
     SUPPORTED_LANGUAGES,
     getSystemLanguage,

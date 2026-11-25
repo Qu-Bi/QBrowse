@@ -11,10 +11,11 @@ import {
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import ElementEraserHUD from '../common/ElementEraserHUD';
 import SlidingPillSwitcher from '../common/SlidingPillSwitcher';
-import SplitPaneLauncher from '../features/SplitPaneLauncher';
 import { findDarkModeExclusionMatch } from '../../utils/darkModeWhitelist';
+
+const SplitPaneLauncher = React.lazy(() => import('../features/SplitPaneLauncher'));
 import { useTranslation } from '../../i18n/index';
-import { formatTabCount } from '../../i18n/domains/chrome';
+import { formatTabCount } from '../../i18n/helpers.js';
 import { isBackgroundServiceAllowed, getSafeFaviconUrl } from '../../utils/networkPrivacy';
 import {
     getFocusedSlotIndex,
@@ -106,21 +107,31 @@ import useHistoryStore from '../../store/useHistoryStore';
 import { topSites } from '../../utils/topSites';
 import TopBar from './TopBar';
 import WebViewContainer from './WebViewContainer';
-import QVaultPopover from '../popovers/QVaultPopover';
 import SavePasswordBanner from '../popovers/SavePasswordBanner';
 import SiteInfoPopover from '../popovers/SiteInfoPopover';
 import PermissionPromptPopup from '../popovers/PermissionPromptPopup';
 import { formatCompactNumber } from '../../utils/formatters';
-import TorCircuitPopover from '../popovers/TorCircuitPopover';
 import MediaPlayerPopover from '../common/MediaPlayerPopover';
 import FindInPageBar from '../common/FindInPageBar';
 import ScreenshotBar from '../common/ScreenshotBar';
 import ReadAloudPlayer from '../common/ReadAloudPlayer';
 import SnippingOverlay from '../common/SnippingOverlay';
-import ReaderModeOverlay from '../features/ReaderModeOverlay';
 import BrowserDialogOverlay from './BrowserDialogOverlay';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import HomepageOmnibox from '../features/HomepageOmnibox';
+
+const QVaultPopover = React.lazy(() => import('../popovers/QVaultPopover'));
+const TorCircuitPopover = React.lazy(() => import('../popovers/TorCircuitPopover'));
+const ReaderModeOverlay = React.lazy(() => import('../features/ReaderModeOverlay'));
+
+function LazyPopoverGate({ when, children }) {
+    const [mounted, setMounted] = useState(Boolean(when));
+    useEffect(() => {
+        if (when && !mounted) setMounted(true);
+    }, [when, mounted]);
+    if (!mounted) return null;
+    return <React.Suspense fallback={null}>{children}</React.Suspense>;
+}
 
 const DownloadPopup = () => {
     const { t } = useTranslation();
@@ -343,6 +354,8 @@ export default function MainFrame() {
     const isToastClosing = useUIStore(state => state.isToastClosing);
     const showToast = useUIStore(state => state.showToast);
     const activePopover = useUIStore(state => state.activePopover);
+    const isReaderOpen = useUIStore(state => state.isReaderOpen);
+    const isReaderClosing = useUIStore(state => state.isReaderClosing);
     const isPopoverClosing = useUIStore(state => state.isPopoverClosing);
     const closePopover = useUIStore(state => state.closePopover);
     const isSwipeEnabled = useUIStore(state => state.isSwipeEnabled);
@@ -1203,12 +1216,12 @@ export default function MainFrame() {
             )}
 
             <SavePasswordBanner />
-            {(activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')) && (
+            <LazyPopoverGate when={activePopover === 'vault' || (isPopoverClosing && activePopover === 'vault')}>
                 <QVaultPopover isClosing={isPopoverClosing} />
-            )}
-            {(activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')) && (
+            </LazyPopoverGate>
+            <LazyPopoverGate when={activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')}>
                 <TorCircuitPopover isClosing={isPopoverClosing} />
-            )}
+            </LazyPopoverGate>
             {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
                 <div className="absolute inset-0 z-[50] bg-transparent" onClick={closePopover} />
             )}
@@ -1292,7 +1305,9 @@ export default function MainFrame() {
                     <ElementEraserHUD />
                     <ReadAloudPlayer />
                     <SnippingOverlay />
-                    <ReaderModeOverlay />
+                    <LazyPopoverGate when={isReaderOpen || isReaderClosing}>
+                        <ReaderModeOverlay />
+                    </LazyPopoverGate>
                     <BrowserDialogOverlay />
 
                     {/* UNIFIED FULL-VIEWPORT SPACES & WEBVIEW LAYER (ZERO RELOADS) */}
@@ -1500,23 +1515,25 @@ export default function MainFrame() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <SplitPaneLauncher
-                                        slotIdx={slotIdx}
-                                        isFocusedSlot={isSlotFocused}
-                                        isQuadSplit={isQuadSplit}
-                                        isVerticalSplit={isVerticalSplit}
-                                        isSplitLeft={isSplitLeft}
-                                        isBright={isBright}
-                                        isTor={isTor}
-                                        isDark={!isBright}
-                                        isReducedMotion={isReducedMotion}
-                                        zoomLevel={zoomLevel}
-                                        availableTabs={availableRightTabs}
-                                        settings={settings}
-                                        resolvedLanguage={resolvedLanguage}
-                                        onSelectTab={(tabId) => setSplitPaneTabId(slotIdx, tabId)}
-                                        onOpenUrl={(url, title) => handleOpenSplitUrl(url, slotIdx, title)}
-                                    />
+                                    <React.Suspense fallback={null}>
+                                        <SplitPaneLauncher
+                                            slotIdx={slotIdx}
+                                            isFocusedSlot={isSlotFocused}
+                                            isQuadSplit={isQuadSplit}
+                                            isVerticalSplit={isVerticalSplit}
+                                            isSplitLeft={isSplitLeft}
+                                            isBright={isBright}
+                                            isTor={isTor}
+                                            isDark={!isBright}
+                                            isReducedMotion={isReducedMotion}
+                                            zoomLevel={zoomLevel}
+                                            availableTabs={availableRightTabs}
+                                            settings={settings}
+                                            resolvedLanguage={resolvedLanguage}
+                                            onSelectTab={(tabId) => setSplitPaneTabId(slotIdx, tabId)}
+                                            onOpenUrl={(url, title) => handleOpenSplitUrl(url, slotIdx, title)}
+                                        />
+                                    </React.Suspense>
                                 )}
                             </div>
                         );

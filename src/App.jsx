@@ -19,28 +19,37 @@ import TopBar from './components/layout/TopBar';
 import MainFrame from './components/layout/MainFrame';
 
 import Omnibox from './components/features/Omnibox';
-import TabMap from './components/features/TabMap';
-import ToolHub from './components/features/ToolHub';
-
-import SettingsModal from './components/modals/SettingsModal';
-import HistoryModal from './components/modals/HistoryModal';
-import CookiesModal from './components/modals/CookiesModal';
-import ResourceManagerModal from './components/modals/ResourceManagerModal';
-import HelpLegalModal from './components/modals/HelpLegalModal';
 import BootCurtain from './components/common/BootCurtain';
-import SetupJourney from './components/modals/SetupJourney';
-import LivingTour from './components/modals/LivingTour';
-import AddPinModal from './components/modals/AddPinModal';
-import PasskeyVerificationModal from './components/modals/PasskeyVerificationModal';
 import Overlays from './components/common/Overlays';
 import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import LanguageWarpOverlay from './components/common/LanguageWarpOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
-import UserProfilePopover from './components/popovers/UserProfilePopover';
 import { resolveActiveLanguage } from './i18n/index';
 import WallpaperEngine from './components/common/WallpaperEngine';
 import { isLikelyDownloadUrl } from './utils/downloadHelpers';
+
+const TabMap = React.lazy(() => import('./components/features/TabMap'));
+const ToolHub = React.lazy(() => import('./components/features/ToolHub'));
+const SettingsModal = React.lazy(() => import('./components/modals/SettingsModal'));
+const HistoryModal = React.lazy(() => import('./components/modals/HistoryModal'));
+const CookiesModal = React.lazy(() => import('./components/modals/CookiesModal'));
+const ResourceManagerModal = React.lazy(() => import('./components/modals/ResourceManagerModal'));
+const HelpLegalModal = React.lazy(() => import('./components/modals/HelpLegalModal'));
+const SetupJourney = React.lazy(() => import('./components/modals/SetupJourney'));
+const LivingTour = React.lazy(() => import('./components/modals/LivingTour'));
+const AddPinModal = React.lazy(() => import('./components/modals/AddPinModal'));
+const PasskeyVerificationModal = React.lazy(() => import('./components/modals/PasskeyVerificationModal'));
+const UserProfilePopover = React.lazy(() => import('./components/popovers/UserProfilePopover'));
+
+function LazyGate({ when, children }) {
+    const [mounted, setMounted] = useState(Boolean(when));
+    useEffect(() => {
+        if (when && !mounted) setMounted(true);
+    }, [when, mounted]);
+    if (!mounted) return null;
+    return <React.Suspense fallback={null}>{children}</React.Suspense>;
+}
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';
 
@@ -68,6 +77,10 @@ export default function App() {
     const isBooting = useUIStore(state => state.isBooting);
     const finishBoot = useUIStore(state => state.finishBoot);
     const activeModal = useUIStore(state => state.activeModal);
+    const isModalClosing = useUIStore(state => state.isModalClosing);
+    const closingModal = useUIStore(state => state.closingModal);
+    const isTabMapOpen = useUIStore(state => state.isTabMapOpen);
+    const passkeyPrompt = useUIStore(state => state.passkeyPrompt);
     const a11yHighContrast = useUIStore(state => state.settings?.a11yHighContrast);
     const a11yDyslexiaFont = useUIStore(state => state.settings?.a11yDyslexiaFont);
     const a11yReducedMotion = useUIStore(state => state.settings?.a11yReducedMotion);
@@ -628,7 +641,7 @@ export default function App() {
             const sleepTimeoutMinutes = (rawTimeout !== undefined && rawTimeout !== null) ? Number(rawTimeout) : 15;
             if (sleepTimeoutMinutes <= 0) return; // 0 = Never sleep
 
-            const effectiveTimeoutMinutes = Math.max(15, sleepTimeoutMinutes);
+            const effectiveTimeoutMinutes = Math.max(1, sleepTimeoutMinutes);
             const suspendTimeoutMs = effectiveTimeoutMinutes * 60 * 1000;
             const AUDIO_GRACE_PERIOD_MS = 5 * 60 * 1000;
             const tabStore = useTabStore.getState();
@@ -861,41 +874,63 @@ export default function App() {
                 </div>
 
                 <Omnibox />
-                <TabMap />
-                <ToolHub />
+                <LazyGate when={isTabMapOpen}>
+                    <TabMap />
+                </LazyGate>
+                <LazyGate when={isRightPanelOpen}>
+                    <ToolHub />
+                </LazyGate>
 
-                <SettingsModal />
-                <CookiesModal />
-                <HistoryModal />
-                <ResourceManagerModal />
-                <HelpLegalModal />
+                <LazyGate when={activeModal === 'settings' || (isModalClosing && closingModal === 'settings')}>
+                    <SettingsModal />
+                </LazyGate>
+                <LazyGate when={activeModal === 'cookies' || (isModalClosing && closingModal === 'cookies')}>
+                    <CookiesModal />
+                </LazyGate>
+                <LazyGate when={activeModal === 'history' || (isModalClosing && closingModal === 'history')}>
+                    <HistoryModal />
+                </LazyGate>
+                <LazyGate when={activeModal === 'tasks' || activeModal === 'resources' || activeModal === 'top' || (isModalClosing && (closingModal === 'tasks' || closingModal === 'resources' || closingModal === 'top'))}>
+                    <ResourceManagerModal />
+                </LazyGate>
+                <LazyGate when={activeModal === 'help' || (isModalClosing && closingModal === 'help')}>
+                    <HelpLegalModal />
+                </LazyGate>
                 {/* Full-Screen Setup Journey */}
                 {(activeModal === 'onboarding' || activeModal === 'setup') && (
-                    <SetupJourney 
-                        onFinish={() => {
-                            useUIStore.getState().closeModal();
-                            useUIStore.getState().setSetupComplete(true);
-                        }}
-                        onStartTour={() => {
-                            useUIStore.getState().openModal('tutorial');
-                        }}
-                    />
+                    <React.Suspense fallback={null}>
+                        <SetupJourney 
+                            onFinish={() => {
+                                useUIStore.getState().closeModal();
+                                useUIStore.getState().setSetupComplete(true);
+                            }}
+                            onStartTour={() => {
+                                useUIStore.getState().openModal('tutorial');
+                            }}
+                        />
+                    </React.Suspense>
                 )}
 
                 {/* Interactive Living Spotlight Tour */}
                 {(activeModal === 'tutorial' || activeModal === 'tour') && (
-                    <LivingTour 
-                        onExit={() => {
-                            useUIStore.getState().closeModal();
-                            useUIStore.getState().setTutorialDone(true);
-                        }}
-                    />
+                    <React.Suspense fallback={null}>
+                        <LivingTour 
+                            onExit={() => {
+                                useUIStore.getState().closeModal();
+                                useUIStore.getState().setTutorialDone(true);
+                            }}
+                        />
+                    </React.Suspense>
                 )}
 
                 {/* Minimalist Monogram Fast-Boot Curtain */}
                 {isBooting && <BootCurtain onFinish={handleBootFinish} />}
-                <AddPinModal />
-                <PasskeyVerificationModal />
+                <LazyGate when={activeModal === 'addPin' || (isModalClosing && closingModal === 'addPin')}>
+                    <AddPinModal />
+                </LazyGate>
+                <LazyGate when={Boolean(passkeyPrompt)}>
+                    <PasskeyVerificationModal />
+                </LazyGate>
 
                 <Overlays />
                 <TabSwitcherOverlay />
@@ -909,7 +944,9 @@ export default function App() {
                             className="fixed inset-0 z-[69990] bg-transparent cursor-default select-none"
                             onClick={closePopover} 
                         />
-                        <UserProfilePopover isClosing={isPopoverClosing} />
+                        <React.Suspense fallback={null}>
+                            <UserProfilePopover isClosing={isPopoverClosing} />
+                        </React.Suspense>
                     </>
                 )}
 

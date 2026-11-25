@@ -382,6 +382,19 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         } catch (_) {}
     }, [isElementEraserActive, isVisible]);
 
+    const saveCapturedThumbnail = async (tabId, img) => {
+        if (!img || (typeof img.isEmpty === 'function' && img.isEmpty())) return null;
+        const resized = typeof img.resize === 'function' ? img.resize({ width: 320 }) : img;
+        const dataUrl = resized.toDataURL();
+        if (window.electronAPI?.saveTabThumbnail) {
+            try {
+                const thumbUrl = await window.electronAPI.saveTabThumbnail(tabId, dataUrl);
+                if (thumbUrl) return thumbUrl;
+            } catch (_) {}
+        }
+        return dataUrl;
+    };
+
     const showSwitcher = useUIStore(state => state.showSwitcher);
     useEffect(() => {
         if (isActive && isSpaceActive && wvRef.current && isDomReadyRef.current && !tab.isClosing && tab.url && tab.url !== 'about:blank' && !tab.url.startsWith('qbrowse://')) {
@@ -389,10 +402,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 const wv = wvRef.current;
                 if (!wv || !isActive || tab.isClosing) return;
                 try {
-                    wv.capturePage().then(img => {
-                        if (!img || img.isEmpty()) return;
-                        const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
-                        useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                    wv.capturePage().then(async (img) => {
+                        if (tab.isClosing) return;
+                        const thumbnail = await saveCapturedThumbnail(tab.id, img);
+                        if (thumbnail && !tab.isClosing) {
+                            useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                        }
                     }).catch(() => {});
                 } catch (_) {}
             }, showSwitcher ? 50 : 1200);
@@ -764,11 +779,13 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         const handleStopLoading = () => {
             if (isActive && isSpaceActive && !wv.hasCrashed && !tab.isClosing && tab.url && tab.url !== 'about:blank') {
                 try {
-                    wv.capturePage().then(img => {
-                        if (!img || tab.isClosing) return;
-                        const thumbnail = typeof img.resize === 'function' ? img.resize({ width: 320 }).toDataURL() : img.toDataURL();
-                        setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
-                        useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                    wv.capturePage().then(async (img) => {
+                        if (tab.isClosing) return;
+                        const thumbnail = await saveCapturedThumbnail(tab.id, img);
+                        if (thumbnail && !tab.isClosing) {
+                            setSpaceTabs(prev => prev.map(t => t.id === tab.id ? { ...t, thumbnail } : t));
+                            useTabStore.getState().updateTabThumbnail(tab.id, thumbnail);
+                        }
                     }).catch(()=>{});
                 } catch(e) {}
 

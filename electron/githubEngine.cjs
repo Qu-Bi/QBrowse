@@ -7,6 +7,7 @@ const electron = (() => {
 })();
 
 const { BrowserWindow, session, net, powerMonitor } = electron;
+const rustBridge = require('./rustBridge.cjs');
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_WEB_BASE = 'https://github.com';
@@ -995,11 +996,17 @@ class GitHubEngine {
 
                 let result = null;
                 if (auth.mode === 'token' && auth.token) {
-                    result = await this.fetchViaApi({ token: auth.token });
+                    result = await rustBridge.githubFetchDashboard('token', auth.token, auth.username || null, this.config.repoFilter || null);
                 } else if (auth.mode === 'session') {
-                    result = await this.fetchViaSession(profileId, auth.username);
+                    const sess = session?.fromPartition ? session.fromPartition(`persist:profile_${profileId}`) : null;
+                    let cookieHeader = '';
+                    if (sess?.cookies) {
+                        const cookies = await sess.cookies.get({ domain: 'github.com' });
+                        cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+                    }
+                    result = await rustBridge.githubFetchDashboard('session', cookieHeader || null, auth.username || null, this.config.repoFilter || null);
                 } else if (auth.mode === 'public' && auth.username) {
-                    result = await this.fetchViaApi({ token: null, usernameOverride: auth.username });
+                    result = await rustBridge.githubFetchDashboard('public', null, auth.username, this.config.repoFilter || null);
                 }
 
                 const payload = {

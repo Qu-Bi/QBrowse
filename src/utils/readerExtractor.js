@@ -119,6 +119,13 @@ export function checkIsArticle(html, url = '') {
 export function parseArticle(html, url = '') {
     if (!html) return null;
 
+    if (typeof window !== 'undefined' && typeof window.electronAPI?.rustExtractArticle === 'function') {
+        try {
+            const rustArticle = window.electronAPI.rustExtractArticle(html, url);
+            if (rustArticle && rustArticle.contentHtml) return rustArticle;
+        } catch (_) {}
+    }
+
     try {
         const doc = new DOMParser().parseFromString(html, 'text/html');
 

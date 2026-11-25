@@ -22,8 +22,7 @@ import GitHubLiveFolder from './GitHubLiveFolder';
 import GitHubGlancePopover from './GitHubGlancePopover';
 import { useGitHubStore } from '../../store/useGitHubStore';
 import { useTranslation } from '../../i18n/index';
-import { selectPluralForm } from '../../i18n/domains/chrome';
-import { PLACEHOLDER_TAB_TITLE_SET } from '../../i18n/domains/stores.js';
+import { selectPluralForm, PLACEHOLDER_TAB_TITLE_SET } from '../../i18n/helpers.js';
 import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 import {
     resolveSplitSlotTabs,

@@ -66,30 +66,13 @@ const getSpaceIcon = (iconName) => {
 const ContextMenuThemeContext = React.createContext({ isBright: false });
 
 // Shared Liquid Glass surface styling for context menus, popovers & submenus
-export const getLiquidGlassSurfaceClasses = (isBright) =>
-    `liquid-glass-surface border transition-colors ${
-        isBright
-            ? 'border-black/[0.08] text-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,0.14),inset_0_1px_1px_rgba(255,255,255,0.85)]'
-            : 'border-white/[0.10] text-white/95 shadow-[0_25px_70px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.16)]'
-    }`;
-
-export const getLiquidGlassMenuClasses = (isBright) =>
-    `p-1.5 rounded-2xl select-none outline-none ${getLiquidGlassSurfaceClasses(isBright)}`;
-
-export const getLiquidGlassCardClasses = (isBright) =>
-    isBright
-        ? 'bg-black/[0.035] border border-black/[0.06]'
-        : 'bg-black/25 border border-white/[0.08]';
-
-export const getLiquidGlassInlineStyle = (isBright) => ({
-    backgroundColor: isBright ? 'rgba(255, 255, 255, 0.72)' : 'rgba(18, 20, 32, 0.58)',
-    backdropFilter: isBright
-        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)',
-    WebkitBackdropFilter: isBright
-        ? 'blur(var(--glass-blur, 32px)) saturate(180%) brightness(1.04)'
-        : 'blur(var(--glass-blur, 32px)) saturate(190%) brightness(0.75)'
-});
+export {
+    getLiquidGlassSurfaceClasses,
+    getLiquidGlassMenuClasses,
+    getLiquidGlassCardClasses,
+    getLiquidGlassInlineStyle,
+    getLiquidGlassStyle
+} from '../../utils/liquidGlassStyles';
 
 // Reusable Glassmorphic Menu Container with Smart Edge Collision Detection & Keyboard Navigation
 function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {

@@ -437,6 +437,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, data) => callback(data);
         ipcRenderer.on('github-data-updated', handler);
         return () => ipcRenderer.removeListener('github-data-updated', handler);
-    }
+    },
+
+    // Rust In-Process Core Fast Paths & Streaming Thumbnails
+    saveTabThumbnail: (tabId, dataUrl) => ipcRenderer.invoke('save-tab-thumbnail', { tabId, dataUrl }),
+    rustExtractPdfText: (filePath, maxPages) => ipcRenderer.invoke('rust-extract-pdf-text', { filePath, maxPages }),
+    rustEncryptSync: (jsonStr, passphrase) => ipcRenderer.invoke('rust-encrypt-sync', { jsonStr, passphrase }),
+    rustDecryptSync: (envelope, passphrase) => ipcRenderer.invoke('rust-decrypt-sync', { envelope, passphrase }),
+    rustSearchHistory: (query, cleanQuery, historySource) => ipcRenderer.sendSync('rust-search-history', { query, cleanQuery, historySource }),
+    rustMergeHistory: (localHistory, remoteHistory) => ipcRenderer.sendSync('rust-merge-history', { localHistory, remoteHistory }),
+    rustParseGifInfo: (buffer) => ipcRenderer.sendSync('rust-parse-gif-info', buffer),
+    rustExtractArticle: (html, url) => ipcRenderer.sendSync('rust-extract-article', { html, url }),
+    rustParseVault: (text, filename) => ipcRenderer.sendSync('rust-parse-vault', { text, filename })
 });
 

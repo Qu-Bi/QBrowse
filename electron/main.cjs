@@ -7,6 +7,7 @@ const os = require('os');
 const http = require('http');
 const { pathToFileURL, fileURLToPath } = require('url');
 const performanceEngine = require('./performanceEngine.cjs');
+const rustBridge = require('./rustBridge.cjs');
 const githubEngine = require('./githubEngine.cjs');
 const { PermissionManager } = require('./permissionEngine.cjs');
 const {
@@ -522,11 +523,32 @@ dialog.showMessageBox = function(targetWindow, options) {
 // Disable Blink automation features so navigator.webdriver is false and automation flags are suppressed
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
-// Register custom privileged scheme for streaming local media and wallpapers safely
+// Register custom privileged scheme for streaming local media, files, thumbnails, and wallpapers safely
 protocol.registerSchemesAsPrivileged([
     { scheme: 'qbrowse', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
-    { scheme: 'qbrowse-media', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+    { scheme: 'qbrowse-media', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+    { scheme: 'qbrowse-local', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+    { scheme: 'qbrowse-thumb', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
+
+const authorizedLocalPaths = new Set();
+function authorizeLocalPath(p) {
+    if (!p || typeof p !== 'string') return;
+    try {
+        authorizedLocalPaths.add(path.resolve(p));
+    } catch (_) {}
+}
+function isAuthorizedLocalPath(p) {
+    if (!p || typeof p !== 'string') return false;
+    try {
+        const resolved = path.resolve(p);
+        if (authorizedLocalPaths.has(resolved)) return true;
+        const dir = path.dirname(resolved);
+        return authorizedLocalPaths.has(dir);
+    } catch {
+        return false;
+    }
+}
 
 ipcMain.handle('read-clipboard-text', () => {
     try {
@@ -680,6 +702,7 @@ ipcMain.handle('list-local-directory', async (event, dirUrlOrPath) => {
         if (!targetPath || !fsSync.existsSync(targetPath)) {
             return { error: 'Folder does not exist or access is restricted' };
         }
+        authorizeLocalPath(targetPath);
         const stat = await fs.stat(targetPath);
         if (!stat.isDirectory()) {
             return { error: 'Path is a file, not a directory', isFile: true, path: targetPath, url: pathToFileURL(targetPath).href };
@@ -815,55 +838,29 @@ ipcMain.handle('read-local-file-data', async (event, fileUrlOrPath) => {
         if (!targetPath || !fsSync.existsSync(targetPath)) {
             return { error: 'File does not exist or has been moved' };
         }
+        authorizeLocalPath(targetPath);
         const stat = await fs.stat(targetPath);
         if (stat.isDirectory()) {
             return { isDirectory: true, path: targetPath, url: pathToFileURL(targetPath).href };
         }
-
-        const ext = path.extname(targetPath).toLowerCase();
-        const cleanExt = ext.replace('.', '');
-        const textExtensions = new Set([
-            '.txt', '.md', '.json', '.js', '.jsx', '.ts', '.tsx', '.css', '.scss',
-            '.html', '.htm', '.xml', '.yaml', '.yml', '.py', '.sh', '.bash', '.bat',
-            '.c', '.cpp', '.h', '.java', '.rs', '.go', '.sql', '.log', '.env'
-        ]);
-
-        const isText = textExtensions.has(ext);
-        let content = null;
-        let base64 = null;
-
-        if (isText) {
-            if (stat.size < 12 * 1024 * 1024) { // Up to 12MB text
-                content = await fs.readFile(targetPath, 'utf8');
-            } else {
-                content = '[File is larger than 12MB. Preview limited to safe sizes.]';
-            }
-        } else if (ext === '.pdf') {
-            // Read PDF into base64 for pdf.js canvas rendering
-            const buf = await fs.readFile(targetPath);
-            base64 = buf.toString('base64');
-        } else if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp', '.ico', '.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.opus'].includes(ext)) {
-            if (stat.size < 150 * 1024 * 1024) { // Up to 150MB media
-                const buf = await fs.readFile(targetPath);
-                base64 = buf.toString('base64');
-            }
+        const probe = await rustBridge.mediaProbeLocalFile(targetPath);
+        if (probe) {
+            return {
+                success: true,
+                path: targetPath,
+                url: pathToFileURL(targetPath).href,
+                streamUrl: probe.streamUrl,
+                name: probe.name || path.basename(targetPath),
+                size: probe.size ?? stat.size,
+                modified: probe.mtime ?? stat.mtimeMs,
+                extension: path.extname(targetPath).toLowerCase().replace(/^\./, ''),
+                mime: probe.mime,
+                isText: Boolean(probe.isText),
+                content: probe.textContent ?? null,
+                base64: null
+            };
         }
-
-        const mime = LOCAL_MEDIA_MIME_MAP[cleanExt] || (isText ? 'text/plain' : 'application/octet-stream');
-
-        return {
-            success: true,
-            path: targetPath,
-            url: pathToFileURL(targetPath).href,
-            name: path.basename(targetPath),
-            size: stat.size,
-            modified: stat.mtimeMs,
-            extension: cleanExt,
-            mime,
-            isText,
-            content,
-            base64
-        };
+        return { error: 'Failed to probe file' };
     } catch (err) {
         console.error('[Main] read-local-file-data error:', err);
         return { error: err.message || 'Failed to read file' };
@@ -1059,7 +1056,6 @@ ipcMain.handle('open-with-dialog', async (event, url) => {
 });
 const { spawn, execFile } = require('child_process');
 const { adblockEngine } = require('./adblockEngine.cjs');
-const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
 const torEngine = require('./torEngine.cjs');
 
@@ -1184,8 +1180,6 @@ app.commandLine.appendSwitch('enable-tcp-fastopen');
 const disabledChromiumFeatures = new Set([
     'BlockInsecurePrivateNetworkRequests',
     'HardwareMediaKeyHandling',
-    'CalculateNativeWinOcclusion',
-    'UseEcoQoSForBackgroundProcess',
     // Strictly disable FedCM: Google Identity Services (GSI) checks "IdentityCredential" in window.
     // In desktop Electron, FedCM has no native account-chooser UI dialog and fails with NetworkError.
     // Disabling FedCM forces GSI on Pinterest and other OAuth sites to fall back to standard popup window.open!
@@ -1272,11 +1266,7 @@ if (perfMode !== 'eco' && isFlagOn('prefer-high-performance-gpu', true)) {
     app.commandLine.appendSwitch('force_high_performance_gpu');
 }
 
-// High-priority process scheduling & foreground timer fidelity (disabled in Eco mode)
-if (perfMode !== 'eco') {
-    app.commandLine.appendSwitch('disable-renderer-backgrounding');
-    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-}
+// Allow Chromium background throttling for occluded/hidden background tabs (mainWindow stays unthrottled)
 
 // Unlocked Framerate for synthetic WebGL/Canvas benchmarks (xbitlabs, testufo)
 if (isFlagOn('unlock-frame-rate', false)) {
@@ -1681,33 +1671,10 @@ function checkWindowsReducedMotion() {
     } catch (_) {}
 
     if (process.platform === 'win32') {
-        const now = Date.now();
-        if (now - _lastWindowsReducedMotionCheck < 1500) {
-            return _cachedWindowsReducedMotion;
-        }
-        _lastWindowsReducedMotionCheck = now;
-
         try {
-            const { execSync } = require('child_process');
-            // Query UserPreferencesMask in HKCU\Control Panel\Desktop
-            // Bit 2 (0x04) of byte 0 corresponds to SPI_GETCLIENTAREAANIMATION (Windows Accessibility Animation Effects)
-            const maskOut = execSync('reg.exe query "HKCU\\Control Panel\\Desktop" /v UserPreferencesMask', {
-                encoding: 'utf8',
-                timeout: 500,
-                stdio: ['ignore', 'pipe', 'ignore'],
-                windowsHide: true
-            });
-            const match = maskOut.match(/UserPreferencesMask\s+REG_BINARY\s+([0-9a-fA-F]{2})/i);
-            if (match && match[1]) {
-                const firstByte = parseInt(match[1], 16);
-                // If bit 0x04 is 0, animations are turned off (reduced motion = true)
-                const isClientAreaAnimationDisabled = (firstByte & 0x04) === 0;
-                _cachedWindowsReducedMotion = isClientAreaAnimationDisabled;
-                return isClientAreaAnimationDisabled;
-            }
-
-            _cachedWindowsReducedMotion = false;
-            return false;
+            const val = Boolean(rustBridge.sysIsReducedMotionEnabled());
+            _cachedWindowsReducedMotion = val;
+            return val;
         } catch (_) {
             return _cachedWindowsReducedMotion;
         }
@@ -3447,7 +3414,10 @@ function setupWebviewSession(sess, explicitPartitionKey) {
 
     permissionManager.registerSession(sess, explicitPartitionKey);
 
-    const preloadScriptPath = path.join(__dirname, 'webview_preload.cjs');
+    const minPreloadPath = path.join(__dirname, 'webview_preload.min.cjs');
+    const preloadScriptPath = fsSync.existsSync(minPreloadPath)
+        ? minPreloadPath
+        : path.join(__dirname, 'webview_preload.cjs');
     if (typeof sess.registerPreloadScript === 'function') {
         try {
             sess.registerPreloadScript({ type: 'frame', filePath: preloadScriptPath });
@@ -3791,6 +3761,66 @@ function applyDnsConfiguration(options = {}) {
 }
 
 app.whenReady().then(async () => {
+  // Initialize in-process Rust SQLite WAL storage + migrate site-permissions.json
+  try {
+      const userDataDir = app.getPath('userData');
+      rustBridge.storageInit(
+          path.join(userDataDir, 'qbrowse.db'),
+          path.join(userDataDir, 'site-permissions.json')
+      );
+  } catch (e) {
+      console.warn('[RustStorage] Init warning:', e.message);
+  }
+
+  // Register zero-copy streaming qbrowse-local:// (Range 206) and WebP qbrowse-thumb:// protocols
+  try {
+      protocol.handle('qbrowse-local', async (request) => {
+          try {
+              const urlObj = new URL(request.url);
+              const rawPath = urlObj.searchParams.get('path') || '';
+              const targetPath = toLocalFsPath(rawPath);
+              if (!targetPath || !isAuthorizedLocalPath(targetPath) || !fsSync.existsSync(targetPath)) {
+                  return new Response('Forbidden or Not Found', { status: 403 });
+              }
+              const rangeHeader = request.headers.get('range') || request.headers.get('Range') || null;
+              const chunk = await rustBridge.mediaReadFileRangeBuffer(targetPath, rangeHeader, 2 * 1024 * 1024);
+              const headers = {
+                  'Content-Type': chunk.contentType || 'application/octet-stream',
+                  'Accept-Ranges': 'bytes',
+                  'Cache-Control': 'no-store'
+              };
+              if (chunk.contentRange) {
+                  headers['Content-Range'] = chunk.contentRange;
+              }
+              return new Response(chunk.bytes, {
+                  status: chunk.status || 200,
+                  headers
+              });
+          } catch (err) {
+              return new Response('Error reading local stream', { status: 500 });
+          }
+      });
+
+      protocol.handle('qbrowse-thumb', async (request) => {
+          try {
+              const urlObj = new URL(request.url);
+              const tabId = path.basename(urlObj.pathname || '').replace(/[^a-zA-Z0-9._-]/g, '');
+              if (!tabId) return new Response('Not Found', { status: 404 });
+              const thumbPath = path.join(app.getPath('userData'), 'thumbnails', `${tabId}.webp`);
+              if (!fsSync.existsSync(thumbPath)) return new Response('Not Found', { status: 404 });
+              const bytes = await fs.readFile(thumbPath);
+              return new Response(bytes, {
+                  status: 200,
+                  headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=31536000' }
+              });
+          } catch {
+              return new Response('Error', { status: 500 });
+          }
+      });
+  } catch (e) {
+      console.warn('[Protocol] qbrowse-local / qbrowse-thumb registration warning:', e.message);
+  }
+
   // 0. Load persisted performance settings before window creation so animations and early IPC use saved values
   try {
       performanceEngine.initSettings(app.getPath('userData'));
@@ -4163,16 +4193,10 @@ app.whenReady().then(async () => {
               return { success: false, error: 'File does not exist' };
           }
           const algo = (algorithm || 'sha256').toLowerCase();
-          const hash = crypto.createHash(algo);
-          const stream = fsSync.createReadStream(filePath);
-          await new Promise((resolve, reject) => {
-              stream.on('data', chunk => hash.update(chunk));
-              stream.on('end', resolve);
-              stream.on('error', reject);
-          });
+          const checksum = await rustBridge.mediaHashFile(filePath, algo);
           return {
               success: true,
-              checksum: hash.digest('hex'),
+              checksum,
               algorithm: algo.toUpperCase()
           };
       } catch (err) {
@@ -4405,22 +4429,10 @@ function applyWindowCornerPreference(win, preference) {
             hwndStr = hwndBuf.readUInt32LE(0).toString();
         }
 
-        // DWMWA_WINDOW_CORNER_PREFERENCE = 33
-        // 1 = DWMWCP_DONOTROUND (Sharp / Square)
-        // 2 = DWMWCP_ROUND (Default standard rounded corners)
-        // 3 = DWMWCP_ROUNDSMALL (Cohesive small rounded corners)
-        let prefCode = 2;
-        if (preference === 'square' || preference === 'sharp') {
-            prefCode = 1;
-        } else if (preference === 'cohesive') {
-            prefCode = 3;
-        }
-
-        const exePath = path.join(__dirname, 'bin', 'set-window-corners.exe');
-        if (fsSync.existsSync(exePath)) {
-            execFile(exePath, [hwndStr, prefCode.toString()], { stdio: 'ignore' }, (err) => {
-                if (err) console.warn('[DWM] Error setting window corner preference:', err.message);
-            });
+        const enabled = !(preference === 'square' || preference === 'sharp');
+        const hwndNum = Number(hwndStr);
+        if (Number.isFinite(hwndNum) && hwndNum > 0) {
+            rustBridge.sysSetWindowRoundedCorners(hwndNum, enabled);
         }
     } catch (err) {
         console.warn('[DWM] Failed to set window corner preference:', err.message);
@@ -5814,30 +5826,25 @@ ipcMain.handle('vault-lock', async () => {
     return true;
 });
 
-function requestWindowsHelloVerification(message = "Verify your identity for QBrowse Passkey") {
-    return new Promise((resolve) => {
-        if (process.platform !== 'win32') {
-            return resolve({ verified: false, status: 'NotSupported' });
+async function requestWindowsHelloVerification(message = "Verify your identity for QBrowse Passkey") {
+    if (process.platform !== 'win32') {
+        return { verified: false, status: 'NotSupported' };
+    }
+    try {
+        const res = await rustBridge.vaultVerifyWindowsHello(message);
+        if (res && res.verified) {
+            return { verified: true, success: true, status: 'Verified' };
         }
-        const scriptPath = path.join(__dirname, 'verify_hello.ps1');
-        execFile('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, message], (err, stdout, stderr) => {
-            if (err) {
-                console.warn('[Windows Hello] Exec error:', err);
-                return resolve({ verified: false, status: 'Error', error: err.message });
-            }
-            const output = (stdout || '').trim();
-            console.log('[Windows Hello] Result:', output);
-            if (output.includes('Verified')) {
-                resolve({ verified: true, success: true, status: 'Verified' });
-            } else if (output.includes('Canceled')) {
-                resolve({ verified: false, success: false, status: 'Canceled' });
-            } else if (output.includes('NotAvailable')) {
-                resolve({ verified: false, success: false, status: 'NotAvailable' });
-            } else {
-                resolve({ verified: false, success: false, status: output || 'Failed' });
-            }
-        });
-    });
+        return {
+            verified: false,
+            success: false,
+            status: res?.available === false ? 'NotAvailable' : 'Canceled',
+            error: res?.error || undefined
+        };
+    } catch (err) {
+        console.warn('[Windows Hello] Native error:', err);
+        return { verified: false, status: 'Error', error: err.message };
+    }
 }
 
 const pendingPasskeyVerifications = new Map();
@@ -7593,29 +7600,20 @@ ipcMain.handle('ai-generate-completion', async (event, options) => {
 });
 
 ipcMain.handle('ai-parse-file', async (event, filePath) => {
-    const fs = require('fs');
-    const path = require('path');
-    if (!fs.existsSync(filePath)) throw new Error('File not found');
-
+    if (!fsSync.existsSync(filePath)) throw new Error('File not found');
     const ext = path.extname(filePath).toLowerCase();
-    
+
     try {
         if (ext === '.pdf') {
-            const pdfParse = require('pdf-parse');
-            const dataBuffer = fs.readFileSync(filePath);
-            const data = await pdfParse(dataBuffer);
-            return data.text;
+            const res = await rustBridge.aiExtractPdfText(filePath, 200);
+            return res?.text || '';
         } else if (ext === '.docx') {
-            const mammoth = require('mammoth');
-            const result = await mammoth.extractRawText({ path: filePath });
-            return result.value;
-        } else if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
-            const Tesseract = require('tesseract.js');
-            const result = await Tesseract.recognize(filePath, 'eng');
-            return result.data.text;
+            return await rustBridge.aiExtractDocxText(filePath);
+        } else if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.webp' || ext === '.bmp') {
+            const res = await rustBridge.aiOcrImage(filePath, null);
+            return res?.text || '';
         } else {
-            // Fallback for text files
-            return fs.readFileSync(filePath, 'utf-8');
+            return fsSync.readFileSync(filePath, 'utf-8');
         }
     } catch (e) {
         console.error('File parse error:', e);
@@ -8888,6 +8886,177 @@ ipcMain.handle('github-test-sync', async (event, { config, profileId } = {}) => 
 ipcMain.handle('github-stop', () => {
     return githubEngine.stop();
 });
+
+// ==========================================
+// Rust In-Process Core IPC Bridges
+// ==========================================
+ipcMain.handle('save-tab-thumbnail', async (event, { tabId, dataUrl } = {}) => {
+    try {
+        if (!tabId || !dataUrl || typeof dataUrl !== 'string') return null;
+        const commaIdx = dataUrl.indexOf(',');
+        const rawB64 = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+        const buf = Buffer.from(rawB64, 'base64');
+        const thumbsDir = path.join(app.getPath('userData'), 'thumbnails');
+        return await rustBridge.mediaSaveTabThumbnail(thumbsDir, String(tabId), buf);
+    } catch {
+        return null;
+    }
+});
+
+ipcMain.handle('rust-extract-pdf-text', async (event, { filePath, maxPages } = {}) => {
+    try {
+        if (!filePath || !fsSync.existsSync(filePath)) return '';
+        const res = await rustBridge.aiExtractPdfText(filePath, maxPages || 200);
+        return res?.text || '';
+    } catch {
+        return '';
+    }
+});
+
+ipcMain.handle('rust-encrypt-sync', async (event, { jsonStr, passphrase } = {}) => {
+    try {
+        return await rustBridge.syncEncryptV2(String(passphrase || ''), String(jsonStr || ''));
+    } catch {
+        return null;
+    }
+});
+
+ipcMain.handle('rust-decrypt-sync', async (event, { envelope, passphrase } = {}) => {
+    try {
+        if (!envelope || !envelope.salt || !envelope.iv || !envelope.cipher) return null;
+        return await rustBridge.syncDecrypt(
+            String(passphrase || ''),
+            String(envelope.salt),
+            String(envelope.iv),
+            String(envelope.cipher)
+        );
+    } catch {
+        return null;
+    }
+});
+
+ipcMain.on('rust-search-history', (event, { query, cleanQuery, historySource } = {}) => {
+    try {
+        const items = rustBridge.storageSearchHistory(String(cleanQuery || query || ''), 8, null);
+        if (Array.isArray(items) && items.length > 0) {
+            event.returnValue = items.map((h, idx) => ({
+                url: h.url,
+                title: h.title || h.url,
+                visits: h.visitCount || 1,
+                lastVisit: h.timestamp || Date.now(),
+                score: 90 - idx
+            }));
+            return;
+        }
+        event.returnValue = null;
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+ipcMain.on('rust-merge-history', (event, { localHistory, remoteHistory } = {}) => {
+    try {
+        const mergedMap = new Map();
+        const addAll = (list) => {
+            if (!Array.isArray(list)) return;
+            for (const item of list) {
+                if (!item || !item.url) continue;
+                const lower = String(item.url).toLowerCase();
+                if (
+                    item.space === 'ghost' ||
+                    item.space === 'tor' ||
+                    lower.includes('.onion') ||
+                    lower.startsWith('about:') ||
+                    lower.startsWith('chrome:') ||
+                    lower.startsWith('devtools:') ||
+                    lower.startsWith('qbrowse:') ||
+                    lower.startsWith('data:') ||
+                    lower.startsWith('blob:') ||
+                    lower.startsWith('javascript:')
+                ) continue;
+                const prev = mergedMap.get(item.url);
+                if (!prev || (item.timestamp || 0) > (prev.timestamp || 0)) {
+                    mergedMap.set(item.url, {
+                        ...prev,
+                        ...item,
+                        visits: Math.max(prev?.visits || 1, item.visits || 1)
+                    });
+                }
+            }
+        };
+        addAll(localHistory);
+        addAll(remoteHistory);
+        event.returnValue = Array.from(mergedMap.values())
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+ipcMain.on('rust-parse-gif-info', (event, buffer) => {
+    try {
+        if (!buffer) { event.returnValue = null; return; }
+        const nodeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+        const info = rustBridge.mediaParseGifInfo(nodeBuf);
+        if (info && typeof info.durationMs === 'number') {
+            event.returnValue = { duration: info.durationMs, frames: info.frames };
+            return;
+        }
+        event.returnValue = null;
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+ipcMain.on('rust-extract-article', (event, { html, url } = {}) => {
+    try {
+        if (!html) { event.returnValue = null; return; }
+        event.returnValue = rustBridge.readerExtractArticle(String(html), String(url || ''));
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+ipcMain.on('rust-parse-vault', (event, { text, filename } = {}) => {
+    try {
+        if (!text) { event.returnValue = null; return; }
+        const res = rustBridge.vaultImportData(String(text), String(filename || ''));
+        if (res && Array.isArray(res.items)) {
+            event.returnValue = { parsed: res.items, sourceName: res.sourceName || res.format || 'File' };
+            return;
+        }
+        event.returnValue = null;
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+if (process.env.QBROWSE_SMOKE_TEST === '1') {
+    app.whenReady().then(() => {
+        const startTs = Date.now();
+        setTimeout(() => {
+            try {
+                const metrics = app.getAppMetrics();
+                const totalWorkingSetKB = metrics.reduce((sum, m) => sum + (m.memory?.workingSetSize || 0), 0);
+                console.log(JSON.stringify({
+                    smokeOk: true,
+                    rustAvailable: rustBridge.isAvailable(),
+                    rustVersion: rustBridge.version(),
+                    windowCount: BrowserWindow.getAllWindows().length,
+                    processCount: metrics.length,
+                    totalWorkingSetMB: Number((totalWorkingSetKB / 1024).toFixed(2)),
+                    elapsedMs: Date.now() - startTs
+                }));
+            } catch (err) {
+                console.error('SMOKE_TEST_ERROR:', err);
+                process.exitCode = 1;
+            } finally {
+                app.quit();
+            }
+        }, 3500);
+    });
+}
+
 
 
 

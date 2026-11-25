@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs/promises');
 const crypto = require('crypto');
+const rustBridge = require('./rustBridge.cjs');
 
 const AUTO_ALLOW_PERMISSIONS = new Set([
     'fullscreen',
@@ -748,6 +749,7 @@ class PermissionManager {
             const sessionKey = partition || 'ghost';
             for (const k of keysToUpdate) {
                 this._setSessionDecision(sessionKey, origin, k, normalizedVal);
+                try { rustBridge.permissionSet(sessionKey, origin, k, normalizedVal); } catch (_) {}
             }
             this._emitChange(origin, sessionKey, true);
             return true;
@@ -758,6 +760,7 @@ class PermissionManager {
                 for (const k of keysToUpdate) {
                     delete this.persistentStore[origin][k];
                     this._clearPersistentSessionOverrides(origin, k);
+                    try { rustBridge.permissionSet(partition || 'default', origin, k, 'ask'); } catch (_) {}
                 }
                 if (Object.keys(this.persistentStore[origin]).length === 0) {
                     delete this.persistentStore[origin];
@@ -765,6 +768,7 @@ class PermissionManager {
             } else {
                 for (const k of keysToUpdate) {
                     this._clearPersistentSessionOverrides(origin, k);
+                    try { rustBridge.permissionSet(partition || 'default', origin, k, 'ask'); } catch (_) {}
                 }
             }
         } else {
@@ -774,6 +778,7 @@ class PermissionManager {
             for (const k of keysToUpdate) {
                 this.persistentStore[origin][k] = normalizedVal;
                 this._clearPersistentSessionOverrides(origin, k);
+                try { rustBridge.permissionSet(partition || 'default', origin, k, normalizedVal); } catch (_) {}
             }
         }
 

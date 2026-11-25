@@ -51,13 +51,15 @@ export default function GlassPdfViewer({ url, filePath, fileName, initialFileDat
             try {
                 let docData = null;
 
-                // 0. Reuse pre-probed base64 payload from LocalFileViewer to avoid duplicate IPC read
+                // 0. Reuse pre-probed base64 or streamUrl payload from LocalFileViewer to avoid duplicate IPC read
                 let rawBase64 = initialFileData?.base64 || null;
+                let streamUrl = initialFileData?.streamUrl || null;
 
-                // 1. Otherwise read raw bytes directly via Electron API
-                if (!rawBase64 && window.electronAPI?.readLocalFileData && (filePath || url)) {
+                // 1. Otherwise read raw bytes or streamUrl directly via Electron API
+                if (!rawBase64 && !streamUrl && window.electronAPI?.readLocalFileData && (filePath || url)) {
                     const res = await window.electronAPI.readLocalFileData(filePath || url);
                     rawBase64 = res?.base64 || null;
+                    streamUrl = res?.streamUrl || null;
                 }
 
                 if (rawBase64) {
@@ -68,6 +70,9 @@ export default function GlassPdfViewer({ url, filePath, fileName, initialFileDat
                         bytes[i] = binaryStr.charCodeAt(i);
                     }
                     docData = bytes.buffer;
+                } else if (streamUrl) {
+                    const response = await fetch(streamUrl);
+                    docData = await response.arrayBuffer();
                 }
 
                 // 2. Fallback to standard fetch
