@@ -6,6 +6,7 @@ import {
 import useVaultStore from '../../store/useVaultStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
+import { isLinuxPlatform } from '../../utils/platform';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
 
@@ -422,7 +423,7 @@ export default function SavePasswordBanner() {
                         </button>
 
                         <div className="flex items-center gap-2">
-                            {window.electronAPI?.unlockVaultWindowsHello && (
+                            {!isLinuxPlatform() && window.electronAPI?.unlockVaultWindowsHello && (
                                 <button 
                                     type="button"
                                     onClick={handleWindowsHelloUnlock}

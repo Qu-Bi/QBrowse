@@ -18,6 +18,7 @@ const getBiometricLabel = () => {
     const osKey = getOsKey();
     return osKey === 'darwin' ? 'Touch ID' : osKey === 'linux' ? 'System Biometrics' : 'Windows Hello';
 };
+const supportsBiometrics = getOsKey() !== 'linux';
 
 const TOUR_STEPS = [
     {
@@ -63,9 +64,13 @@ const TOUR_STEPS = [
         title: 'Zero-Knowledge QVault',
         icon: KeyRound,
         badge: 'Hardware Security',
-        description: `Your master passwords, passkeys, and credit card autofills are encrypted directly on your device using local hardware keys and ${getBiometricLabel()} biometric security. Zero plain text ever leaves your PC.`,
+        description: supportsBiometrics
+            ? `Your master passwords, passkeys, and credit card autofills are encrypted directly on your device using local hardware keys and ${getBiometricLabel()} biometric security. Zero plain text ever leaves your PC.`
+            : 'Your master passwords, passkeys, and credit card autofills are encrypted locally on your device. Zero plain text ever leaves your PC.',
         missionInstruction: 'Click the QVault icon on the top bar to open your local QVault',
-        missionSuccess: 'QVault opened! All stored credentials are encrypted locally on your hardware with biometric protection.',
+        missionSuccess: supportsBiometrics
+            ? 'QVault opened! All stored credentials are encrypted locally on your hardware with biometric protection.'
+            : 'QVault opened! All stored credentials are encrypted locally on your device.',
         shortcut: 'Top Bar'
     },
     {

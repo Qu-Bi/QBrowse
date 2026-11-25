@@ -3,6 +3,7 @@ import { KeyRound, Lock, Fingerprint, X, Loader2, AlertCircle, Eye, EyeOff, Glob
 import useUIStore, { getAnimationTimeout } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useVaultStore, { enrichPasswords } from '../../store/useVaultStore';
+import { isLinuxPlatform } from '../../utils/platform';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
 
@@ -52,6 +53,7 @@ const PasskeyVerificationModal = () => {
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const osPlatform = (typeof window !== 'undefined' && window.electronAPI?.platform) || (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('linux') ? 'linux' : typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'win32');
     const osKey = osPlatform === 'darwin' ? 'darwin' : osPlatform === 'linux' ? 'linux' : 'win32';
+    const supportsBiometrics = !isLinuxPlatform();
     const biometricLabel = t(`tools.passkey.biometrics.${osKey}`, null, osKey === 'darwin' ? 'Touch ID' : osKey === 'linux' ? 'System Biometrics' : 'Windows Hello');
     const biometricPinHint = t(
         `tools.passkey.hints.${osKey}`,
@@ -185,7 +187,7 @@ const PasskeyVerificationModal = () => {
     };
 
     const handleWindowsHello = async () => {
-        if (authStatus !== 'idle') return;
+        if (!supportsBiometrics || authStatus !== 'idle') return;
         setAuthStatus('scanning');
         setErrorMessage('');
         try {
@@ -455,6 +457,8 @@ const PasskeyVerificationModal = () => {
 
                 {/* Verification Actions */}
                 <div className="space-y-4">
+                    {supportsBiometrics && (
+                    <>
                     {/* Method 1: System Biometrics */}
                     <button
                         type="button"
@@ -494,6 +498,8 @@ const PasskeyVerificationModal = () => {
                         </span>
                         <div className={`flex-1 h-px ${isBright ? 'bg-black/10' : 'bg-white/10'}`}></div>
                     </div>
+                    </>
+                    )}
 
                     {/* Method 2: Master Password / PIN Form */}
                     <form onSubmit={handlePasswordSubmit} className="space-y-3">

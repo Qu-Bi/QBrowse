@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { t } from '../i18n/index';
 import { unlockVault, unlockVaultWindowsHello, getPasswords, addPassword, deletePassword, updatePassword } from '../services/electronIPC.js';
+import { isLinuxPlatform } from '../utils/platform';
 
 export function isRawCiphertextString(str) {
     return typeof str === 'string' && /^[0-9a-fA-F]{24}:[0-9a-fA-F]{32}:[0-9a-fA-F]+$/.test(str.trim());
@@ -168,7 +169,7 @@ const useVaultStore = create((set, get) => ({
     isUnlocked: false,
     masterPassword: '',
     pinEnabled: localStorage.getItem('qbrowse_vault_pin_enabled') === 'true',
-    biometricsEnabled: localStorage.getItem('qbrowse_vault_bio') === 'true',
+    biometricsEnabled: !isLinuxPlatform() && localStorage.getItem('qbrowse_vault_bio') === 'true',
     passwords: [],
     vaultItemCount: 0,
     selectedItemId: null,
@@ -189,7 +190,7 @@ const useVaultStore = create((set, get) => ({
                 set({
                     isInitialized: Boolean(status.isInitialized),
                     pinEnabled: Boolean(status.hasPin),
-                    biometricsEnabled: Boolean(status.hasWindowsHello),
+                    biometricsEnabled: !isLinuxPlatform() && Boolean(status.hasWindowsHello),
                     vaultItemCount: typeof status?.itemCount === 'number' ? status.itemCount : (get().passwords?.length || 0),
                     failedAttempts: status.failedPinAttempts || 0,
                     lockoutUntil: status.pinLockUntil || null
@@ -197,7 +198,7 @@ const useVaultStore = create((set, get) => ({
                 try {
                     localStorage.setItem('qbrowse_vault_init', Boolean(status.isInitialized) ? 'true' : 'false');
                     localStorage.setItem('qbrowse_vault_pin_enabled', Boolean(status.hasPin) ? 'true' : 'false');
-                    localStorage.setItem('qbrowse_vault_bio', Boolean(status.hasWindowsHello) ? 'true' : 'false');
+                    localStorage.setItem('qbrowse_vault_bio', !isLinuxPlatform() && Boolean(status.hasWindowsHello) ? 'true' : 'false');
                 } catch (_) {}
                 return status;
             }
@@ -412,6 +413,13 @@ const useVaultStore = create((set, get) => ({
     },
 
     setBiometrics: async (val) => {
+        if (isLinuxPlatform()) {
+            set({ biometricsEnabled: false });
+            try {
+                localStorage.setItem('qbrowse_vault_bio', 'false');
+            } catch (_) {}
+            return false;
+        }
         try {
             const mp = get().masterPassword;
             const res = await window.electronAPI?.setupVaultWindowsHello?.(Boolean(val), mp);
