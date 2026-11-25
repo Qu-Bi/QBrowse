@@ -12,6 +12,7 @@ import useTabStore from '../../store/useTabStore';
 import usePopoverAnchor from '../../hooks/usePopoverAnchor';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { parseVaultContent } from '../../utils/vaultImporter';
+import { isLinuxPlatform } from '../../utils/platform';
 import {
     cleanTotpSecret, isValidTotpSecret, parseOtpAuthUri,
     generateTotpCode, getTotpRemainingSeconds, formatTotpCode
@@ -116,6 +117,7 @@ export default function QVaultPopover({ isClosing }) {
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const biometricLabel = getBiometricLabel(t);
+    const supportsBiometrics = !isLinuxPlatform();
 
     // Live clock for TOTP updates
     const [now, setNow] = useState(Date.now());
@@ -1178,7 +1180,7 @@ export default function QVaultPopover({ isClosing }) {
                             {!isInitialized ? t('pop.vault.initializeVault', null, 'Initialize Vault') : t('pop.vault.unlockVault', null, 'Unlock Vault')}
                         </button>
 
-                        {biometricsEnabled && (
+                        {supportsBiometrics && biometricsEnabled && (
                             <button
                                 type="button"
                                 disabled={isLoading}
@@ -1244,7 +1246,7 @@ export default function QVaultPopover({ isClosing }) {
                         </div>
                     </form>
 
-                    {/* Platform Biometrics */}
+                    {supportsBiometrics && (
                     <div className={`p-3 border rounded-2xl flex items-center justify-between ${cardClass}`}>
                         <div className="flex flex-col gap-0.5">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${isBright ? 'text-zinc-900' : 'text-white'}`}>
@@ -1265,6 +1267,7 @@ export default function QVaultPopover({ isClosing }) {
                             {isTogglingBio ? t('pop.vault.updating', null, 'Updating...') : (biometricsEnabled ? t('common.enabled', null, 'Enabled') : t('pop.vault.enable', null, 'Enable'))}
                         </button>
                     </div>
+                    )}
 
                     {/* Master Password Settings */}
                     <form onSubmit={handleChangeMasterPassword} className={`p-3 border rounded-2xl flex flex-col gap-2.5 ${cardClass}`}>

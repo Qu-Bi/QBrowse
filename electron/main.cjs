@@ -5625,7 +5625,7 @@ ipcMain.handle('vault-get-status', async () => {
             isInitialized: (vault.canary || vault.testEncryption) ? true : false,
             isUnlocked: Boolean(masterKey),
             hasPin: Boolean(vault.pinConfig?.enabled && vault.pinConfig?.wrappedSecret),
-            hasWindowsHello: Boolean((vault.canary || vault.testEncryption) && ((vault.bioConfig?.enabled && vault.bioConfig?.wrappedSecretBase64) || vault.osKeyWrap || process.platform === 'win32')),
+            hasWindowsHello: process.platform !== 'linux' && Boolean((vault.canary || vault.testEncryption) && ((vault.bioConfig?.enabled && vault.bioConfig?.wrappedSecretBase64) || vault.osKeyWrap || process.platform === 'win32')),
             itemCount: Array.isArray(vault.passwords) ? vault.passwords.length : 0,
             failedPinAttempts: vault.pinConfig?.failedAttempts || 0,
             pinLockUntil: vault.pinConfig?.lockUntil || 0

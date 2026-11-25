@@ -108,16 +108,16 @@ mod platform {
         WindowsHelloResult {
             available: false,
             verified: false,
-            error: None,
+            error: Some("Windows Hello is only available on Windows".to_string()),
         }
     }
 
     pub async fn dpapi_protect(_data: &[u8]) -> Result<Vec<u8>> {
-        Err(anyhow!("Windows DPAPI is only available on Windows"))
+        Err(anyhow::anyhow!("Windows DPAPI is only available on Windows"))
     }
 
     pub async fn dpapi_unprotect(_protected: &[u8]) -> Result<Vec<u8>> {
-        Err(anyhow!("Windows DPAPI is only available on Windows"))
+        Err(anyhow::anyhow!("Windows DPAPI is only available on Windows"))
     }
 }
 

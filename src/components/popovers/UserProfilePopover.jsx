@@ -12,6 +12,7 @@ import useUIStore from '../../store/useUIStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from '../../store/useTabStore';
 import useVaultStore from '../../store/useVaultStore';
+import { isLinuxPlatform } from '../../utils/platform';
 import useHistoryStore from '../../store/useHistoryStore';
 import useProfileStore from '../../store/useProfileStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
@@ -109,6 +110,7 @@ export default function UserProfilePopover({ isClosing }) {
     const isVaultUnlocked = useVaultStore(state => state.isUnlocked);
     const pinEnabled = useVaultStore(state => state.pinEnabled);
     const biometricsEnabled = useVaultStore(state => state.biometricsEnabled);
+    const supportsBiometrics = !isLinuxPlatform();
     const unlockWithPin = useVaultStore(state => state.unlockWithPin);
     const unlockWithWindowsHello = useVaultStore(state => state.unlockWithWindowsHello);
     const unlockVault = useVaultStore(state => state.unlock);
@@ -489,7 +491,7 @@ export default function UserProfilePopover({ isClosing }) {
                             className={`flex-1 min-w-0 h-9 rounded-full px-3.5 text-xs font-mono outline-none transition-all border disabled:opacity-50 ${inputClasses}`}
                         />
                     )}
-                    {biometricsEnabled && (
+                    {supportsBiometrics && biometricsEnabled && (
                         <button
                             type="button"
                             disabled={isBusy}
