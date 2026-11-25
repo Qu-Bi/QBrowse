@@ -9,7 +9,8 @@
   },
   "private": false,
   "license": "MIT",
-  "version": "1.4.3",
+  "version": "1.5.0",
+  "qbrowseEdition": "standard",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

@@ -150,10 +150,16 @@ function normalizeLinuxArch(arch = process.arch) {
     return raw;
 }
 
-function getLinuxMetadataFileName(arch = process.arch) {
+function getLinuxMetadataFileName(arch = process.arch, edition = 'standard') {
     const normArch = normalizeLinuxArch(arch);
-    if (normArch === 'x64') return 'latest-linux.yml';
-    return `latest-linux-${normArch}.yml`;
+    const prefix = String(edition || 'standard').toLowerCase() === 'rust' ? 'rust' : 'latest';
+    if (normArch === 'x64') return `${prefix}-linux.yml`;
+    return `${prefix}-linux-${normArch}.yml`;
+}
+
+function isRustEditionAsset(fileName) {
+    if (!fileName || typeof fileName !== 'string') return false;
+    return /(?:^|[-_.])rust(?:[-_.]|$)/i.test(fileName);
 }
 
 function detectAssetArch(fileName) {
@@ -300,10 +306,15 @@ function probePackageOwnership(execFileSyncFn, cmd, args) {
     }
 }
 
-function selectLinuxReleaseAsset(assets = [], installType = 'appimage', arch = process.arch, ymlData = null) {
+function selectLinuxReleaseAsset(assets = [], installType = 'appimage', arch = process.arch, ymlData = null, edition = 'standard') {
     const normArch = normalizeLinuxArch(arch);
+    const wantRust = String(edition || 'standard').toLowerCase() === 'rust';
     const validAssets = (Array.isArray(assets) ? assets : []).filter(
-        (a) => a && typeof a.name === 'string' && a.browser_download_url && !isNonPackageArtifact(a.name)
+        (a) => a
+            && typeof a.name === 'string'
+            && a.browser_download_url
+            && !isNonPackageArtifact(a.name)
+            && (wantRust ? isRustEditionAsset(a.name) : !isRustEditionAsset(a.name))
     );
 
     if (installType === 'flatpak' || installType === 'snap') {
@@ -466,6 +477,7 @@ module.exports = {
     normalizeLinuxArch,
     getLinuxMetadataFileName,
     detectAssetArch,
+    isRustEditionAsset,
     isNonPackageArtifact,
     sanitizeUpdateFileName,
     detectLinuxInstallType,
