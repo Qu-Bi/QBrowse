@@ -435,7 +435,7 @@ class AdblockEngine {
         isAdblockActive = settingsStore.adblockEnabled !== false;
 
         this.cacheDir = path.join(app.getPath('userData'), 'adblock_cache');
-        this.cacheFile = path.join(this.cacheDir, 'engine-v4.bin');
+        this.cacheFile = path.join(this.cacheDir, 'engine-rust-v5.bin');
 
         try {
             if (!fs.existsSync(this.cacheDir)) {
@@ -444,6 +444,7 @@ class AdblockEngine {
         } catch (_) {}
 
         // 1. Load pre-compiled binary cache via qbrowse-shield in-process Rust core
+        let needsFilterRefresh = false;
         try {
             if (fs.existsSync(this.cacheFile)) {
                 const t0 = performance.now();
@@ -459,18 +460,23 @@ class AdblockEngine {
                     setTimeout(() => { this.updateFilters(false); }, 30000);
                 }
             } else {
-                engineMode = 'native-rust';
-                activeRuleCount = 2500;
-                console.log('[AdblockEngine] Native Rust Shield baseline active. Scheduling background list update...');
-                setTimeout(() => {
-                    this.updateFilters(false).catch(err => {
-                        console.warn('[AdblockEngine] Initial background list download deferred:', err.message);
-                    });
-                }, 2000);
+                needsFilterRefresh = true;
             }
         } catch (err) {
-            console.warn('[AdblockEngine] Shield init warning:', err.message);
+            try { fs.unlinkSync(this.cacheFile); } catch (_) {}
+            needsFilterRefresh = true;
+            console.log('[AdblockEngine] Rebuilding Rust Shield filter cache from baseline...');
+        }
+
+        if (needsFilterRefresh) {
             engineMode = 'native-rust';
+            activeRuleCount = 2500;
+            console.log('[AdblockEngine] Native Rust Shield baseline active. Scheduling background list update...');
+            setTimeout(() => {
+                this.updateFilters(false).catch(err => {
+                    console.warn('[AdblockEngine] Initial background list download deferred:', err.message);
+                });
+            }, 1500);
         }
 
         try {
@@ -494,6 +500,7 @@ class AdblockEngine {
             isAdblockActive = next;
             console.log(`[AdblockEngine] Adblocker ${isAdblockActive ? 'enabled' : 'disabled'}`);
         }
+        try { rustBridge.shieldSetActive(isAdblockActive); } catch (_) {}
         if (settingsStoreRef) {
             settingsStoreRef.adblockEnabled = isAdblockActive;
         }
