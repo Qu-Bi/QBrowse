@@ -21,8 +21,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'main' || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -89,7 +87,7 @@ jobs:
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qbrowse-windows-standard
+          name: qbrowse-windows
           path: |
             dist_electron/QBrowse-Setup-*.exe
             dist_electron/QBrowse-Web-Setup-*.exe
@@ -102,8 +100,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'main' || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -175,10 +171,10 @@ jobs:
             esac
           done
 
-      - name: Upload Linux Standard Artifacts
+      - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qbrowse-linux-standard
+          name: qbrowse-linux
           path: |
             dist_electron/*.deb
             dist_electron/*.rpm
@@ -187,167 +183,6 @@ jobs:
             dist_electron/*.tar.gz
             dist_electron/*.blockmap
             dist_electron/latest-linux*.yml
-
-  build-windows-rust:
-    name: Build Windows (Rust Experimental)
-    if: github.ref == 'refs/heads/rust-edition' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'rust-edition' || github.ref }}
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-          cache: 'npm'
-
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> target"
-
-      - name: Sync version with Git tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          TAG_VER="${GITHUB_REF_NAME#v}"
-          npm version "$TAG_VER" --no-git-tag-version --allow-same-version
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build & Test Rust Core + Parity Suite
-        shell: bash
-        run: |
-          npm run build:rust
-          test -f electron/native/qbrowse-core.win32-x64-msvc.node
-          cargo test --workspace --release --manifest-path rust/Cargo.toml
-          node tests/verify_rust_parity.cjs
-
-      - name: Build Windows Rust Edition Installer
-        run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY || secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN || secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID || secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET || secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID || secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
-
-      - name: Verify Windows Rust Artifacts
-        shell: bash
-        run: |
-          ls -la dist_electron
-          test -f dist_electron/rust.yml
-          ls dist_electron/QBrowse-Rust-*.exe
-
-      - name: Upload Windows Rust Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: qbrowse-windows-rust
-          path: |
-            dist_electron/QBrowse-Rust-*.exe
-            dist_electron/QBrowse-Rust-*.blockmap
-            dist_electron/rust.yml
-
-  build-linux-rust:
-    name: Build Linux (Rust Experimental)
-    if: github.ref == 'refs/heads/rust-edition' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'rust-edition' || github.ref }}
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-          cache: 'npm'
-
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust -> target"
-
-      - name: Sync version with Git tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VER="${GITHUB_REF_NAME#v}"
-          npm version "$TAG_VER" --no-git-tag-version --allow-same-version
-
-      - name: Install system packaging & Rust build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libarchive-tools rpm
-
-      - name: Install dependencies
-        run: |
-          npm install
-          chmod +x node_modules/.bin/vite
-          chmod +x node_modules/.bin/electron-builder || true
-
-      - name: Build & Test Rust Core + Parity Suite
-        run: |
-          npm run build:rust
-          test -f electron/native/qbrowse-core.linux-x64-gnu.node
-          cargo test --workspace --release --manifest-path rust/Cargo.toml
-          node test_linux_updater.cjs
-          node tests/verify_rust_parity.cjs
-
-      - name: Download Linux AI Binaries
-        run: |
-          mkdir -p electron/bin
-          curl -L -o /tmp/llama.zip https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip || true
-          unzip -o /tmp/llama.zip -d electron/bin/ || true
-          rm -f /tmp/llama.zip
-          chmod +x electron/bin/* || true
-
-      - name: Build Linux Rust Edition Packages
-        run: npm run build:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY || secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN || secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID || secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET || secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID || secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
-
-      - name: Verify Linux Rust Artifacts
-        run: |
-          ls -la dist_electron
-          test -f dist_electron/rust-linux.yml
-          ls dist_electron/QBrowse-Rust-*.AppImage dist_electron/qbrowse_rust_*.deb dist_electron/qbrowse-rust-*.rpm dist_electron/qbrowse-rust-*.pacman dist_electron/QBrowse-Rust-*.tar.gz
-          for f in dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz; do
-            case "$(basename "$f")" in
-              *" "*) echo "ERROR: Space found in Linux artifact name: $f" >&2; exit 1 ;;
-            esac
-          done
-
-      - name: Upload Linux Rust Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: qbrowse-linux-rust
-          path: |
-            dist_electron/qbrowse_rust_*.deb
-            dist_electron/qbrowse-rust-*.rpm
-            dist_electron/QBrowse-Rust-*.AppImage
-            dist_electron/qbrowse-rust-*.pacman
-            dist_electron/QBrowse-Rust-*.tar.gz
-            dist_electron/*.blockmap
-            dist_electron/rust-linux*.yml
 
   publish-release:
     name: Publish Unified Release
