@@ -381,6 +381,12 @@ const BASELINE_FILTERS = `
 ||wpimg.pl/b-^
 ||wpimg.pl/rek/^
 ||wpimg.pl/banner^
+||wpimg.pl/welcome^
+||wpimg.pl/screening^
+||wp.pl/reklama^
+||wp.pl/*/reklama^
+||rek.wp.pl^
+||reklama.wp.pl^
 ||2mdn.net^
 ||innovid.com^
 ##.ad-banner
@@ -406,6 +412,12 @@ wp.pl##.wp-header-panel
 wp.pl##[class*="wp-header-panel"]
 wp.pl##[class*="screeningWallpaper"]
 wp.pl##[class*="bmjdxfegh"]
+wp.pl##[class*="welcome-screen"]
+wp.pl##[id*="welcome-screen"]
+wp.pl##[class*="interstitial"]
+wp.pl##[id*="interstitial"]
+wp.pl##div[data-st-area="reklama"]
+wp.pl##[class*="ad-overlay"]
 `;
 
 // Filter list remote sources
@@ -418,7 +430,10 @@ const FILTER_SOURCES = [
     { id: 'ublock-badware', name: 'uBlock Badware', url: 'https://ublockorigin.github.io/uAssets/filters/badware.txt' },
     { id: 'ublock-privacy', name: 'uBlock Privacy', url: 'https://ublockorigin.github.io/uAssets/filters/privacy.txt' },
     { id: 'ublock-quick-fixes', name: 'uBlock Quick Fixes', url: 'https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt' },
-    { id: 'ublock-unbreak', name: 'uBlock Unbreak', url: 'https://ublockorigin.github.io/uAssets/filters/unbreak.txt' }
+    { id: 'ublock-unbreak', name: 'uBlock Unbreak', url: 'https://ublockorigin.github.io/uAssets/filters/unbreak.txt' },
+    { id: 'easylist-polish', name: 'EasyList Polish', url: 'https://easylist-downloads.adblockplus.org/easylistpolish.txt' },
+    { id: 'polish-annoyances', name: 'Polish Annoyance Filters', url: 'https://raw.githubusercontent.com/PolishFiltersTeam/PolishAnnoyanceFilters/master/PPB.txt' },
+    { id: 'polish-anti-adblock', name: 'Polish Anti-Adblock Filters', url: 'https://raw.githubusercontent.com/olegwukr/polish-privacy-filters/master/anti-adblock.txt' }
 ];
 
 class AdblockEngine {
@@ -435,7 +450,7 @@ class AdblockEngine {
         isAdblockActive = settingsStore.adblockEnabled !== false;
 
         this.cacheDir = path.join(app.getPath('userData'), 'adblock_cache');
-        this.cacheFile = path.join(this.cacheDir, 'engine-rust-v5.bin');
+        this.cacheFile = path.join(this.cacheDir, 'engine-rust-v6.bin');
 
         try {
             if (!fs.existsSync(this.cacheDir)) {
@@ -618,12 +633,19 @@ class AdblockEngine {
             const urls = FILTER_SOURCES.map(s => s.url);
             const res = await rustBridge.shieldUpdateFilterLists(urls);
             if (res && res.success) {
+                let saveMs = 0;
                 try {
+                    const tSave0 = performance.now();
                     rustBridge.shieldSaveCacheAtomic(this.cacheFile);
+                    saveMs = performance.now() - tSave0;
                 } catch (_) {}
                 engineMode = 'native-rust';
                 lastCacheUpdate = Date.now();
                 activeRuleCount = res.ruleCount || 200000;
+                const listsFetched = res.listsFetched ?? res.lists_fetched ?? urls.length;
+                const bytesTotal = res.bytesTotal ?? res.bytes_total ?? 0;
+                const mbTotal = (bytesTotal / (1024 * 1024)).toFixed(2);
+                console.log(`[AdblockEngine] Filter refresh complete: ${listsFetched}/${urls.length} lists fetched (${mbTotal} MB), cache saved in ${saveMs.toFixed(1)}ms.`);
                 this.isUpdating = false;
                 return { success: true, count: activeRuleCount, updatedAt: lastCacheUpdate };
             }

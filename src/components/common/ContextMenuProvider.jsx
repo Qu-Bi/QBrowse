@@ -66,13 +66,21 @@ const getSpaceIcon = (iconName) => {
 const ContextMenuThemeContext = React.createContext({ isBright: false });
 
 // Shared Liquid Glass surface styling for context menus, popovers & submenus
-export {
+import {
     getLiquidGlassSurfaceClasses,
     getLiquidGlassMenuClasses,
     getLiquidGlassCardClasses,
     getLiquidGlassInlineStyle,
     getLiquidGlassStyle
 } from '../../utils/liquidGlassStyles';
+
+export {
+    getLiquidGlassSurfaceClasses,
+    getLiquidGlassMenuClasses,
+    getLiquidGlassCardClasses,
+    getLiquidGlassInlineStyle,
+    getLiquidGlassStyle
+};
 
 // Reusable Glassmorphic Menu Container with Smart Edge Collision Detection & Keyboard Navigation
 function MenuContainer({ x, y, isClosing, onClose, children, className = '' }) {

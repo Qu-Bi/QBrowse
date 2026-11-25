@@ -78,6 +78,12 @@ pub const BASELINE_FILTERS: &str = r#"
 ||wpimg.pl/b-^
 ||wpimg.pl/rek/^
 ||wpimg.pl/banner^
+||wpimg.pl/welcome^
+||wpimg.pl/screening^
+||wp.pl/reklama^
+||wp.pl/*/reklama^
+||rek.wp.pl^
+||reklama.wp.pl^
 ||2mdn.net^
 ||innovid.com^
 ##.ad-banner
@@ -113,6 +119,12 @@ wp.pl##.wp-header-panel
 wp.pl##[class*="wp-header-panel"]
 wp.pl##[class*="screeningWallpaper"]
 wp.pl##[class*="bmjdxfegh"]
+wp.pl##[class*="welcome-screen"]
+wp.pl##[id*="welcome-screen"]
+wp.pl##[class*="interstitial"]
+wp.pl##[id*="interstitial"]
+wp.pl##div[data-st-area="reklama"]
+wp.pl##[class*="ad-overlay"]
 "#;
 
 const YOUTUBE_PASS_THROUGH_DOMAINS: &[&str] = &[

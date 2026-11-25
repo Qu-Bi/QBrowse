@@ -640,8 +640,9 @@ pub async fn vault_check_windows_hello() -> Result<Value> {
 }
 
 #[napi]
-pub async fn vault_verify_windows_hello(message: String) -> Result<Value> {
-    let res = qbrowse_vault::verify_windows_hello(&message).await;
+pub async fn vault_verify_windows_hello(message: String, hwnd: Option<i64>) -> Result<Value> {
+    let hwnd_opt = hwnd.filter(|&h| h != 0).map(|h| h as isize);
+    let res = qbrowse_vault::verify_windows_hello(&message, hwnd_opt).await;
     serde_json::to_value(res).map_err(to_napi_err)
 }
 
@@ -797,8 +798,12 @@ pub async fn media_save_tab_thumbnail(
 // ==================== SYSTEM / WIN32 / LINUX UPDATER / TELEMETRY ====================
 
 #[napi]
-pub fn sys_set_window_rounded_corners(hwnd_isize: i64, enabled: bool) -> bool {
-    qbrowse_sys::set_window_rounded_corners(hwnd_isize as isize, enabled).is_ok()
+pub fn sys_set_window_rounded_corners(hwnd_isize: i64, preference: Either<u32, bool>) -> bool {
+    let pref = match preference {
+        Either::A(code) => code,
+        Either::B(enabled) => if enabled { 2 } else { 1 },
+    };
+    qbrowse_sys::set_window_rounded_corners(hwnd_isize as isize, pref).is_ok()
 }
 
 #[napi]

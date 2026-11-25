@@ -2,6 +2,7 @@
 
 const en = {
     common: {
+        clear: "Clear",
         cancel: "Cancel",
         save: "Save",
         delete: "Delete",
@@ -68,12 +69,30 @@ const en = {
         Heart: "Heart"
     },
     presets: {
-        balanced: { name: "Balanced", tagline: "Dual personal & work workspaces with Google search." },
-        developer: { name: "Developer", tagline: "Isolated workspaces with GitHub Live PR integration." },
-        classic_reverse: { name: "Modern Arc", tagline: "Right-aligned tab tree with a clean reading canvas." },
-        bottom_bar: { name: "Ergonomic Flow", tagline: "Bottom address bar for thumb-friendly navigation." },
-        minimalist: { name: "Minimal Focus", tagline: "Single workspace with compact, distraction-free chrome." },
-        privacy: { name: "Privacy Sentinel", tagline: "Strict tracker protection with DuckDuckGo search." },
+        balanced: {
+            name: "Balanced",
+            tagline: "Dual personal & work workspaces with Google search."
+        },
+        developer: {
+            name: "Developer",
+            tagline: "Isolated workspaces with GitHub Live PR integration."
+        },
+        classic_reverse: {
+            name: "Modern Arc",
+            tagline: "Right-aligned tab tree with a clean reading canvas."
+        },
+        bottom_bar: {
+            name: "Ergonomic Flow",
+            tagline: "Bottom address bar for thumb-friendly navigation."
+        },
+        minimalist: {
+            name: "Minimal Focus",
+            tagline: "Single workspace with compact, distraction-free chrome."
+        },
+        privacy: {
+            name: "Privacy Sentinel",
+            tagline: "Strict tracker protection with DuckDuckGo search."
+        },
         appliedToast: "Preset Applied: {name}"
     },
     appearance: {
@@ -190,9 +209,34 @@ const en = {
         toastWebCached: "Web wallpaper cached and applied!",
         toastDownloadFailed: "Failed to download wallpaper",
         toastApplied: "Wallpaper applied!",
-        toastResetWallpaper: "Wallpaper reset to default stock"
+        toastResetWallpaper: "Wallpaper reset to default stock",
+        highlightAccentLabel: "Accent",
+        textHighlightTitle: "Text Highlight Color & Style",
+        textHighlightDesc: "Customize how selected text looks across the browser and websites.",
+        textHighlightWebLabel: "Apply to Websites",
+        textHighlightPreview: "Drag to select this text and preview your highlight style live.",
+        highlightStyles: {
+            system: "System",
+            tinted: "Tinted",
+            vibrant: "Vibrant",
+            glow: "Glow",
+            underline: "Underline"
+        },
+        highlightSwatches: {
+            accent: "Follow Accent",
+            d4bc94: "Sand",
+            "3b82f6": "Electric Blue",
+            "10b981": "Emerald",
+            f43f5e: "Rose",
+            a855f7: "Violet",
+            f59e0b: "Amber",
+            "06b6d4": "Cyan",
+            ec4899: "Pink"
+        }
     },
     layout: {
+        framelessModeTitle: "Frameless / Zen Mode (Ctrl+Alt+F)",
+        framelessModeDesc: "Hide sidebar and top bar into edge-hover drawers without entering OS fullscreen.",
         title: "Layout & Interface",
         subtitle: "Configure spatial dockings, window geometry, omnibox architecture, and toolbar controls.",
         spatialTitle: "Spatial Positioning",
@@ -204,7 +248,12 @@ const en = {
         toolHubPosTitle: "Tool Hub Drawer Position",
         toolHubPosDesc: "Side panel dock for extensions, downloads, QVault, and AI assistant.",
         collisionNote: "Note: If docked on the same side as the Sidebar, the Sidebar will automatically adjust to the opposite side to prevent interface collision.",
-        pos: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" },
+        pos: {
+            left: "Left",
+            right: "Right",
+            top: "Top",
+            bottom: "Bottom"
+        },
         toastSidebarPos: "Sidebar position: {pos}",
         toastTopBarPos: "Top Bar position: {pos}",
         toastToolHubPos: "Tool Hub position: {pos}",
@@ -536,6 +585,8 @@ const en = {
         toastBangRemoved: "Removed custom bang \"!{prefix}\"",
         filterBangsPlaceholder: "Filter bangs by name, shortcut (!yt, @github), or category...",
         deleteCustomBangTitle: "Delete custom bang",
+        bangsFilterCount: "Showing {shown} of {total} matching bangs",
+        bangsPreviewCount: "Showing {shown} of {total} — filter above to browse all",
         behaviorSectionTitle: "Omnibox Behavior & Display",
         behaviorSectionDesc: "Control inline calculations, live autocomplete, and URL formatting.",
         smartCalcTitle: "Smart Calculator in Omnibox",
@@ -631,7 +682,11 @@ const en = {
         freeGb: "{size} GB Free",
         battery: "Battery",
         taskManager: "Task Manager",
-        tiers: { eco: "ECO", balanced: "BALANCED", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "BALANCED",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Performance Scaling Mode",
         scalingModeDesc: "Dynamic CPU scaling, background tab hibernation, and visual blur fidelity.",
         pillAuto: "Auto",
@@ -725,11 +780,26 @@ const en = {
         subscriptionsTitle: "Filter Subscriptions",
         subscriptionsDesc: "Active community filter lists.",
         filters: {
-            easylist: { name: "EasyList", desc: "Core advertisement blocking rules" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Tracking scripts, beacons, and telemetry" },
-            annoyances: { name: "Cookie & Annoyance Filters", desc: "Cookie consent dialogs and newsletter popups" },
-            malware: { name: "Malware & Mining Protection", desc: "Known malicious domains and in-browser miners" },
-            peterlowe: { name: "Peter Lowe's Ad Server List", desc: "Curated ad server and tracking domains" }
+            easylist: {
+                name: "EasyList",
+                desc: "Core advertisement blocking rules"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Tracking scripts, beacons, and telemetry"
+            },
+            annoyances: {
+                name: "Cookie & Annoyance Filters",
+                desc: "Cookie consent dialogs and newsletter popups"
+            },
+            malware: {
+                name: "Malware & Mining Protection",
+                desc: "Known malicious domains and in-browser miners"
+            },
+            peterlowe: {
+                name: "Peter Lowe's Ad Server List",
+                desc: "Curated ad server and tracking domains"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Exceptions & Rules",
@@ -777,9 +847,71 @@ const en = {
         resetAllToast: "All keyboard shortcuts restored to defaults",
         restoredDefault: "Shortcut restored to default",
         updatedToast: "Shortcut updated",
-        swappedToast: "Shortcuts swapped"
+        swappedToast: "Shortcuts swapped",
+        conflictBound: "{combo} is already bound to \"{action}\".",
+        conflictHint: "Swap their bindings, replace the existing shortcut, or cancel.",
+        swapReplaceBtn: "Swap / Replace",
+        overrideBtn: "Override",
+        noMatches: "No shortcuts matching \"{query}\".",
+        customizedBadge: "Custom",
+        pressKeys: "Press keys...",
+        recordingTooltip: "Press new key combination (Esc to cancel)",
+        recordTooltip: "Click to record new shortcut",
+        restoreDefaultTooltip: "Restore default shortcut",
+        categories: {
+            tabs: "Tabs",
+            navigation: "Navigation",
+            view: "View",
+            tools: "Tools",
+            window: "Window"
+        },
+        actions: {
+            newTab: "New Tab",
+            closeTab: "Close Tab",
+            reopenClosedTab: "Reopen Closed Tab",
+            toggleMuteTab: "Mute / Unmute Tab",
+            openTabMap: "Tab Map (Mission Control)",
+            pinOrBookmarkTab: "Pin / Bookmark Tab",
+            openOmnibox: "Open Command Omnibox",
+            focusAddressBar: "Focus Address Bar",
+            copyCurrentUrl: "Copy Current URL",
+            reloadTab: "Reload Page",
+            hardReloadTab: "Hard Reload (Purge Cache)",
+            navigateBack: "Back in History",
+            navigateForward: "Forward in History",
+            openHistory: "History Archive",
+            openFile: "Open Local File",
+            toggleSidebar: "Toggle Sidebar",
+            toggleRightPanel: "Toggle Tool Hub / Right Panel",
+            toggleFramelessMode: "Toggle Frameless / Zen Mode",
+            toggleSplitView: "Toggle Split View",
+            toggleSplitOrientation: "Cycle Split View Layout (2-Col / 2-Row / 2×2)",
+            swapSplitPanes: "Swap Split Panes",
+            toggleReaderMode: "Toggle Reader Mode",
+            zoomIn: "Zoom In",
+            zoomOut: "Zoom Out",
+            resetZoom: "Reset Zoom",
+            toggleFullscreen: "Toggle Fullscreen",
+            findInPage: "Find in Page",
+            findNext: "Find Next Match",
+            findPrev: "Find Previous Match",
+            toggleElementEraser: "Element Eraser",
+            toggleScreenshotBar: "Screenshot & Snipping Bar",
+            toggleReadAloud: "Read Aloud Assistant",
+            printPage: "Print Page",
+            openDevTools: "Developer Tools",
+            toggleCaretBrowsing: "Toggle Caret Browsing",
+            newWindow: "New Window",
+            newPrivateWindow: "New Private / Tor Window",
+            closeWindow: "Close Window",
+            openSettings: "Open Settings",
+            openHelp: "Help Center & Shortcuts",
+            openTaskManager: "Task Manager"
+        }
     },
     about: {
+        helpLegalTitle: "Help & Legal",
+        helpLegalDesc: "User guide (F1), keyboard shortcuts, Terms of Service, Privacy Policy, and MIT license.",
         title: "About & System Info",
         subtitle: "System architecture, runtime specifications, and app updates.",
         accountSectionTitle: "Account & Cloud Sync",
@@ -884,12 +1016,17 @@ const en = {
         startupChimeTitle: "Play startup welcome chime",
         startupChimeDesc: "Synthesized acoustic chord when launching the browser.",
         relaunchSetup: "Relaunch Setup Journey",
-        interactiveTour: "Interactive Living Tour"
+        interactiveTour: "Interactive Living Tour",
+        helpCenterBtn: "Help Center (F1)",
+        termsBtn: "Terms of Service",
+        privacyBtn: "Privacy Policy",
+        licensesBtn: "Open-Source Licenses"
     }
 };
 
 const pl = {
     common: {
+        clear: "Wyczyść",
         cancel: "Anuluj",
         save: "Zapisz",
         delete: "Usuń",
@@ -926,7 +1063,8 @@ const pl = {
         ai: "ai sztuczna inteligencja gemma llama model lokalny czat podsumowanie gpu wątki kontekst",
         engine: "silnik wydajność akceleracja gpu tryb eko ultra pamięć ram usypianie kart bfcache bateria procesor",
         adblock: "tarcze adblock blokowanie reklam trackery easylist ublock własna lista zaufane witryny filtry youtube",
-        about: "wersja aktualizacja sprawdź aktualizacje domyślna przeglądarka informacje o systemie sprzęt specyfikacja przewodnik"
+        about: "wersja aktualizacja sprawdź aktualizacje domyślna przeglądarka informacje o systemie sprzęt specyfikacja przewodnik",
+        shortcuts: "skróty klawiszowe klawisze przypisania modyfikuj ctrl cmd"
     },
     reset: {
         confirmTitle: "Zresetować wszystkie ustawienia?",
@@ -955,12 +1093,30 @@ const pl = {
         Heart: "Serce"
     },
     presets: {
-        balanced: { name: "Zbalansowany", tagline: "Dwie przestrzenie (Osobiste i Praca) oraz wyszukiwarka Google." },
-        developer: { name: "Deweloperski", tagline: "Odizolowane obszary robocze z integracją GitHub Live PR." },
-        classic_reverse: { name: "Nowoczesny Arc", tagline: "Drzewo kart po prawej stronie i czyste płótno do czytania." },
-        bottom_bar: { name: "Ergonomiczny", tagline: "Dolny pasek adresu dla wygodnej nawigacji." },
-        minimalist: { name: "Minimalistyczny", tagline: "Jedna przestrzeń robocza z kompaktowym interfejsem bez rozpraszaczy." },
-        privacy: { name: "Strażnik Prywatności", tagline: "Ścisła ochrona przed śledzeniem i wyszukiwarka DuckDuckGo." },
+        balanced: {
+            name: "Zbalansowany",
+            tagline: "Dwie przestrzenie (Osobiste i Praca) oraz wyszukiwarka Google."
+        },
+        developer: {
+            name: "Deweloperski",
+            tagline: "Odizolowane obszary robocze z integracją GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Nowoczesny Arc",
+            tagline: "Drzewo kart po prawej stronie i czyste płótno do czytania."
+        },
+        bottom_bar: {
+            name: "Ergonomiczny",
+            tagline: "Dolny pasek adresu dla wygodnej nawigacji."
+        },
+        minimalist: {
+            name: "Minimalistyczny",
+            tagline: "Jedna przestrzeń robocza z kompaktowym interfejsem bez rozpraszaczy."
+        },
+        privacy: {
+            name: "Strażnik Prywatności",
+            tagline: "Ścisła ochrona przed śledzeniem i wyszukiwarka DuckDuckGo."
+        },
         appliedToast: "Zastosowano preset: {name}"
     },
     appearance: {
@@ -1057,9 +1213,54 @@ const pl = {
         toastWebCached: "Tapeta z sieci została zapisana i zastosowana!",
         toastDownloadFailed: "Nie udało się pobrać tapety",
         toastApplied: "Tapeta zastosowana!",
-        toastResetWallpaper: "Przywrócono domyślną tapetę"
+        toastResetWallpaper: "Przywrócono domyślną tapetę",
+        smartDarkExcludeMediaTitle: "Wyklucz obrazy i wideo",
+        smartDarkExcludeMediaDesc: "Zachowaj naturalne kolory zdjęć, filmów, płócien canvas i osadzonych odtwarzaczy zamiast je odwracać.",
+        excludedDomainsDesc: "Witryny na tej liście (oraz ich subdomeny) zachowują swój natywny motyw. Wklej domenę, pełny URL lub wzorzec *.domena.pl.",
+        smartDarkStatusOn: "Wymuszony ciemny wł.",
+        smartDarkStatusOff: "Wymuszony ciemny wył.",
+        whitelistInputPlaceholder: "np. github.com, https://docs.site.com lub *.example.com",
+        whitelistSearchPlaceholder: "Filtruj wykluczone domeny...",
+        whitelistWillAdd: "Zostanie dodane:",
+        whitelistResetBtn: "Przywróć domyślne",
+        whitelistResetTooltip: "Przywróć zalecane witryny z natywnym trybem ciemnym",
+        whitelistClearTooltip: "Usuń wszystkie wykluczone domeny",
+        whitelistEmpty: "Brak wykluczonych domen. Inteligentny tryb ciemny będzie oceniał wszystkie strony automatycznie.",
+        whitelistNoMatches: "Brak domen na białej liście pasujących do „{query}”.",
+        whitelistDuplicate: "{domain} jest już na białej liście.",
+        whitelistInvalid: "Wpisz prawidłową domenę, URL lub wzorzec *.domena.pl.",
+        whitelistAddedToast: "Wykluczono {domain} z inteligentnego trybu ciemnego",
+        whitelistRemovedToast: "Usunięto {domain} z białej listy trybu ciemnego",
+        whitelistResetToast: "Przywrócono {count} zalecanych domen domyślnych",
+        whitelistResetToastShort: "Przywrócono domyślną białą listę trybu ciemnego",
+        whitelistClearedToast: "Wyczyszczono białą listę trybu ciemnego",
+        highlightAccentLabel: "Akcent",
+        textHighlightTitle: "Kolor i styl zaznaczenia tekstu",
+        textHighlightDesc: "Dostosuj wygląd zaznaczonego tekstu w przeglądarce i na stronach internetowych.",
+        textHighlightWebLabel: "Zastosuj na stronach",
+        textHighlightPreview: "Przeciągnij, aby zaznaczyć ten tekst i zobaczyć podgląd stylu na żywo.",
+        highlightStyles: {
+            system: "Systemowy",
+            tinted: "Przyciemniony",
+            vibrant: "Żywy",
+            glow: "Poświata",
+            underline: "Podkreślenie"
+        },
+        highlightSwatches: {
+            accent: "Jak akcent",
+            d4bc94: "Piaskowy",
+            "3b82f6": "Elektryczny błękit",
+            "10b981": "Szmaragdowy",
+            f43f5e: "Różany",
+            a855f7: "Fioletowy",
+            f59e0b: "Bursztynowy",
+            "06b6d4": "Cyjan",
+            ec4899: "Różowy"
+        }
     },
     layout: {
+        framelessModeTitle: "Tryb bez ramek / Zen (Ctrl+Alt+F)",
+        framelessModeDesc: "Ukryj pasek boczny i górny w wysuwanych szufladach przy krawędziach bez przechodzenia w pełny ekran systemu.",
         title: "Układ i interfejs",
         subtitle: "Konfiguruj dokowanie paneli, geometrię okna, pasek adresu oraz kontrolki paska narzędzi.",
         spatialTitle: "Pozycjonowanie przestrzenne",
@@ -1071,7 +1272,12 @@ const pl = {
         toolHubPosTitle: "Pozycja panelu Tool Hub",
         toolHubPosDesc: "Boczny panel dla rozszerzeń, pobrań, QVault i asystenta AI.",
         collisionNote: "Uwaga: Jeśli panel zostanie przypięty po tej samej stronie co pasek boczny, pasek boczny automatycznie przeniesie się na przeciwną stronę.",
-        pos: { left: "Lewo", right: "Prawo", top: "Góra", bottom: "Dół" },
+        pos: {
+            left: "Lewo",
+            right: "Prawo",
+            top: "Góra",
+            bottom: "Dół"
+        },
         toastSidebarPos: "Pozycja paska bocznego: {pos}",
         toastTopBarPos: "Pozycja paska głównego: {pos}",
         toastToolHubPos: "Pozycja Tool Hub: {pos}",
@@ -1284,7 +1490,18 @@ const pl = {
         clearDataTitle: "Wyczyść dane przeglądania",
         clearDataDesc: "Usuń historię, pliki cookie i pamięć podręczną z dysku lokalnego oraz SQLite.",
         clearDataBtn: "Wyczyść dane...",
-        toastDataCleared: "Wyczyszczono wszystkie dane przeglądania!"
+        toastDataCleared: "Wyczyszczono wszystkie dane przeglądania!",
+        passkeyProviderTitle: "Dostawca kluczy dostępu",
+        passkeyProviderDesc: "Wybierz, czy strony mają najpierw używać kluczy QVault, czy zawsze kierować bezpośrednio do klucza sprzętowego / systemowego (YubiKey, FIDO2, Windows Hello, Touch ID, QR telefonu).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Klucz sprzętowy / systemowy",
+        toastPasskeyModeQvault: "Dostawca kluczy: QVault (z awaryjnym kluczem sprzętowym)",
+        toastPasskeyModeHardware: "Dostawca kluczy: Zawsze używaj klucza sprzętowego / systemowego",
+        passkeyFallbackTitle: "Automatyczny powrót do klucza sprzętowego",
+        passkeyFallbackDesc: "Automatycznie przełącz na YubiKey, FIDO2, biometrię systemu lub QR telefonu, gdy QVault nie ma pasującego klucza, jest zablokowany w trybie Ghost/Tor lub strona wymaga nieobsługiwanych algorytmów.",
+        passkeyFallbackAlwaysActive: "Zawsze aktywne",
+        toastPasskeyFallbackEnabled: "Włączono automatyczny powrót do klucza sprzętowego",
+        toastPasskeyFallbackDisabled: "Wyłączono automatyczny powrót do klucza sprzętowego"
     },
     cookies: {
         title: "Pliki cookie i uprawnienia witryn",
@@ -1309,13 +1526,38 @@ const pl = {
             notifications: "Powiadomienia",
             clipboard: "Schowek",
             sound: "Dźwięk",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Kamera",
+            microphone: "Mikrofon",
+            "clipboard-read": "Schowek",
+            midi: "Urządzenia MIDI",
+            sensors: "Ruch i czujniki",
+            "idle-detection": "Wykrywanie bezczynności",
+            "display-capture": "Udostępnianie ekranu",
+            "window-management": "Zarządzanie oknami",
+            "speaker-selection": "Wyjście audio",
+            openExternal: "Zewnętrzne aplikacje"
         },
         permValues: {
             allow: "zezwól",
             block: "blokuj",
             ask: "pytaj"
-        }
+        },
+        networkSectionTitle: "Sieć i usługi w tle",
+        networkSectionDesc: "Kontroluj opcjonalne żądania sieciowe w tle. Włącz tryb Strict Offline, aby zagwarantować zerowy ruch w tle.",
+        networkActiveCount: "{active} z {total} aktywnych",
+        strictOfflineTitle: "Tryb Strict Offline / Zero żądań w tle",
+        strictOfflineDesc: "Główny wyłącznik blokujący wszystkie opcjonalne żądania w tle (aktualizacje, listy filtrów, podpowiedzi wyszukiwania, zdalne ikony i synchronizację w chmurze).",
+        bgAutoUpdatesTitle: "Automatyczne sprawdzanie aktualizacji",
+        bgAutoUpdatesDesc: "Okresowo sprawdzaj GitHub Releases w poszukiwaniu nowych wersji QBrowse.",
+        bgFilterUpdatesTitle: "Odświeżanie list filtrów Adblock",
+        bgFilterUpdatesDesc: "Pobieraj w tle zaktualizowane listy EasyList, EasyPrivacy i uBlock.",
+        bgLiveSuggestionsTitle: "Podpowiedzi wyszukiwania na żywo",
+        bgLiveSuggestionsDesc: "Pobieraj podpowiedzi autouzupełniania w czasie rzeczywistym podczas pisania w pasku adresu.",
+        bgRemoteFaviconsTitle: "Zdalne ikony witryn (Favicon)",
+        bgRemoteFaviconsDesc: "Pobieraj ikony stron przez usługę favicon Google dla kart, przypięć i historii.",
+        bgCloudSyncTitle: "Synchronizacja w chmurze w tle",
+        bgCloudSyncDesc: "Automatycznie synchronizuj zaszyfrowane karty, ustawienia i zmiany sejfu z chmurą."
     },
     search: {
         title: "Wyszukiwarka i pasek adresu",
@@ -1367,6 +1609,8 @@ const pl = {
         toastBangRemoved: "Usunięto własny skrót „!{prefix}”",
         filterBangsPlaceholder: "Filtruj skróty po nazwie, prefiksie (!yt, @github) lub kategorii...",
         deleteCustomBangTitle: "Usuń własny skrót bang",
+        bangsFilterCount: "Wyświetlono {shown} z {total} pasujących bangów",
+        bangsPreviewCount: "Wyświetlono {shown} z {total} — użyj filtra powyżej, aby przeglądać wszystkie",
         behaviorSectionTitle: "Zachowanie i wygląd paska adresu",
         behaviorSectionDesc: "Kontroluj obliczenia w locie, podpowiedzi na żywo oraz formatowanie adresów URL.",
         smartCalcTitle: "Inteligentny kalkulator w pasku adresu",
@@ -1435,7 +1679,19 @@ const pl = {
         patDesc: "QBrowse wykrywa aktywną sesję GitHub. Podaj token PAT, jeśli Twoja organizacja wymaga SSO/SAML:",
         testSyncBtn: "Testuj i synchronizuj",
         toastSynced: "Zsynchronizowano z GitHubem",
-        dormantText: "Integracja GitHub Live jest obecnie uśpiona. Włącz ją powyżej, aby śledzić Pull Requesty i Zgłoszenia w trybie pracy."
+        dormantText: "Integracja GitHub Live jest obecnie uśpiona. Włącz ją powyżej, aby śledzić Pull Requesty i Zgłoszenia w trybie pracy.",
+        usernameTitle: "Nazwa użytkownika GitHub (opcjonalnie — publiczne repozytoria)",
+        usernameDesc: "Śledź publiczne PR-y i zgłoszenia po nazwie użytkownika bez logowania i dodawania tokena:",
+        usernamePlaceholder: "np. octocat",
+        testingSyncBtn: "Synchronizacja...",
+        toastSyncedDetail: "Zsynchronizowano @{username} ({reviews} recenzji, {prs} PR-ów, {issues} zgłoszeń)",
+        toastSyncFailed: "Synchronizacja GitHub nie powiodła się: {error}",
+        statusConnected: "Połączono jako @{username}",
+        statusViaPat: "przez PAT",
+        statusViaSession: "przez sesję przeglądarki",
+        statusViaPublic: "przez publiczne API",
+        statusCounts: "{reviews} recenzji · {prs} PR-ów · {issues} zgłoszeń",
+        statusNotConnected: "Jeszcze nie połączono. Kliknij Testuj i synchronizuj, aby sprawdzić sesję, PAT lub nazwę użytkownika."
     },
     engine: {
         title: "Silnik i wydajność",
@@ -1450,7 +1706,11 @@ const pl = {
         freeGb: "{size} GB wolne",
         battery: "Bateria",
         taskManager: "Menedżer zadań",
-        tiers: { eco: "ECO", balanced: "ZBALANSOWANY", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "ZBALANSOWANY",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Tryb skalowania wydajności",
         scalingModeDesc: "Dynamiczne skalowanie CPU, hibernacja kart w tle oraz jakość rozmycia interfejsu.",
         pillAuto: "Auto",
@@ -1542,11 +1802,26 @@ const pl = {
         subscriptionsTitle: "Subskrypcje filtrów",
         subscriptionsDesc: "Aktywne listy filtrów społeczności.",
         filters: {
-            easylist: { name: "EasyList", desc: "Podstawowe reguły blokowania reklam" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Skrypty śledzące, sygnalizatory i telemetria" },
-            annoyances: { name: "Filtry cookie i irytujących elementów", desc: "Okna zgody na cookie i wyskakujące newslettery" },
-            malware: { name: "Ochrona przed malware i koparkami", desc: "Znanym złośliwym domenom i koparkom w przeglądarce" },
-            peterlowe: { name: "Lista serwerów reklam Petera Lowe'a", desc: "Wyselekcjonowana lista serwerów reklamowych i trackerów" }
+            easylist: {
+                name: "EasyList",
+                desc: "Podstawowe reguły blokowania reklam"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Skrypty śledzące, sygnalizatory i telemetria"
+            },
+            annoyances: {
+                name: "Filtry cookie i irytujących elementów",
+                desc: "Okna zgody na cookie i wyskakujące newslettery"
+            },
+            malware: {
+                name: "Ochrona przed malware i koparkami",
+                desc: "Znanym złośliwym domenom i koparkom w przeglądarce"
+            },
+            peterlowe: {
+                name: "Lista serwerów reklam Petera Lowe'a",
+                desc: "Wyselekcjonowana lista serwerów reklamowych i trackerów"
+            }
         },
         toastFilterToggle: "{name}: {state}",
         exceptionsTitle: "Wyjątki i reguły",
@@ -1584,9 +1859,13 @@ const pl = {
         confirmClearBlocklist: "Czy na pewno chcesz wyczyścić wszystkie {count} zablokowane domeny?",
         toastClearedBlocklist: "Wyczyszczono własną listę blokowania",
         toastBlocklistEmpty: "Lista blokowania jest pusta",
-        toastCopiedBlocklist: "Skopiowano {count} domen do schowka"
+        toastCopiedBlocklist: "Skopiowano {count} domen do schowka",
+        cnameUncloakingTitle: "Włącz odkrywanie CNAME DNS",
+        cnameUncloakingDesc: "Rozwiązuj subdomeny śledzące pierwszej strony przez rekordy DNS CNAME w tle, aby blokować zamaskowane trackery."
     },
     about: {
+        helpLegalTitle: "Pomoc i informacje prawne",
+        helpLegalDesc: "Podręcznik użytkownika (F1), skróty klawiszowe, Warunki korzystania, Polityka prywatności i licencja MIT.",
         title: "O programie i system",
         subtitle: "Architektura systemu, specyfikacje środowiska wykonawczego oraz aktualizacje aplikacji.",
         accountSectionTitle: "Konto i synchronizacja w chmurze",
@@ -1674,12 +1953,104 @@ const pl = {
         startupChimeTitle: "Odtwarzaj dźwięk powitalny przy starcie",
         startupChimeDesc: "Syntetyzowany akord akustyczny przy uruchamianiu przeglądarki.",
         relaunchSetup: "Uruchom ponownie kreator konfiguracji",
-        interactiveTour: "Interaktywny przewodnik"
+        interactiveTour: "Interaktywny przewodnik",
+        toastNewReleaseExternal: "Dostępna nowa wersja v{version}! Zaktualizuj przez {format}.",
+        toastNewReleaseLinuxPkg: "Dostępne nowe wydanie GitHub v{version} ({format}). Kliknij Pobierz, aby pobrać pakiet.",
+        toastLinuxPkgReady: "Pobrano pakiet aktualizacji v{version}! Otwórz go lub uruchom polecenie instalacji.",
+        toastOpeningPackage: "Otwieranie pobranego pakietu aktualizacji...",
+        toastOpenedPackageFolder: "Otwarto folder pobierania. Uruchom polecenie instalacji, aby dokończyć.",
+        toastCommandCopied: "Skopiowano polecenie instalacji do schowka",
+        updateExternalMsg: "Dostępna jest wersja v{version}. Zaktualizuj używając {format}.",
+        updateNoLinuxAssetMsg: "Wersja v{version} jest dostępna na GitHub Releases. Brak gotowego pakietu dla {arch} — otwórz GitHub Releases, aby pobrać ręcznie.",
+        updateDownloadedLinuxPkgMsg: "Pobrano pakiet v{version} ({format}). Otwórz pakiet lub uruchom poniższe polecenie terminala, aby zainstalować.",
+        openDownloadedPackage: "Otwórz pobrany pakiet",
+        showInFolder: "Pokaż pobrany pakiet w folderze",
+        showInFolderBtn: "Folder",
+        openReleasePage: "Otwórz stronę wydania",
+        downloadAppImage: "Pobierz AppImage (v{version})",
+        downloadLinuxPkg: "Pobierz aktualizację {format} (v{version})",
+        copyInstallCmdTitle: "Kopiuj polecenie instalacji w terminalu",
+        copyBtn: "Kopiuj",
+        helpCenterBtn: "Centrum pomocy (F1)",
+        termsBtn: "Warunki korzystania",
+        privacyBtn: "Polityka prywatności",
+        licensesBtn: "Licencje open-source"
+    },
+    shortcuts: {
+        title: "Skróty klawiszowe",
+        subtitle: "Kliknij dowolny układ skrótu, aby nagrać nową kombinację klawiszy. Naciśnij Esc, aby anulować, lub Backspace, aby zresetować.",
+        searchPlaceholder: "Szukaj akcji lub kombinacji klawiszy (np. „Split”, „Ctrl + T”)...",
+        resetAllBtn: "Resetuj wszystkie skróty",
+        resetAllToast: "Przywrócono domyślne skróty klawiszowe",
+        restoredDefault: "Przywrócono domyślny skrót",
+        updatedToast: "Zaktualizowano skrót",
+        swappedToast: "Zamieniono skróty",
+        conflictBound: "{combo} jest już przypisany do „{action}”.",
+        conflictHint: "Zamień skróty miejscami, zastąp istniejący skrót lub anuluj.",
+        swapReplaceBtn: "Zamień / Zastąp",
+        overrideBtn: "Nadpisz",
+        noMatches: "Brak skrótów pasujących do „{query}”.",
+        customizedBadge: "Własny",
+        pressKeys: "Naciśnij klawisze...",
+        recordingTooltip: "Naciśnij nową kombinację klawiszy (Esc, aby anulować)",
+        recordTooltip: "Kliknij, aby nagrać nowy skrót",
+        restoreDefaultTooltip: "Przywróć domyślny skrót",
+        categories: {
+            tabs: "Karty",
+            navigation: "Nawigacja",
+            view: "Widok",
+            tools: "Narzędzia",
+            window: "Okno"
+        },
+        actions: {
+            newTab: "Nowa karta",
+            closeTab: "Zamknij kartę",
+            reopenClosedTab: "Przywróć zamkniętą kartę",
+            toggleMuteTab: "Wycisz / wyłącz wyciszenie karty",
+            openTabMap: "Mapa kart (Mission Control)",
+            pinOrBookmarkTab: "Przypnij / dodaj kartę do zakładek",
+            openOmnibox: "Otwórz pasek poleceń Omnibox",
+            focusAddressBar: "Aktywuj pasek adresu",
+            copyCurrentUrl: "Kopiuj bieżący adres URL",
+            reloadTab: "Odśwież stronę",
+            hardReloadTab: "Twarde odświeżenie (wyczyść pamięć podręczną)",
+            navigateBack: "Wstecz w historii",
+            navigateForward: "Dalej w historii",
+            openHistory: "Archiwum historii",
+            openFile: "Otwórz plik lokalny",
+            toggleSidebar: "Pokaż / ukryj pasek boczny",
+            toggleRightPanel: "Pokaż / ukryj Centrum narzędzi",
+            toggleFramelessMode: "Przełącz tryb bezramkowy / Zen",
+            toggleSplitView: "Przełącz widok podzielony",
+            toggleSplitOrientation: "Przełącz układ podziału (2 kol. / 2 wiersze / 2×2)",
+            swapSplitPanes: "Zamień panele widoku podzielonego",
+            toggleReaderMode: "Przełącz tryb czytania",
+            zoomIn: "Powiększ",
+            zoomOut: "Pomniejsz",
+            resetZoom: "Resetuj powiększenie",
+            toggleFullscreen: "Tryb pełnoekranowy",
+            findInPage: "Znajdź na stronie",
+            findNext: "Znajdź następne dopasowanie",
+            findPrev: "Znajdź poprzednie dopasowanie",
+            toggleElementEraser: "Gumka elementów",
+            toggleScreenshotBar: "Pasek zrzutów ekranu i wycinków",
+            toggleReadAloud: "Asystent czytania na głos",
+            printPage: "Drukuj stronę",
+            openDevTools: "Narzędzia deweloperskie",
+            toggleCaretBrowsing: "Przełącz nawigację kursorem",
+            newWindow: "Nowe okno",
+            newPrivateWindow: "Nowe okno prywatne / Tor",
+            closeWindow: "Zamknij okno",
+            openSettings: "Otwórz ustawienia",
+            openHelp: "Centrum pomocy i skróty",
+            openTaskManager: "Menedżer zadań"
+        }
     }
 };
 
 const fr = {
     common: {
+        clear: "Effacer",
         cancel: "Annuler",
         save: "Enregistrer",
         delete: "Supprimer",
@@ -1716,7 +2087,8 @@ const fr = {
         ai: "ia gemma llama modèle local chat résumer lecteur llm gpu couches",
         engine: "moteur performances accélération matérielle gpu mode éco ultra mémoire ram mise en veille bfcache batterie processeur",
         adblock: "protection bloqueur publicités traqueurs easylist ublock liste personnalisée domaines approuvés filtres youtube",
-        about: "version mise à jour vérifier mises à jour navigateur par défaut système matériel diagnostic visite guidée"
+        about: "version mise à jour vérifier mises à jour navigateur par défaut système matériel diagnostic visite guidée",
+        shortcuts: "raccourcis clavier touches attributions modifier ctrl cmd"
     },
     reset: {
         confirmTitle: "Réinitialiser tous les paramètres ?",
@@ -1745,12 +2117,30 @@ const fr = {
         Heart: "Cœur"
     },
     presets: {
-        balanced: { name: "Équilibré", tagline: "Doubles espaces Personnel & Travail avec recherche Google." },
-        developer: { name: "Développeur", tagline: "Espaces isolés avec intégration GitHub Live PR." },
-        classic_reverse: { name: "Arc Moderne", tagline: "Arborescence d'onglets à droite et surface de lecture épurée." },
-        bottom_bar: { name: "Flux Ergonomique", tagline: "Barre d'adresse en bas pour une navigation naturelle." },
-        minimalist: { name: "Focus Minimal", tagline: "Espace unique avec interface compacte sans distraction." },
-        privacy: { name: "Sentinelle Privée", tagline: "Protection stricte contre le pistage et recherche DuckDuckGo." },
+        balanced: {
+            name: "Équilibré",
+            tagline: "Doubles espaces Personnel & Travail avec recherche Google."
+        },
+        developer: {
+            name: "Développeur",
+            tagline: "Espaces isolés avec intégration GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Arc Moderne",
+            tagline: "Arborescence d'onglets à droite et surface de lecture épurée."
+        },
+        bottom_bar: {
+            name: "Flux Ergonomique",
+            tagline: "Barre d'adresse en bas pour une navigation naturelle."
+        },
+        minimalist: {
+            name: "Focus Minimal",
+            tagline: "Espace unique avec interface compacte sans distraction."
+        },
+        privacy: {
+            name: "Sentinelle Privée",
+            tagline: "Protection stricte contre le pistage et recherche DuckDuckGo."
+        },
         appliedToast: "Préréglage appliqué : {name}"
     },
     appearance: {
@@ -1847,9 +2237,54 @@ const fr = {
         toastWebCached: "Fond d'écran web mis en cache et appliqué !",
         toastDownloadFailed: "Échec du téléchargement du fond d'écran",
         toastApplied: "Fond d'écran appliqué !",
-        toastResetWallpaper: "Fond d'écran par défaut rétabli"
+        toastResetWallpaper: "Fond d'écran par défaut rétabli",
+        smartDarkExcludeMediaTitle: "Exclure les images et vidéos",
+        smartDarkExcludeMediaDesc: "Conserver les couleurs naturelles des photos, vidéos, canvas et lecteurs intégrés au lieu de les inverser.",
+        excludedDomainsDesc: "Les sites listés ici (et leurs sous-domaines) conservent leur thème natif. Collez un domaine, une URL ou *.domaine.com.",
+        smartDarkStatusOn: "Mode sombre activé",
+        smartDarkStatusOff: "Mode sombre désactivé",
+        whitelistInputPlaceholder: "ex. github.com, https://docs.site.com ou *.example.com",
+        whitelistSearchPlaceholder: "Filtrer les domaines exclus...",
+        whitelistWillAdd: "Sera ajouté :",
+        whitelistResetBtn: "Réinitialiser",
+        whitelistResetTooltip: "Restaurer les sites sombres natifs recommandés",
+        whitelistClearTooltip: "Supprimer tous les domaines exclus",
+        whitelistEmpty: "Aucun domaine exclu. Le mode sombre intelligent évaluera tous les sites automatiquement.",
+        whitelistNoMatches: "Aucun domaine autorisé correspondant à « {query} ».",
+        whitelistDuplicate: "{domain} est déjà dans la liste blanche.",
+        whitelistInvalid: "Saisissez un domaine, une URL ou un motif *.domaine.com valide.",
+        whitelistAddedToast: "{domain} exclu du mode sombre intelligent",
+        whitelistRemovedToast: "{domain} retiré de la liste blanche du mode sombre",
+        whitelistResetToast: "{count} domaines par défaut recommandés restaurés",
+        whitelistResetToastShort: "Liste blanche du mode sombre réinitialisée",
+        whitelistClearedToast: "Liste blanche du mode sombre effacée",
+        highlightAccentLabel: "Accent",
+        textHighlightTitle: "Couleur et style de surbrillance du texte",
+        textHighlightDesc: "Personnalisez l’apparence du texte sélectionné dans le navigateur et sur les sites web.",
+        textHighlightWebLabel: "Appliquer aux sites web",
+        textHighlightPreview: "Faites glisser pour sélectionner ce texte et prévisualiser votre style en direct.",
+        highlightStyles: {
+            system: "Système",
+            tinted: "Teinté",
+            vibrant: "Éclatant",
+            glow: "Lueur",
+            underline: "Souligné"
+        },
+        highlightSwatches: {
+            accent: "Suivre l'accent",
+            d4bc94: "Sable",
+            "3b82f6": "Bleu électrique",
+            "10b981": "Émeraude",
+            f43f5e: "Rose",
+            a855f7: "Violet",
+            f59e0b: "Ambre",
+            "06b6d4": "Cyan",
+            ec4899: "Rose vif"
+        }
     },
     layout: {
+        framelessModeTitle: "Mode sans bordure / Zen (Ctrl+Alt+F)",
+        framelessModeDesc: "Masquer la barre latérale et la barre supérieure dans des tiroirs au survol des bords sans passer en plein écran système.",
         title: "Disposition & Interface",
         subtitle: "Configurez l'ancrage des panneaux, la géométrie des fenêtres, la barre d'adresse et les contrôles.",
         spatialTitle: "Positionnement spatial",
@@ -1861,7 +2296,12 @@ const fr = {
         toolHubPosTitle: "Position du tiroir Tool Hub",
         toolHubPosDesc: "Panneau latéral pour extensions, téléchargements, QVault et assistant IA.",
         collisionNote: "Note : S'il est placé du même côté que la barre latérale, celle-ci basculera automatiquement de l'autre côté.",
-        pos: { left: "Gauche", right: "Droite", top: "Haut", bottom: "Bas" },
+        pos: {
+            left: "Gauche",
+            right: "Droite",
+            top: "Haut",
+            bottom: "Bas"
+        },
         toastSidebarPos: "Position de la barre latérale : {pos}",
         toastTopBarPos: "Position de la barre principale : {pos}",
         toastToolHubPos: "Position du Tool Hub : {pos}",
@@ -2074,7 +2514,18 @@ const fr = {
         clearDataTitle: "Effacer les données de navigation",
         clearDataDesc: "Supprime l'historique, les cookies et le cache du stockage local et SQLite.",
         clearDataBtn: "Effacer...",
-        toastDataCleared: "Toutes les données de navigation ont été effacées !"
+        toastDataCleared: "Toutes les données de navigation ont été effacées !",
+        passkeyProviderTitle: "Fournisseur de clés d'accès",
+        passkeyProviderDesc: "Choisissez si les sites utilisent d'abord QVault ou passent directement à votre clé matérielle / système (YubiKey, FIDO2, Windows Hello, Touch ID, QR téléphone).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Clé matérielle / système",
+        toastPasskeyModeQvault: "Fournisseur de clés : QVault (avec repli matériel)",
+        toastPasskeyModeHardware: "Fournisseur de clés : Toujours utiliser la clé matérielle / système",
+        passkeyFallbackTitle: "Repli automatique sur clé matérielle",
+        passkeyFallbackDesc: "Basculer automatiquement vers YubiKey, FIDO2, biométrie OS ou QR téléphone si QVault n'a pas de clé, est verrouillé en mode Ghost/Tor ou si l'algorithme n'est pas pris en charge.",
+        passkeyFallbackAlwaysActive: "Toujours actif",
+        toastPasskeyFallbackEnabled: "Repli automatique sur clé matérielle activé",
+        toastPasskeyFallbackDisabled: "Repli automatique sur clé matérielle désactivé"
     },
     cookies: {
         title: "Cookies & Autorisations des sites",
@@ -2099,13 +2550,38 @@ const fr = {
             notifications: "Notifications",
             clipboard: "Presse-papiers",
             sound: "Son",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Caméra",
+            microphone: "Microphone",
+            "clipboard-read": "Presse-papiers",
+            midi: "Appareils MIDI",
+            sensors: "Mouvement et capteurs",
+            "idle-detection": "Détection d'inactivité",
+            "display-capture": "Partage d'écran",
+            "window-management": "Gestion des fenêtres",
+            "speaker-selection": "Sortie audio",
+            openExternal: "Applications externes"
         },
         permValues: {
             allow: "autoriser",
             block: "bloquer",
             ask: "demander"
-        }
+        },
+        networkSectionTitle: "Réseau et services en arrière-plan",
+        networkSectionDesc: "Contrôlez les requêtes réseau facultatives en arrière-plan. Activez le mode hors ligne strict pour garantir zéro trafic.",
+        networkActiveCount: "{active} sur {total} actifs",
+        strictOfflineTitle: "Hors ligne strict / Zéro requête en arrière-plan",
+        strictOfflineDesc: "Interrupteur principal bloquant toutes les requêtes facultatives en arrière-plan (mises à jour, filtres, suggestions, favicons et synchro cloud).",
+        bgAutoUpdatesTitle: "Vérification automatique des mises à jour",
+        bgAutoUpdatesDesc: "Vérifier périodiquement GitHub Releases pour de nouvelles versions de QBrowse.",
+        bgFilterUpdatesTitle: "Actualisation des filtres Adblock",
+        bgFilterUpdatesDesc: "Télécharger les mises à jour d'EasyList, EasyPrivacy et uBlock en arrière-plan.",
+        bgLiveSuggestionsTitle: "Suggestions de recherche en direct",
+        bgLiveSuggestionsDesc: "Récupérer des suggestions d'autocomplétion en temps réel dans l'omnibox.",
+        bgRemoteFaviconsTitle: "Favicons de sites distants",
+        bgRemoteFaviconsDesc: "Récupérer les icônes via le service favicon de Google pour les onglets et l'historique.",
+        bgCloudSyncTitle: "Synchronisation cloud en arrière-plan",
+        bgCloudSyncDesc: "Synchroniser automatiquement les onglets, paramètres et coffre chiffrés vers le cloud."
     },
     search: {
         title: "Recherche & Omnibox",
@@ -2157,6 +2633,8 @@ const fr = {
         toastBangRemoved: "Bang personnalisé « !{prefix} » supprimé",
         filterBangsPlaceholder: "Filtrer les bangs par nom, raccourci (!yt, @github) ou catégorie...",
         deleteCustomBangTitle: "Supprimer le bang personnalisé",
+        bangsFilterCount: "Affichage de {shown} sur {total} bangs correspondants",
+        bangsPreviewCount: "Affichage de {shown} sur {total} — filtrez ci-dessus pour tout parcourir",
         behaviorSectionTitle: "Comportement & Affichage de l'Omnibox",
         behaviorSectionDesc: "Contrôlez les calculs intégrés, suggestions en direct et affichage des URL.",
         smartCalcTitle: "Calculatrice intégrée à l'Omnibox",
@@ -2225,7 +2703,19 @@ const fr = {
         patDesc: "QBrowse détecte votre session GitHub active. Saisissez un PAT si votre organisation impose SSO/SAML :",
         testSyncBtn: "Tester & Sync",
         toastSynced: "Synchronisé avec GitHub",
-        dormantText: "L'intégration GitHub Live est actuellement en veille. Activez-la ci-dessus pour suivre vos Pull Requests et Issues."
+        dormantText: "L'intégration GitHub Live est actuellement en veille. Activez-la ci-dessus pour suivre vos Pull Requests et Issues.",
+        usernameTitle: "Nom d'utilisateur GitHub (optionnel — dépôts publics)",
+        usernameDesc: "Suivez les PR et tickets publics par nom d'utilisateur sans connexion ni jeton :",
+        usernamePlaceholder: "ex. octocat",
+        testingSyncBtn: "Synchronisation...",
+        toastSyncedDetail: "@{username} synchronisé ({reviews} revues, {prs} PR, {issues} tickets)",
+        toastSyncFailed: "Échec de la synchronisation GitHub : {error}",
+        statusConnected: "Connecté en tant que @{username}",
+        statusViaPat: "via PAT",
+        statusViaSession: "via session navigateur",
+        statusViaPublic: "via API publique",
+        statusCounts: "{reviews} revues · {prs} PR · {issues} tickets",
+        statusNotConnected: "Pas encore connecté. Cliquez sur Tester & Synchroniser pour vérifier votre session, PAT ou nom d'utilisateur."
     },
     engine: {
         title: "Moteur & Performances",
@@ -2240,7 +2730,11 @@ const fr = {
         freeGb: "{size} Go libres",
         battery: "Batterie",
         taskManager: "Gestionnaire de tâches",
-        tiers: { eco: "ÉCO", balanced: "ÉQUILIBRÉ", ultra: "ULTRA" },
+        tiers: {
+            eco: "ÉCO",
+            balanced: "ÉQUILIBRÉ",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Mode de performance",
         scalingModeDesc: "Mise à l'échelle CPU dynamique, hibernation des onglets et fidélité du flou.",
         pillAuto: "Auto",
@@ -2332,11 +2826,26 @@ const fr = {
         subscriptionsTitle: "Listes de filtres",
         subscriptionsDesc: "Listes communautaires actives.",
         filters: {
-            easylist: { name: "EasyList", desc: "Règles de base de blocage des publicités" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Scripts de suivi, balises et télémétrie" },
-            annoyances: { name: "Filtres Cookies & Nuisances", desc: "Dialogues RGPD et fenêtres de newsletter" },
-            malware: { name: "Protection Malware & Minage", desc: "Domaines malveillants connus et mineurs web" },
-            peterlowe: { name: "Liste Peter Lowe's Ad Server", desc: "Sélection de serveurs publicitaires et traqueurs" }
+            easylist: {
+                name: "EasyList",
+                desc: "Règles de base de blocage des publicités"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Scripts de suivi, balises et télémétrie"
+            },
+            annoyances: {
+                name: "Filtres Cookies & Nuisances",
+                desc: "Dialogues RGPD et fenêtres de newsletter"
+            },
+            malware: {
+                name: "Protection Malware & Minage",
+                desc: "Domaines malveillants connus et mineurs web"
+            },
+            peterlowe: {
+                name: "Liste Peter Lowe's Ad Server",
+                desc: "Sélection de serveurs publicitaires et traqueurs"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Exceptions & Règles",
@@ -2374,9 +2883,13 @@ const fr = {
         confirmClearBlocklist: "Voulez-vous vraiment effacer les {count} domaines bloqués personnalisés ?",
         toastClearedBlocklist: "Liste personnalisée effacée",
         toastBlocklistEmpty: "La liste de blocage est vide",
-        toastCopiedBlocklist: "{count} domaines copiés dans le presse-papiers"
+        toastCopiedBlocklist: "{count} domaines copiés dans le presse-papiers",
+        cnameUncloakingTitle: "Activer le démasquage DNS CNAME",
+        cnameUncloakingDesc: "Résoudre les sous-domaines de suivi propriétaires via les enregistrements DNS CNAME en arrière-plan pour bloquer les traqueurs déguisés."
     },
     about: {
+        helpLegalTitle: "Aide et mentions légales",
+        helpLegalDesc: "Guide utilisateur (F1), raccourcis clavier, Conditions d’utilisation, Politique de confidentialité et licence MIT.",
         title: "À propos & Système",
         subtitle: "Architecture système, spécifications d'exécution et mises à jour de l'application.",
         accountSectionTitle: "Compte & Synchronisation Cloud",
@@ -2464,12 +2977,104 @@ const fr = {
         startupChimeTitle: "Jouer le son d'accueil au démarrage",
         startupChimeDesc: "Accord acoustique synthétisé au lancement du navigateur.",
         relaunchSetup: "Relancer la configuration",
-        interactiveTour: "Visite interactive"
+        interactiveTour: "Visite interactive",
+        toastNewReleaseExternal: "Nouvelle version v{version} disponible ! Mettez à jour via {format}.",
+        toastNewReleaseLinuxPkg: "Nouvelle version GitHub v{version} disponible ({format}). Cliquez sur Télécharger pour obtenir le paquet.",
+        toastLinuxPkgReady: "Paquet de mise à jour v{version} téléchargé ! Ouvrez-le ou lancez la commande d'installation.",
+        toastOpeningPackage: "Ouverture du paquet de mise à jour téléchargé...",
+        toastOpenedPackageFolder: "Dossier de téléchargement ouvert. Lancez la commande d'installation pour terminer.",
+        toastCommandCopied: "Commande d'installation copiée dans le presse-papiers",
+        updateExternalMsg: "La version v{version} est disponible. Mettez à jour avec {format}.",
+        updateNoLinuxAssetMsg: "La version v{version} est disponible sur GitHub Releases. Aucun paquet précompilé pour {arch} — ouvrez GitHub Releases pour télécharger manuellement.",
+        updateDownloadedLinuxPkgMsg: "Paquet v{version} ({format}) téléchargé. Ouvrez le paquet ou exécutez la commande ci-dessous pour installer.",
+        openDownloadedPackage: "Ouvrir le paquet téléchargé",
+        showInFolder: "Afficher le paquet dans le dossier",
+        showInFolderBtn: "Dossier",
+        openReleasePage: "Ouvrir la page de version",
+        downloadAppImage: "Télécharger AppImage (v{version})",
+        downloadLinuxPkg: "Télécharger la mise à jour {format} (v{version})",
+        copyInstallCmdTitle: "Copier la commande d'installation",
+        copyBtn: "Copier",
+        helpCenterBtn: "Centre d'aide (F1)",
+        termsBtn: "Conditions d'utilisation",
+        privacyBtn: "Politique de confidentialité",
+        licensesBtn: "Licences open-source"
+    },
+    shortcuts: {
+        title: "Raccourcis clavier",
+        subtitle: "Cliquez sur un raccourci pour enregistrer une nouvelle combinaison. Appuyez sur Échap pour annuler ou Retour arrière pour réinitialiser.",
+        searchPlaceholder: "Rechercher des actions ou combinaisons (ex. « Split », « Ctrl + T »)...",
+        resetAllBtn: "Tout réinitialiser",
+        resetAllToast: "Tous les raccourcis clavier ont été réinitialisés",
+        restoredDefault: "Raccourci par défaut rétabli",
+        updatedToast: "Raccourci mis à jour",
+        swappedToast: "Raccourcis échangés",
+        conflictBound: "{combo} est déjà attribué à « {action} ».",
+        conflictHint: "Échangez leurs raccourcis, remplacez l'existant ou annulez.",
+        swapReplaceBtn: "Échanger / Remplacer",
+        overrideBtn: "Remplacer",
+        noMatches: "Aucun raccourci correspondant à « {query} ».",
+        customizedBadge: "Personnalisé",
+        pressKeys: "Appuyez sur les touches...",
+        recordingTooltip: "Appuyez sur une nouvelle combinaison (Échap pour annuler)",
+        recordTooltip: "Cliquer pour enregistrer un nouveau raccourci",
+        restoreDefaultTooltip: "Rétablir le raccourci par défaut",
+        categories: {
+            tabs: "Onglets",
+            navigation: "Navigation",
+            view: "Affichage",
+            tools: "Outils",
+            window: "Fenêtre"
+        },
+        actions: {
+            newTab: "Nouvel onglet",
+            closeTab: "Fermer l'onglet",
+            reopenClosedTab: "Rouvrir l'onglet fermé",
+            toggleMuteTab: "Couper / rétablir le son de l'onglet",
+            openTabMap: "Carte des onglets (Mission Control)",
+            pinOrBookmarkTab: "Épingler / ajouter aux favoris",
+            openOmnibox: "Ouvrir l'Omnibox de commandes",
+            focusAddressBar: "Activer la barre d'adresse",
+            copyCurrentUrl: "Copier l'URL actuelle",
+            reloadTab: "Recharger la page",
+            hardReloadTab: "Rechargement forcé (vider le cache)",
+            navigateBack: "Page précédente",
+            navigateForward: "Page suivante",
+            openHistory: "Archives de l'historique",
+            openFile: "Ouvrir un fichier local",
+            toggleSidebar: "Afficher / masquer la barre latérale",
+            toggleRightPanel: "Afficher / masquer le panneau d'outils",
+            toggleFramelessMode: "Basculer en mode sans bordure / Zen",
+            toggleSplitView: "Activer / désactiver la vue scindée",
+            toggleSplitOrientation: "Changer la disposition scindée (2 col. / 2 lignes / 2×2)",
+            swapSplitPanes: "Inverser les volets scindés",
+            toggleReaderMode: "Activer / désactiver le mode lecture",
+            zoomIn: "Zoom avant",
+            zoomOut: "Zoom arrière",
+            resetZoom: "Réinitialiser le zoom",
+            toggleFullscreen: "Plein écran",
+            findInPage: "Rechercher dans la page",
+            findNext: "Occurrence suivante",
+            findPrev: "Occurrence précédente",
+            toggleElementEraser: "Gomme d'éléments",
+            toggleScreenshotBar: "Barre de capture d'écran",
+            toggleReadAloud: "Assistant de lecture à voix haute",
+            printPage: "Imprimer la page",
+            openDevTools: "Outils de développement",
+            toggleCaretBrowsing: "Navigation au curseur",
+            newWindow: "Nouvelle fenêtre",
+            newPrivateWindow: "Nouvelle fenêtre privée / Tor",
+            closeWindow: "Fermer la fenêtre",
+            openSettings: "Ouvrir les paramètres",
+            openHelp: "Centre d'aide et raccourcis",
+            openTaskManager: "Gestionnaire de tâches"
+        }
     }
 };
 
 const de = {
     common: {
+        clear: "Löschen",
         cancel: "Abbrechen",
         save: "Speichern",
         delete: "Löschen",
@@ -2506,7 +3111,8 @@ const de = {
         ai: "ki ai gemma llama lokales modell chat zusammenfassen llm gpu ebenen kontext",
         engine: "engine leistung hardwarebeschleunigung gpu eco modus ultra arbeitsspeicher ram ruhezustand bfcache akku cpu",
         adblock: "schutz adblock werbeblocker tracker easylist ublock eigene blockliste whitelist filter youtube",
-        about: "version update nach updates suchen standardbrowser systeminfo diagnose hardware führung"
+        about: "version update nach updates suchen standardbrowser systeminfo diagnose hardware führung",
+        shortcuts: "tastenkürzel hotkeys tastenbelegung anpassen strg cmd"
     },
     reset: {
         confirmTitle: "Alle Einstellungen zurücksetzen?",
@@ -2535,12 +3141,30 @@ const de = {
         Heart: "Herz"
     },
     presets: {
-        balanced: { name: "Ausgewogen", tagline: "Zwei Arbeitsbereiche (Privat & Arbeit) mit Google-Suche." },
-        developer: { name: "Entwickler", tagline: "Isolierte Arbeitsbereiche mit GitHub-Live-PR-Integration." },
-        classic_reverse: { name: "Modernes Arc", tagline: "Rechtsbündiger Tab-Baum mit klarer Lesefläche." },
-        bottom_bar: { name: "Ergonomisch", tagline: "Untere Adressleiste für bequeme Erreichbarkeit." },
-        minimalist: { name: "Minimal-Fokus", tagline: "Einzelner Arbeitsbereich mit kompakter, ablenkungsfreier Oberfläche." },
-        privacy: { name: "Datenschutz-Wächter", tagline: "Strenger Tracker-Schutz mit DuckDuckGo-Suche." },
+        balanced: {
+            name: "Ausgewogen",
+            tagline: "Zwei Arbeitsbereiche (Privat & Arbeit) mit Google-Suche."
+        },
+        developer: {
+            name: "Entwickler",
+            tagline: "Isolierte Arbeitsbereiche mit GitHub-Live-PR-Integration."
+        },
+        classic_reverse: {
+            name: "Modernes Arc",
+            tagline: "Rechtsbündiger Tab-Baum mit klarer Lesefläche."
+        },
+        bottom_bar: {
+            name: "Ergonomisch",
+            tagline: "Untere Adressleiste für bequeme Erreichbarkeit."
+        },
+        minimalist: {
+            name: "Minimal-Fokus",
+            tagline: "Einzelner Arbeitsbereich mit kompakter, ablenkungsfreier Oberfläche."
+        },
+        privacy: {
+            name: "Datenschutz-Wächter",
+            tagline: "Strenger Tracker-Schutz mit DuckDuckGo-Suche."
+        },
         appliedToast: "Preset angewendet: {name}"
     },
     appearance: {
@@ -2637,9 +3261,54 @@ const de = {
         toastWebCached: "Web-Hintergrund zwischengespeichert und angewendet!",
         toastDownloadFailed: "Hintergrundbild konnte nicht heruntergeladen werden",
         toastApplied: "Hintergrundbild angewendet!",
-        toastResetWallpaper: "Standard-Hintergrundbild wiederhergestellt"
+        toastResetWallpaper: "Standard-Hintergrundbild wiederhergestellt",
+        smartDarkExcludeMediaTitle: "Bilder & Videos ausschließen",
+        smartDarkExcludeMediaDesc: "Fotos, Videos, Canvas und eingebettete Player in natürlichen Farben belassen statt zu invertieren.",
+        excludedDomainsDesc: "Hier gelistete Websites (und Subdomains) behalten ihr natives Design. Domain, vollständige URL oder *.domain.com einfügen.",
+        smartDarkStatusOn: "Dunkelmodus Ein",
+        smartDarkStatusOff: "Dunkelmodus Aus",
+        whitelistInputPlaceholder: "z. B. github.com, https://docs.site.com oder *.example.com",
+        whitelistSearchPlaceholder: "Ausgeschlossene Domains filtern...",
+        whitelistWillAdd: "Wird hinzugefügt:",
+        whitelistResetBtn: "Zurücksetzen",
+        whitelistResetTooltip: "Empfohlene nativ dunkle Websites wiederherstellen",
+        whitelistClearTooltip: "Alle ausgeschlossenen Domains entfernen",
+        whitelistEmpty: "Keine ausgeschlossenen Domains. Smart Dark Mode prüft alle Websites automatisch.",
+        whitelistNoMatches: "Keine Ausnahmen passend zu „{query}“.",
+        whitelistDuplicate: "{domain} steht bereits auf der Ausnahmeliste.",
+        whitelistInvalid: "Geben Sie eine gültige Domain, URL oder *.domain.com ein.",
+        whitelistAddedToast: "{domain} vom Smart Dark Mode ausgeschlossen",
+        whitelistRemovedToast: "{domain} von der Dunkelmodus-Ausnahmeliste entfernt",
+        whitelistResetToast: "{count} empfohlene Standarddomains wiederhergestellt",
+        whitelistResetToastShort: "Standard-Ausnahmeliste wiederhergestellt",
+        whitelistClearedToast: "Ausnahmeliste geleert",
+        highlightAccentLabel: "Akzent",
+        textHighlightTitle: "Textmarkierungsfarbe & -stil",
+        textHighlightDesc: "Passen Sie das Aussehen von markiertem Text im Browser und auf Websites an.",
+        textHighlightWebLabel: "Auf Websites anwenden",
+        textHighlightPreview: "Ziehen Sie, um diesen Text zu markieren und Ihren Stil live zu testen.",
+        highlightStyles: {
+            system: "System",
+            tinted: "Getönt",
+            vibrant: "Kräftig",
+            glow: "Leuchten",
+            underline: "Unterstrichen"
+        },
+        highlightSwatches: {
+            accent: "Akzent folgen",
+            d4bc94: "Sand",
+            "3b82f6": "Elektrisch Blau",
+            "10b981": "Smaragd",
+            f43f5e: "Rose",
+            a855f7: "Violett",
+            f59e0b: "Bernstein",
+            "06b6d4": "Cyan",
+            ec4899: "Pink"
+        }
     },
     layout: {
+        framelessModeTitle: "Rahmenloser / Zen-Modus (Ctrl+Alt+F)",
+        framelessModeDesc: "Seitenleiste und obere Leiste in randaktivierte Schubladen ausblenden, ohne in den System-Vollbildmodus zu wechseln.",
         title: "Layout & Leisten",
         subtitle: "Räumliches Docking, Fenstergeometrie, Adressleiste und Werkzeugleisten konfigurieren.",
         spatialTitle: "Räumliche Positionierung",
@@ -2651,7 +3320,12 @@ const de = {
         toolHubPosTitle: "Position des Tool-Hub-Panels",
         toolHubPosDesc: "Seitenpanel für Erweiterungen, Downloads, QVault und KI-Assistent.",
         collisionNote: "Hinweis: Bei Andocken auf derselben Seite wechselt die Seitenleiste automatisch auf die Gegenseite.",
-        pos: { left: "Links", right: "Rechts", top: "Oben", bottom: "Unten" },
+        pos: {
+            left: "Links",
+            right: "Rechts",
+            top: "Oben",
+            bottom: "Unten"
+        },
         toastSidebarPos: "Position der Seitenleiste: {pos}",
         toastTopBarPos: "Position der Hauptleiste: {pos}",
         toastToolHubPos: "Position des Tool Hubs: {pos}",
@@ -2864,7 +3538,18 @@ const de = {
         clearDataTitle: "Browserdaten löschen",
         clearDataDesc: "Verlauf, Cookies und Cache aus lokalem Speicher und SQLite löschen.",
         clearDataBtn: "Daten löschen...",
-        toastDataCleared: "Alle Browserdaten gelöscht!"
+        toastDataCleared: "Alle Browserdaten gelöscht!",
+        passkeyProviderTitle: "Passkey-Anbieter",
+        passkeyProviderDesc: "Wählen Sie, ob Websites zuerst QVault-Passkeys nutzen oder direkt zu Ihrem Hardware-/Systemschlüssel (YubiKey, FIDO2, Windows Hello, Touch ID, Telefon-QR) leiten.",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Hardware- / Systemschlüssel",
+        toastPasskeyModeQvault: "Passkey-Anbieter: QVault (mit Hardware-Fallback)",
+        toastPasskeyModeHardware: "Passkey-Anbieter: Immer Hardware-/Systemschlüssel verwenden",
+        passkeyFallbackTitle: "Automatischer Hardware-Schlüssel-Fallback",
+        passkeyFallbackDesc: "Automatisch auf YubiKey, FIDO2, OS-Biometrie oder Telefon-QR zurückgreifen, wenn QVault keinen passenden Passkey hat, in Ghost/Tor gesperrt ist oder Algorithmen nicht unterstützt werden.",
+        passkeyFallbackAlwaysActive: "Immer aktiv",
+        toastPasskeyFallbackEnabled: "Automatischer Hardware-Schlüssel-Fallback aktiviert",
+        toastPasskeyFallbackDisabled: "Automatischer Hardware-Schlüssel-Fallback deaktiviert"
     },
     cookies: {
         title: "Cookies & Website-Berechtigungen",
@@ -2889,13 +3574,38 @@ const de = {
             notifications: "Benachrichtigungen",
             clipboard: "Zwischenablage",
             sound: "Ton",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Kamera",
+            microphone: "Mikrofon",
+            "clipboard-read": "Zwischenablage",
+            midi: "MIDI-Geräte",
+            sensors: "Bewegung & Sensoren",
+            "idle-detection": "Inaktivitätserkennung",
+            "display-capture": "Bildschirmfreigabe",
+            "window-management": "Fensterverwaltung",
+            "speaker-selection": "Audioausgabe",
+            openExternal: "Externe Apps"
         },
         permValues: {
             allow: "erlauben",
             block: "blockieren",
             ask: "fragen"
-        }
+        },
+        networkSectionTitle: "Netzwerk & Hintergrunddienste",
+        networkSectionDesc: "Optionale Hintergrund-Netzwerkanfragen steuern. Aktivieren Sie Streng Offline für null Hintergrundverkehr.",
+        networkActiveCount: "{active} von {total} aktiv",
+        strictOfflineTitle: "Streng Offline / Keine Hintergrundanfragen",
+        strictOfflineDesc: "Hauptschalter zum Blockieren aller optionalen Hintergrundanfragen (Updates, Filterlisten, Live-Vorschläge, Favicons und Cloud-Sync).",
+        bgAutoUpdatesTitle: "Automatische App-Update-Prüfung",
+        bgAutoUpdatesDesc: "Regelmäßig auf GitHub Releases nach neuen QBrowse-Versionen suchen.",
+        bgFilterUpdatesTitle: "Adblock-Filterlisten aktualisieren",
+        bgFilterUpdatesDesc: "Aktualisierte EasyList-, EasyPrivacy- und uBlock-Filterlisten im Hintergrund laden.",
+        bgLiveSuggestionsTitle: "Live-Suchvorschläge",
+        bgLiveSuggestionsDesc: "Echtzeit-Autovervollständigung beim Tippen in der Omnibox abrufen.",
+        bgRemoteFaviconsTitle: "Externe Website-Favicons",
+        bgRemoteFaviconsDesc: "Website-Symbole über Googles Favicon-Dienst für Tabs, Pins und Verlauf laden.",
+        bgCloudSyncTitle: "Hintergrund-Cloud-Synchronisierung",
+        bgCloudSyncDesc: "Verschlüsselte Tabs, Einstellungen und Tresor-Änderungen automatisch mit der Cloud synchronisieren."
     },
     search: {
         title: "Suche & Adressleiste",
@@ -2947,6 +3657,8 @@ const de = {
         toastBangRemoved: "Eigener Bang „!{prefix}“ entfernt",
         filterBangsPlaceholder: "Bangs nach Name, Kürzel (!yt, @github) oder Kategorie filtern...",
         deleteCustomBangTitle: "Eigenen Bang löschen",
+        bangsFilterCount: "{shown} von {total} passenden Bangs angezeigt",
+        bangsPreviewCount: "{shown} von {total} angezeigt — oben filtern, um alle zu durchsuchen",
         behaviorSectionTitle: "Verhalten & Anzeige der Omnibox",
         behaviorSectionDesc: "Inline-Berechnungen, Live-Vorschläge und URL-Darstellung steuern.",
         smartCalcTitle: "Smarter Rechner in der Omnibox",
@@ -3015,7 +3727,19 @@ const de = {
         patDesc: "QBrowse erkennt aktive GitHub-Sitzungen automatisch. Bei SSO/SAML-Pflicht PAT eingeben:",
         testSyncBtn: "Testen & Sync",
         toastSynced: "Mit GitHub synchronisiert",
-        dormantText: "GitHub-Live-Integration ruht derzeit. Aktivieren Sie sie oben, um Pull Requests und Issues im Arbeitsmodus zu verfolgen."
+        dormantText: "GitHub-Live-Integration ruht derzeit. Aktivieren Sie sie oben, um Pull Requests und Issues im Arbeitsmodus zu verfolgen.",
+        usernameTitle: "GitHub-Benutzername (optional — öffentliche Repos)",
+        usernameDesc: "Öffentliche PRs und Issues per Benutzername verfolgen, ohne Anmeldung oder Token:",
+        usernamePlaceholder: "z. B. octocat",
+        testingSyncBtn: "Synchronisiere...",
+        toastSyncedDetail: "@{username} synchronisiert ({reviews} Reviews, {prs} PRs, {issues} Issues)",
+        toastSyncFailed: "GitHub-Sync fehlgeschlagen: {error}",
+        statusConnected: "Verbunden als @{username}",
+        statusViaPat: "über PAT",
+        statusViaSession: "über Browser-Sitzung",
+        statusViaPublic: "über öffentliche API",
+        statusCounts: "{reviews} Reviews · {prs} PRs · {issues} Issues",
+        statusNotConnected: "Noch nicht verbunden. Klicken Sie auf Testen & Synchronisieren, um Sitzung, PAT oder Benutzernamen zu prüfen."
     },
     engine: {
         title: "Engine & Leistung",
@@ -3030,7 +3754,11 @@ const de = {
         freeGb: "{size} GB frei",
         battery: "Akku",
         taskManager: "Task-Manager",
-        tiers: { eco: "ECO", balanced: "AUSGEWOGEN", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "AUSGEWOGEN",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Leistungsskalierungs-Modus",
         scalingModeDesc: "Dynamische CPU-Skalierung, Tab-Ruhezustand und Unschärfe-Qualität.",
         pillAuto: "Auto",
@@ -3122,11 +3850,26 @@ const de = {
         subscriptionsTitle: "Filterlisten-Abonnements",
         subscriptionsDesc: "Aktive Community-Filterlisten.",
         filters: {
-            easylist: { name: "EasyList", desc: "Zentrale Regeln zur Werbeblockierung" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Tracking-Skripte, Beacons und Telemetrie" },
-            annoyances: { name: "Cookie- & Störelement-Filter", desc: "Cookie-Abfragen und Newsletter-Popups" },
-            malware: { name: "Malware- & Mining-Schutz", desc: "Bekannte schädliche Domains und Browser-Miner" },
-            peterlowe: { name: "Peter Lowe's Ad Server List", desc: "Kuratierte Ad-Server- und Tracker-Domains" }
+            easylist: {
+                name: "EasyList",
+                desc: "Zentrale Regeln zur Werbeblockierung"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Tracking-Skripte, Beacons und Telemetrie"
+            },
+            annoyances: {
+                name: "Cookie- & Störelement-Filter",
+                desc: "Cookie-Abfragen und Newsletter-Popups"
+            },
+            malware: {
+                name: "Malware- & Mining-Schutz",
+                desc: "Bekannte schädliche Domains und Browser-Miner"
+            },
+            peterlowe: {
+                name: "Peter Lowe's Ad Server List",
+                desc: "Kuratierte Ad-Server- und Tracker-Domains"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Ausnahmen & Regeln",
@@ -3164,9 +3907,13 @@ const de = {
         confirmClearBlocklist: "Möchten Sie wirklich alle {count} eigenen blockierten Domains löschen?",
         toastClearedBlocklist: "Eigene Blockliste geleert",
         toastBlocklistEmpty: "Blockliste ist leer",
-        toastCopiedBlocklist: "{count} Domains in die Zwischenablage kopiert"
+        toastCopiedBlocklist: "{count} Domains in die Zwischenablage kopiert",
+        cnameUncloakingTitle: "DNS-CNAME-Uncloaking aktivieren",
+        cnameUncloakingDesc: "Erstanbieter-Tracking-Subdomains im Hintergrund über DNS-CNAME-Einträge auflösen, um getarnte Drittanbieter-Tracker zu blockieren."
     },
     about: {
+        helpLegalTitle: "Hilfe & Rechtliches",
+        helpLegalDesc: "Benutzerhandbuch (F1), Tastenkombinationen, Nutzungsbedingungen, Datenschutzrichtlinie und MIT-Lizenz.",
         title: "Über QBrowse & System",
         subtitle: "Systemarchitektur, Laufzeitspezifikationen und Anwendungsupdates.",
         accountSectionTitle: "Konto & Cloud-Sync",
@@ -3254,12 +4001,104 @@ const de = {
         startupChimeTitle: "Start-Begrüßungston abspielen",
         startupChimeDesc: "Synthetisierter Klangakkord beim Starten des Browsers.",
         relaunchSetup: "Einrichtung erneut starten",
-        interactiveTour: "Interaktive Tour"
+        interactiveTour: "Interaktive Tour",
+        toastNewReleaseExternal: "Neue Version v{version} verfügbar! Update über {format}.",
+        toastNewReleaseLinuxPkg: "Neues GitHub-Release v{version} verfügbar ({format}). Klicken Sie auf Herunterladen.",
+        toastLinuxPkgReady: "Update-Paket v{version} heruntergeladen! Öffnen Sie es oder führen Sie den Installationsbefehl aus.",
+        toastOpeningPackage: "Heruntergeladenes Update-Paket wird geöffnet...",
+        toastOpenedPackageFolder: "Download-Ordner geöffnet. Führen Sie den Installationsbefehl aus.",
+        toastCommandCopied: "Installationsbefehl in die Zwischenablage kopiert",
+        updateExternalMsg: "Version v{version} ist verfügbar. Update über {format}.",
+        updateNoLinuxAssetMsg: "Version v{version} ist auf GitHub Releases verfügbar. Kein fertiges Paket für {arch} — bitte manuell laden.",
+        updateDownloadedLinuxPkgMsg: "Paket v{version} ({format}) heruntergeladen. Paket öffnen oder Terminalbefehl unten ausführen.",
+        openDownloadedPackage: "Heruntergeladenes Paket öffnen",
+        showInFolder: "Heruntergeladenes Paket im Ordner anzeigen",
+        showInFolderBtn: "Ordner",
+        openReleasePage: "Release-Seite öffnen",
+        downloadAppImage: "AppImage herunterladen (v{version})",
+        downloadLinuxPkg: "{format}-Update herunterladen (v{version})",
+        copyInstallCmdTitle: "Terminal-Installationsbefehl kopieren",
+        copyBtn: "Kopieren",
+        helpCenterBtn: "Hilfecenter (F1)",
+        termsBtn: "Nutzungsbedingungen",
+        privacyBtn: "Datenschutzerklärung",
+        licensesBtn: "Open-Source-Lizenzen"
+    },
+    shortcuts: {
+        title: "Tastenkürzel",
+        subtitle: "Klicken Sie auf ein Kürzel, um eine neue Kombination aufzunehmen. Esc zum Abbrechen, Rücktaste zum Zurücksetzen.",
+        searchPlaceholder: "Aktionen oder Tastenkombinationen suchen (z. B. „Split“, „Ctrl + T“)...",
+        resetAllBtn: "Alle zurücksetzen",
+        resetAllToast: "Alle Tastenkürzel auf Standard zurückgesetzt",
+        restoredDefault: "Standardkürzel wiederhergestellt",
+        updatedToast: "Kürzel aktualisiert",
+        swappedToast: "Kürzel getauscht",
+        conflictBound: "{combo} ist bereits „{action}“ zugewiesen.",
+        conflictHint: "Belegungen tauschen, vorhandenes Kürzel ersetzen oder abbrechen.",
+        swapReplaceBtn: "Tauschen / Ersetzen",
+        overrideBtn: "Überschreiben",
+        noMatches: "Keine Tastenkürzel für „{query}“ gefunden.",
+        customizedBadge: "Angepasst",
+        pressKeys: "Tasten drücken...",
+        recordingTooltip: "Neue Tastenkombination drücken (Esc zum Abbrechen)",
+        recordTooltip: "Klicken, um ein neues Kürzel aufzunehmen",
+        restoreDefaultTooltip: "Standardkürzel wiederherstellen",
+        categories: {
+            tabs: "Tabs",
+            navigation: "Navigation",
+            view: "Ansicht",
+            tools: "Werkzeuge",
+            window: "Fenster"
+        },
+        actions: {
+            newTab: "Neuer Tab",
+            closeTab: "Tab schließen",
+            reopenClosedTab: "Geschlossenen Tab wiederherstellen",
+            toggleMuteTab: "Tab stummschalten / laut schalten",
+            openTabMap: "Tab-Übersicht (Mission Control)",
+            pinOrBookmarkTab: "Tab anheften / als Lesezeichen speichern",
+            openOmnibox: "Befehls-Omnibox öffnen",
+            focusAddressBar: "Adressleiste fokussieren",
+            copyCurrentUrl: "Aktuelle URL kopieren",
+            reloadTab: "Seite neu laden",
+            hardReloadTab: "Hart neu laden (Cache leeren)",
+            navigateBack: "Zurück im Verlauf",
+            navigateForward: "Vorwärts im Verlauf",
+            openHistory: "Verlaufsarchiv",
+            openFile: "Lokale Datei öffnen",
+            toggleSidebar: "Seitenleiste umschalten",
+            toggleRightPanel: "Werkzeug-Hub / rechtes Panel umschalten",
+            toggleFramelessMode: "Rahmenlosen / Zen-Modus umschalten",
+            toggleSplitView: "Geteilte Ansicht umschalten",
+            toggleSplitOrientation: "Layout der geteilten Ansicht wechseln (2 Sp. / 2 Z. / 2×2)",
+            swapSplitPanes: "Geteilte Bereiche tauschen",
+            toggleReaderMode: "Lesemodus umschalten",
+            zoomIn: "Vergrößern",
+            zoomOut: "Verkleinern",
+            resetZoom: "Zoom zurücksetzen",
+            toggleFullscreen: "Vollbild umschalten",
+            findInPage: "Auf Seite suchen",
+            findNext: "Nächsten Treffer suchen",
+            findPrev: "Vorherigen Treffer suchen",
+            toggleElementEraser: "Element-Radierer",
+            toggleScreenshotBar: "Screenshot- & Ausschneideleiste",
+            toggleReadAloud: "Vorlese-Assistent",
+            printPage: "Seite drucken",
+            openDevTools: "Entwicklertools",
+            toggleCaretBrowsing: "Caret-Browsing umschalten",
+            newWindow: "Neues Fenster",
+            newPrivateWindow: "Neues privates / Tor-Fenster",
+            closeWindow: "Fenster schließen",
+            openSettings: "Einstellungen öffnen",
+            openHelp: "Hilfecenter & Tastenkürzel",
+            openTaskManager: "Task-Manager"
+        }
     }
 };
 
 const es = {
     common: {
+        clear: "Limpiar",
         cancel: "Cancelar",
         save: "Guardar",
         delete: "Eliminar",
@@ -3296,7 +4135,8 @@ const es = {
         ai: "ia gemma llama modelo local chat resumir lector llm gpu capas contexto",
         engine: "motor rendimiento aceleración hardware gpu modo eco ultra memoria ram suspensión bfcache batería procesador",
         adblock: "escudos bloqueador anuncios rastreadores easylist ublock lista personalizada sitios de confianza filtros youtube",
-        about: "versión actualización buscar actualizaciones navegador predeterminado sistema hardware diagnóstico recorrido"
+        about: "versión actualización buscar actualizaciones navegador predeterminado sistema hardware diagnóstico recorrido",
+        shortcuts: "atajos teclado teclas personalizar reasignar ctrl cmd"
     },
     reset: {
         confirmTitle: "¿Restablecer todos los ajustes?",
@@ -3325,12 +4165,30 @@ const es = {
         Heart: "Corazón"
     },
     presets: {
-        balanced: { name: "Equilibrado", tagline: "Espacios Personal y Trabajo con búsqueda en Google." },
-        developer: { name: "Desarrollador", tagline: "Espacios aislados con integración GitHub Live PR." },
-        classic_reverse: { name: "Arc Moderno", tagline: "Árbol de pestañas a la derecha y lienzo de lectura limpio." },
-        bottom_bar: { name: "Flujo Ergonómico", tagline: "Barra de direcciones inferior para una navegación cómoda." },
-        minimalist: { name: "Enfoque Mínimo", tagline: "Espacio único con interfaz compacta y sin distracciones." },
-        privacy: { name: "Centinela Privado", tagline: "Protección estricta contra rastreo y búsqueda DuckDuckGo." },
+        balanced: {
+            name: "Equilibrado",
+            tagline: "Espacios Personal y Trabajo con búsqueda en Google."
+        },
+        developer: {
+            name: "Desarrollador",
+            tagline: "Espacios aislados con integración GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Arc Moderno",
+            tagline: "Árbol de pestañas a la derecha y lienzo de lectura limpio."
+        },
+        bottom_bar: {
+            name: "Flujo Ergonómico",
+            tagline: "Barra de direcciones inferior para una navegación cómoda."
+        },
+        minimalist: {
+            name: "Enfoque Mínimo",
+            tagline: "Espacio único con interfaz compacta y sin distracciones."
+        },
+        privacy: {
+            name: "Centinela Privado",
+            tagline: "Protección estricta contra rastreo y búsqueda DuckDuckGo."
+        },
         appliedToast: "Preajuste aplicado: {name}"
     },
     appearance: {
@@ -3427,9 +4285,54 @@ const es = {
         toastWebCached: "¡Fondo web guardado en caché y aplicado!",
         toastDownloadFailed: "Error al descargar el fondo",
         toastApplied: "¡Fondo aplicado!",
-        toastResetWallpaper: "Fondo restablecido al predeterminado"
+        toastResetWallpaper: "Fondo restablecido al predeterminado",
+        smartDarkExcludeMediaTitle: "Excluir imágenes y vídeos",
+        smartDarkExcludeMediaDesc: "Mantener fotos, vídeos, canvas y reproductores incrustados con sus colores naturales en lugar de invertirlos.",
+        excludedDomainsDesc: "Los sitios listados aquí (y sus subdominios) conservan su tema nativo. Pega un dominio, URL completa o *.dominio.com.",
+        smartDarkStatusOn: "Oscuro forzado act.",
+        smartDarkStatusOff: "Oscuro forzado des.",
+        whitelistInputPlaceholder: "ej. github.com, https://docs.site.com o *.example.com",
+        whitelistSearchPlaceholder: "Filtrar dominios excluidos...",
+        whitelistWillAdd: "Se añadirá:",
+        whitelistResetBtn: "Restablecer",
+        whitelistResetTooltip: "Restaurar sitios nativamente oscuros recomendados",
+        whitelistClearTooltip: "Eliminar todos los dominios excluidos",
+        whitelistEmpty: "No hay dominios excluidos. El modo oscuro inteligente evaluará todos los sitios automáticamente.",
+        whitelistNoMatches: "No hay dominios en lista blanca que coincidan con \"{query}\".",
+        whitelistDuplicate: "{domain} ya está en la lista blanca.",
+        whitelistInvalid: "Introduce un dominio, URL o comodín *.dominio.com válido.",
+        whitelistAddedToast: "{domain} excluido del modo oscuro inteligente",
+        whitelistRemovedToast: "{domain} eliminado de la lista blanca del modo oscuro",
+        whitelistResetToast: "Restaurados {count} dominios predeterminados recomendados",
+        whitelistResetToastShort: "Lista blanca predeterminada restaurada",
+        whitelistClearedToast: "Lista blanca del modo oscuro borrada",
+        highlightAccentLabel: "Acento",
+        textHighlightTitle: "Color y estilo de resaltado de texto",
+        textHighlightDesc: "Personaliza cómo se ve el texto seleccionado en el navegador y en los sitios web.",
+        textHighlightWebLabel: "Aplicar a sitios web",
+        textHighlightPreview: "Arrastra para seleccionar este texto y previsualizar tu estilo en vivo.",
+        highlightStyles: {
+            system: "Sistema",
+            tinted: "Teñido",
+            vibrant: "Vibrante",
+            glow: "Resplandor",
+            underline: "Subrayado"
+        },
+        highlightSwatches: {
+            accent: "Seguir acento",
+            d4bc94: "Arena",
+            "3b82f6": "Azul eléctrico",
+            "10b981": "Esmeralda",
+            f43f5e: "Rosa",
+            a855f7: "Violeta",
+            f59e0b: "Ámbar",
+            "06b6d4": "Cian",
+            ec4899: "Rosa intenso"
+        }
     },
     layout: {
+        framelessModeTitle: "Modo sin bordes / Zen (Ctrl+Alt+F)",
+        framelessModeDesc: "Oculta la barra lateral y la barra superior en paneles al pasar el cursor por los bordes sin usar pantalla completa del sistema.",
         title: "Diseño y Barras",
         subtitle: "Configura anclajes espaciales, geometría de ventana, barra de direcciones y controles.",
         spatialTitle: "Posicionamiento espacial",
@@ -3441,7 +4344,12 @@ const es = {
         toolHubPosTitle: "Posición del cajón Tool Hub",
         toolHubPosDesc: "Panel lateral para extensiones, descargas, QVault y asistente IA.",
         collisionNote: "Nota: Si se acopla en el mismo lado que la barra lateral, esta pasará al lado opuesto para evitar colisiones.",
-        pos: { left: "Izquierda", right: "Derecha", top: "Arriba", bottom: "Abajo" },
+        pos: {
+            left: "Izquierda",
+            right: "Derecha",
+            top: "Arriba",
+            bottom: "Abajo"
+        },
         toastSidebarPos: "Posición de la barra lateral: {pos}",
         toastTopBarPos: "Posición de la barra superior: {pos}",
         toastToolHubPos: "Posición de Tool Hub: {pos}",
@@ -3654,7 +4562,18 @@ const es = {
         clearDataTitle: "Borrar datos de navegación",
         clearDataDesc: "Elimina historial, cookies y caché del almacenamiento local y SQLite.",
         clearDataBtn: "Borrar datos...",
-        toastDataCleared: "¡Todos los datos de navegación borrados!"
+        toastDataCleared: "¡Todos los datos de navegación borrados!",
+        passkeyProviderTitle: "Proveedor de claves de acceso",
+        passkeyProviderDesc: "Elige si los sitios usan primero QVault o van directamente a tu llave de hardware / sistema (YubiKey, FIDO2, Windows Hello, Touch ID, QR del teléfono).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Llave de hardware / sistema",
+        toastPasskeyModeQvault: "Proveedor: QVault (con respaldo de llave física)",
+        toastPasskeyModeHardware: "Proveedor: Usar siempre llave de hardware / sistema",
+        passkeyFallbackTitle: "Respaldo automático con llave física",
+        passkeyFallbackDesc: "Recurrir automáticamente a YubiKey, FIDO2, biometría del sistema o QR si QVault no tiene clave, está bloqueado en Ghost/Tor o el sitio pide algoritmos no compatibles.",
+        passkeyFallbackAlwaysActive: "Siempre activo",
+        toastPasskeyFallbackEnabled: "Respaldo automático con llave física activado",
+        toastPasskeyFallbackDisabled: "Respaldo automático con llave física desactivado"
     },
     cookies: {
         title: "Cookies y Permisos de Sitios",
@@ -3679,13 +4598,38 @@ const es = {
             notifications: "Notificaciones",
             clipboard: "Portapapeles",
             sound: "Sonido",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Cámara",
+            microphone: "Micrófono",
+            "clipboard-read": "Portapapeles",
+            midi: "Dispositivos MIDI",
+            sensors: "Movimiento y sensores",
+            "idle-detection": "Detección de inactividad",
+            "display-capture": "Compartir pantalla",
+            "window-management": "Gestión de ventanas",
+            "speaker-selection": "Salida de audio",
+            openExternal: "Aplicaciones externas"
         },
         permValues: {
             allow: "permitir",
             block: "bloquear",
             ask: "preguntar"
-        }
+        },
+        networkSectionTitle: "Red y servicios en segundo plano",
+        networkSectionDesc: "Controla las peticiones de red opcionales en segundo plano. Activa el modo sin conexión estricto para garantizar cero tráfico.",
+        networkActiveCount: "{active} de {total} activos",
+        strictOfflineTitle: "Sin conexión estricto / Cero peticiones en segundo plano",
+        strictOfflineDesc: "Interruptor maestro que bloquea todas las peticiones opcionales en segundo plano (actualizaciones, filtros, sugerencias, favicons y sincronización).",
+        bgAutoUpdatesTitle: "Comprobación automática de actualizaciones",
+        bgAutoUpdatesDesc: "Comprobar periódicamente en GitHub Releases si hay nuevas versiones de QBrowse.",
+        bgFilterUpdatesTitle: "Actualización de listas de filtros Adblock",
+        bgFilterUpdatesDesc: "Descargar listas EasyList, EasyPrivacy y uBlock actualizadas en segundo plano.",
+        bgLiveSuggestionsTitle: "Sugerencias de búsqueda en vivo",
+        bgLiveSuggestionsDesc: "Obtener sugerencias de autocompletado en tiempo real al escribir en el omnibox.",
+        bgRemoteFaviconsTitle: "Favicons de sitios remotos",
+        bgRemoteFaviconsDesc: "Obtener iconos de sitios mediante el servicio de Google para pestañas, pines e historial.",
+        bgCloudSyncTitle: "Sincronización en la nube en segundo plano",
+        bgCloudSyncDesc: "Sincronizar automáticamente pestañas cifradas, ajustes y cambios de la bóveda con la nube."
     },
     search: {
         title: "Búsqueda y Barra de direcciones",
@@ -3737,6 +4681,8 @@ const es = {
         toastBangRemoved: "Bang personalizado «!{prefix}» eliminado",
         filterBangsPlaceholder: "Filtrar bangs por nombre, atajo (!yt, @github) o categoría...",
         deleteCustomBangTitle: "Eliminar bang personalizado",
+        bangsFilterCount: "Mostrando {shown} de {total} bangs coincidentes",
+        bangsPreviewCount: "Mostrando {shown} de {total} — filtra arriba para ver todos",
         behaviorSectionTitle: "Comportamiento y visualización del Omnibox",
         behaviorSectionDesc: "Controla cálculos integrados, autocompletado en vivo y formato de URL.",
         smartCalcTitle: "Calculadora inteligente en Omnibox",
@@ -3805,7 +4751,19 @@ const es = {
         patDesc: "QBrowse detecta tu sesión activa de GitHub. Añade un PAT si tu organización exige SSO/SAML:",
         testSyncBtn: "Probar y sincronizar",
         toastSynced: "Sincronizado con GitHub",
-        dormantText: "La integración GitHub Live está inactiva. Actívala arriba para seguir Pull Requests e Issues en Modo Trabajo."
+        dormantText: "La integración GitHub Live está inactiva. Actívala arriba para seguir Pull Requests e Issues en Modo Trabajo.",
+        usernameTitle: "Usuario de GitHub (opcional — repos públicos)",
+        usernameDesc: "Sigue PRs e issues públicos por nombre de usuario sin iniciar sesión ni añadir token:",
+        usernamePlaceholder: "ej. octocat",
+        testingSyncBtn: "Sincronizando...",
+        toastSyncedDetail: "@{username} sincronizado ({reviews} revisiones, {prs} PRs, {issues} issues)",
+        toastSyncFailed: "Error al sincronizar GitHub: {error}",
+        statusConnected: "Conectado como @{username}",
+        statusViaPat: "vía PAT",
+        statusViaSession: "vía sesión del navegador",
+        statusViaPublic: "vía API pública",
+        statusCounts: "{reviews} revisiones · {prs} PRs · {issues} issues",
+        statusNotConnected: "Aún no conectado. Haz clic en Probar y sincronizar para comprobar tu sesión, PAT o usuario."
     },
     engine: {
         title: "Rendimiento y Motor",
@@ -3820,7 +4778,11 @@ const es = {
         freeGb: "{size} GB libres",
         battery: "Batería",
         taskManager: "Administrador de tareas",
-        tiers: { eco: "ECO", balanced: "EQUILIBRADO", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "EQUILIBRADO",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Modo de escala de rendimiento",
         scalingModeDesc: "Escalado dinámico de CPU, hibernación de pestañas y fidelidad de desenfoque.",
         pillAuto: "Auto",
@@ -3912,11 +4874,26 @@ const es = {
         subscriptionsTitle: "Suscripciones de filtros",
         subscriptionsDesc: "Listas comunitarias activas.",
         filters: {
-            easylist: { name: "EasyList", desc: "Reglas principales de bloqueo de anuncios" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Scripts de rastreo, balizas y telemetría" },
-            annoyances: { name: "Filtros de Cookies y Molestias", desc: "Diálogos de cookies y popups de boletines" },
-            malware: { name: "Protección Malware y Minado", desc: "Dominios maliciosos y mineros web conocidos" },
-            peterlowe: { name: "Lista de servidores de anuncios de Peter Lowe", desc: "Dominios seleccionados de servidores de anuncios" }
+            easylist: {
+                name: "EasyList",
+                desc: "Reglas principales de bloqueo de anuncios"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Scripts de rastreo, balizas y telemetría"
+            },
+            annoyances: {
+                name: "Filtros de Cookies y Molestias",
+                desc: "Diálogos de cookies y popups de boletines"
+            },
+            malware: {
+                name: "Protección Malware y Minado",
+                desc: "Dominios maliciosos y mineros web conocidos"
+            },
+            peterlowe: {
+                name: "Lista de servidores de anuncios de Peter Lowe",
+                desc: "Dominios seleccionados de servidores de anuncios"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Excepciones y Reglas",
@@ -3954,9 +4931,13 @@ const es = {
         confirmClearBlocklist: "¿Seguro que quieres borrar los {count} dominios bloqueados personalizados?",
         toastClearedBlocklist: "Lista personalizada vaciada",
         toastBlocklistEmpty: "La lista de bloqueo está vacía",
-        toastCopiedBlocklist: "Copiados {count} dominios al portapapeles"
+        toastCopiedBlocklist: "Copiados {count} dominios al portapapeles",
+        cnameUncloakingTitle: "Activar desenmascarado DNS CNAME",
+        cnameUncloakingDesc: "Resolver subdominios de rastreo propios mediante registros DNS CNAME en segundo plano para bloquear rastreadores ocultos."
     },
     about: {
+        helpLegalTitle: "Ayuda e información legal",
+        helpLegalDesc: "Guía de usuario (F1), atajos de teclado, Términos de servicio, Política de privacidad y licencia MIT.",
         title: "Acerca de y Sistema",
         subtitle: "Arquitectura del sistema, especificaciones de ejecución y actualizaciones.",
         accountSectionTitle: "Cuenta y Sincronización Cloud",
@@ -4044,12 +5025,104 @@ const es = {
         startupChimeTitle: "Reproducir melodía de bienvenida al iniciar",
         startupChimeDesc: "Acorde acústico sintetizado al abrir el navegador.",
         relaunchSetup: "Reiniciar configuración inicial",
-        interactiveTour: "Recorrido interactivo"
+        interactiveTour: "Recorrido interactivo",
+        toastNewReleaseExternal: "¡Nueva versión v{version} disponible! Actualiza mediante {format}.",
+        toastNewReleaseLinuxPkg: "Nueva versión en GitHub v{version} disponible ({format}). Haz clic en Descargar.",
+        toastLinuxPkgReady: "¡Paquete de actualización v{version} descargado! Ábrelo o ejecuta el comando de instalación.",
+        toastOpeningPackage: "Abriendo paquete de actualización descargado...",
+        toastOpenedPackageFolder: "Carpeta de descargas abierta. Ejecuta el comando para finalizar.",
+        toastCommandCopied: "Comando de instalación copiado al portapapeles",
+        updateExternalMsg: "La versión v{version} está disponible. Actualiza usando {format}.",
+        updateNoLinuxAssetMsg: "La versión v{version} está en GitHub Releases. Ningún paquete coincide con {arch} — abre GitHub Releases para descargar manualmente.",
+        updateDownloadedLinuxPkgMsg: "Paquete v{version} ({format}) descargado. Abre el paquete o ejecuta el comando de abajo para instalar.",
+        openDownloadedPackage: "Abrir paquete descargado",
+        showInFolder: "Mostrar paquete descargado en la carpeta",
+        showInFolderBtn: "Carpeta",
+        openReleasePage: "Abrir página de lanzamiento",
+        downloadAppImage: "Descargar AppImage (v{version})",
+        downloadLinuxPkg: "Descargar actualización {format} (v{version})",
+        copyInstallCmdTitle: "Copiar comando de instalación",
+        copyBtn: "Copiar",
+        helpCenterBtn: "Centro de ayuda (F1)",
+        termsBtn: "Términos de servicio",
+        privacyBtn: "Política de privacidad",
+        licensesBtn: "Licencias de código abierto"
+    },
+    shortcuts: {
+        title: "Atajos de teclado",
+        subtitle: "Haz clic en cualquier atajo para grabar una nueva combinación. Pulsa Esc para cancelar o Retroceso para restablecer.",
+        searchPlaceholder: "Buscar acciones o combinaciones (ej. «Split», «Ctrl + T»)...",
+        resetAllBtn: "Restablecer todos",
+        resetAllToast: "Todos los atajos restaurados a los valores predeterminados",
+        restoredDefault: "Atajo restaurado al predeterminado",
+        updatedToast: "Atajo actualizado",
+        swappedToast: "Atajos intercambiados",
+        conflictBound: "{combo} ya está asignado a \"{action}\".",
+        conflictHint: "Intercambia sus asignaciones, reemplaza el atajo existente o cancela.",
+        swapReplaceBtn: "Intercambiar / Reemplazar",
+        overrideBtn: "Sobrescribir",
+        noMatches: "No hay atajos que coincidan con \"{query}\".",
+        customizedBadge: "Personalizado",
+        pressKeys: "Pulsa las teclas...",
+        recordingTooltip: "Pulsa una nueva combinación (Esc para cancelar)",
+        recordTooltip: "Haz clic para grabar un nuevo atajo",
+        restoreDefaultTooltip: "Restaurar atajo predeterminado",
+        categories: {
+            tabs: "Pestañas",
+            navigation: "Navegación",
+            view: "Vista",
+            tools: "Herramientas",
+            window: "Ventana"
+        },
+        actions: {
+            newTab: "Nueva pestaña",
+            closeTab: "Cerrar pestaña",
+            reopenClosedTab: "Reabrir pestaña cerrada",
+            toggleMuteTab: "Silenciar / activar sonido de pestaña",
+            openTabMap: "Mapa de pestañas (Mission Control)",
+            pinOrBookmarkTab: "Fijar / añadir a marcadores",
+            openOmnibox: "Abrir Omnibox de comandos",
+            focusAddressBar: "Enfocar barra de direcciones",
+            copyCurrentUrl: "Copiar URL actual",
+            reloadTab: "Recargar página",
+            hardReloadTab: "Recarga forzada (limpiar caché)",
+            navigateBack: "Atrás en el historial",
+            navigateForward: "Adelante en el historial",
+            openHistory: "Archivo de historial",
+            openFile: "Abrir archivo local",
+            toggleSidebar: "Mostrar / ocultar barra lateral",
+            toggleRightPanel: "Mostrar / ocultar panel de herramientas",
+            toggleFramelessMode: "Alternar modo sin bordes / Zen",
+            toggleSplitView: "Alternar vista dividida",
+            toggleSplitOrientation: "Cambiar diseño dividido (2 col. / 2 filas / 2×2)",
+            swapSplitPanes: "Intercambiar paneles divididos",
+            toggleReaderMode: "Alternar modo lectura",
+            zoomIn: "Acercar",
+            zoomOut: "Alejar",
+            resetZoom: "Restablecer zoom",
+            toggleFullscreen: "Pantalla completa",
+            findInPage: "Buscar en la página",
+            findNext: "Siguiente coincidencia",
+            findPrev: "Coincidencia anterior",
+            toggleElementEraser: "Borrador de elementos",
+            toggleScreenshotBar: "Barra de capturas y recortes",
+            toggleReadAloud: "Asistente de lectura en voz alta",
+            printPage: "Imprimir página",
+            openDevTools: "Herramientas para desarrolladores",
+            toggleCaretBrowsing: "Navegación con cursor",
+            newWindow: "Nueva ventana",
+            newPrivateWindow: "Nueva ventana privada / Tor",
+            closeWindow: "Cerrar ventana",
+            openSettings: "Abrir configuración",
+            openHelp: "Centro de ayuda y atajos",
+            openTaskManager: "Administrador de tareas"
+        }
     }
 };
 
 const pt = {
     common: {
+        clear: "Limpar",
         cancel: "Cancelar",
         save: "Salvar",
         delete: "Excluir",
@@ -4086,7 +5159,8 @@ const pt = {
         ai: "ia gemma llama modelo local chat resumir leitor llm gpu camadas contexto",
         engine: "motor desempenho aceleração hardware gpu modo eco ultra memória ram suspensão bfcache bateria processador",
         adblock: "proteção bloqueador anúncios rastreadores easylist ublock lista personalizada sites confiáveis filtros youtube",
-        about: "versão atualização verificar atualizações navegador padrão sistema hardware diagnóstico tour"
+        about: "versão atualização verificar atualizações navegador padrão sistema hardware diagnóstico tour",
+        shortcuts: "atalhos teclado teclas personalizar redefinir ctrl cmd"
     },
     reset: {
         confirmTitle: "Redefinir todas as configurações?",
@@ -4115,12 +5189,30 @@ const pt = {
         Heart: "Coração"
     },
     presets: {
-        balanced: { name: "Equilibrado", tagline: "Dois espaços (Pessoal e Trabalho) com pesquisa Google." },
-        developer: { name: "Desenvolvedor", tagline: "Espaços isolados com integração GitHub Live PR." },
-        classic_reverse: { name: "Arc Moderno", tagline: "Árvore de abas à direita com tela de leitura limpa." },
-        bottom_bar: { name: "Fluxo Ergonômico", tagline: "Barra de endereços inferior para navegação confortável." },
-        minimalist: { name: "Foco Mínimo", tagline: "Espaço único com interface compacta e sem distrações." },
-        privacy: { name: "Sentinela Privada", tagline: "Proteção rigorosa contra rastreadores com busca DuckDuckGo." },
+        balanced: {
+            name: "Equilibrado",
+            tagline: "Dois espaços (Pessoal e Trabalho) com pesquisa Google."
+        },
+        developer: {
+            name: "Desenvolvedor",
+            tagline: "Espaços isolados com integração GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Arc Moderno",
+            tagline: "Árvore de abas à direita com tela de leitura limpa."
+        },
+        bottom_bar: {
+            name: "Fluxo Ergonômico",
+            tagline: "Barra de endereços inferior para navegação confortável."
+        },
+        minimalist: {
+            name: "Foco Mínimo",
+            tagline: "Espaço único com interface compacta e sem distrações."
+        },
+        privacy: {
+            name: "Sentinela Privada",
+            tagline: "Proteção rigorosa contra rastreadores com busca DuckDuckGo."
+        },
         appliedToast: "Predefinição aplicada: {name}"
     },
     appearance: {
@@ -4217,9 +5309,54 @@ const pt = {
         toastWebCached: "Papel de parede da web salvo em cache e aplicado!",
         toastDownloadFailed: "Falha ao baixar papel de parede",
         toastApplied: "Papel de parede aplicado!",
-        toastResetWallpaper: "Papel de parede restaurado ao padrão"
+        toastResetWallpaper: "Papel de parede restaurado ao padrão",
+        smartDarkExcludeMediaTitle: "Excluir imagens e vídeos",
+        smartDarkExcludeMediaDesc: "Manter fotos, vídeos, canvas e players incorporados com cores naturais em vez de invertê-los.",
+        excludedDomainsDesc: "Os sites listados aqui (e subdomínios) mantêm o tema nativo. Cole um domínio, URL completa ou *.dominio.com.",
+        smartDarkStatusOn: "Escuro forçado lig.",
+        smartDarkStatusOff: "Escuro forçado desl.",
+        whitelistInputPlaceholder: "ex. github.com, https://docs.site.com ou *.example.com",
+        whitelistSearchPlaceholder: "Filtrar domínios excluídos...",
+        whitelistWillAdd: "Será adicionado:",
+        whitelistResetBtn: "Restaurar padrões",
+        whitelistResetTooltip: "Restaurar sites nativamente escuros recomendados",
+        whitelistClearTooltip: "Remover todos os domínios excluídos",
+        whitelistEmpty: "Nenhum domínio excluído. O modo escuro inteligente avaliará todos os sites automaticamente.",
+        whitelistNoMatches: "Nenhum domínio permitido corresponde a \"{query}\".",
+        whitelistDuplicate: "{domain} já está na lista de permissões.",
+        whitelistInvalid: "Insira um domínio, URL ou curinga *.dominio.com válido.",
+        whitelistAddedToast: "{domain} excluído do modo escuro inteligente",
+        whitelistRemovedToast: "{domain} removido da lista do modo escuro",
+        whitelistResetToast: "{count} domínios padrão recomendados restaurados",
+        whitelistResetToastShort: "Lista padrão do modo escuro restaurada",
+        whitelistClearedToast: "Lista do modo escuro limpa",
+        highlightAccentLabel: "Destaque",
+        textHighlightTitle: "Cor e estilo de destaque de texto",
+        textHighlightDesc: "Personalize como o texto selecionado aparece no navegador e nos sites.",
+        textHighlightWebLabel: "Aplicar aos sites",
+        textHighlightPreview: "Arraste para selecionar este texto e visualizar seu estilo ao vivo.",
+        highlightStyles: {
+            system: "Sistema",
+            tinted: "Tingido",
+            vibrant: "Vibrante",
+            glow: "Brilho",
+            underline: "Sublinhado"
+        },
+        highlightSwatches: {
+            accent: "Seguir destaque",
+            d4bc94: "Areia",
+            "3b82f6": "Azul elétrico",
+            "10b981": "Esmeralda",
+            f43f5e: "Rosa",
+            a855f7: "Violeta",
+            f59e0b: "Âmbar",
+            "06b6d4": "Ciano",
+            ec4899: "Rosa choque"
+        }
     },
     layout: {
+        framelessModeTitle: "Modo sem bordas / Zen (Ctrl+Alt+F)",
+        framelessModeDesc: "Oculte a barra lateral e a barra superior em gavetas ao passar o mouse nas bordas sem entrar em tela cheia do sistema.",
         title: "Layout e Interface",
         subtitle: "Configure ancoragens espaciais, geometria das janelas, arquitetura da Omnibox e controles.",
         spatialTitle: "Posicionamento Espacial",
@@ -4231,7 +5368,12 @@ const pt = {
         toolHubPosTitle: "Posição do Painel Tool Hub",
         toolHubPosDesc: "Painel lateral para extensões, downloads, QVault e assistente IA.",
         collisionNote: "Nota: Se ancorado no mesmo lado da Barra Lateral, ela mudará para o lado oposto automaticamente.",
-        pos: { left: "Esquerda", right: "Direita", top: "Topo", bottom: "Inferior" },
+        pos: {
+            left: "Esquerda",
+            right: "Direita",
+            top: "Topo",
+            bottom: "Inferior"
+        },
         toastSidebarPos: "Posição da barra lateral: {pos}",
         toastTopBarPos: "Posição da barra superior: {pos}",
         toastToolHubPos: "Posição do Tool Hub: {pos}",
@@ -4444,7 +5586,18 @@ const pt = {
         clearDataTitle: "Limpar Dados de Navegação",
         clearDataDesc: "Apaga histórico, cookies e cache do armazenamento local e SQLite.",
         clearDataBtn: "Limpar Dados...",
-        toastDataCleared: "Todos os dados de navegação foram limpos!"
+        toastDataCleared: "Todos os dados de navegação foram limpos!",
+        passkeyProviderTitle: "Provedor de chaves de acesso",
+        passkeyProviderDesc: "Escolha se os sites usam primeiro as chaves do QVault ou vão direto para sua chave de hardware / sistema (YubiKey, FIDO2, Windows Hello, Touch ID, QR do celular).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Chave de hardware / sistema",
+        toastPasskeyModeQvault: "Provedor: QVault (com fallback de chave física)",
+        toastPasskeyModeHardware: "Provedor: Sempre usar chave de hardware / sistema",
+        passkeyFallbackTitle: "Fallback automático de chave de hardware",
+        passkeyFallbackDesc: "Recorrer automaticamente a YubiKey, FIDO2, biometria ou QR quando o QVault não tiver chave, estiver bloqueado no Ghost/Tor ou o site exigir algoritmos sem suporte.",
+        passkeyFallbackAlwaysActive: "Sempre ativo",
+        toastPasskeyFallbackEnabled: "Fallback automático de chave de hardware ativado",
+        toastPasskeyFallbackDisabled: "Fallback automático de chave de hardware desativado"
     },
     cookies: {
         title: "Cookies e Permissões de Sites",
@@ -4469,13 +5622,38 @@ const pt = {
             notifications: "Notificações",
             clipboard: "Área de transf.",
             sound: "Som",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Câmera",
+            microphone: "Microfone",
+            "clipboard-read": "Área de transferência",
+            midi: "Dispositivos MIDI",
+            sensors: "Movimento e sensores",
+            "idle-detection": "Detecção de inatividade",
+            "display-capture": "Compartilhamento de tela",
+            "window-management": "Gerenciamento de janelas",
+            "speaker-selection": "Saída de áudio",
+            openExternal: "Apps externos"
         },
         permValues: {
             allow: "permitir",
             block: "bloquear",
             ask: "perguntar"
-        }
+        },
+        networkSectionTitle: "Rede e serviços em segundo plano",
+        networkSectionDesc: "Controle requisições opcionais em segundo plano. Ative o modo offline estrito para garantir zero tráfego.",
+        networkActiveCount: "{active} de {total} ativos",
+        strictOfflineTitle: "Offline estrito / Zero requisições em segundo plano",
+        strictOfflineDesc: "Interruptor mestre que bloqueia todas as requisições opcionais em segundo plano (atualizações, filtros, sugestões, favicons e sincronização).",
+        bgAutoUpdatesTitle: "Verificação automática de atualizações",
+        bgAutoUpdatesDesc: "Verificar periodicamente o GitHub Releases por novas versões do QBrowse.",
+        bgFilterUpdatesTitle: "Atualização de listas de filtros Adblock",
+        bgFilterUpdatesDesc: "Baixar listas EasyList, EasyPrivacy e uBlock atualizadas em segundo plano.",
+        bgLiveSuggestionsTitle: "Sugestões de pesquisa ao vivo",
+        bgLiveSuggestionsDesc: "Buscar sugestões de preenchimento automático em tempo real na omnibox.",
+        bgRemoteFaviconsTitle: "Favicons de sites remotos",
+        bgRemoteFaviconsDesc: "Buscar ícones via serviço de favicon do Google para abas, fixados e histórico.",
+        bgCloudSyncTitle: "Sincronização na nuvem em segundo plano",
+        bgCloudSyncDesc: "Sincronizar automaticamente abas criptografadas, configurações e cofre com a nuvem."
     },
     search: {
         title: "Pesquisa e Barra de Endereços",
@@ -4527,6 +5705,8 @@ const pt = {
         toastBangRemoved: "Bang personalizado “!{prefix}” removido",
         filterBangsPlaceholder: "Filtrar bangs por nome, atajo (!yt, @github) ou categoria...",
         deleteCustomBangTitle: "Excluir bang personalizado",
+        bangsFilterCount: "Mostrando {shown} de {total} bangs correspondentes",
+        bangsPreviewCount: "Mostrando {shown} de {total} — filtre acima para navegar por todos",
         behaviorSectionTitle: "Comportamento e Exibição da Omnibox",
         behaviorSectionDesc: "Controle cálculos integrados, preenchimento ao vivo e exibição de URLs.",
         smartCalcTitle: "Calculadora Inteligente na Omnibox",
@@ -4595,7 +5775,19 @@ const pt = {
         patDesc: "O QBrowse detecta sua sessão GitHub ativa. Informe um PAT se sua empresa exigir SSO/SAML:",
         testSyncBtn: "Testar e Sincronizar",
         toastSynced: "Sincronizado com o GitHub",
-        dormantText: "A integração GitHub Live está inativa. Ative acima para acompanhar Pull Requests e Issues no Modo Trabalho."
+        dormantText: "A integração GitHub Live está inativa. Ative acima para acompanhar Pull Requests e Issues no Modo Trabalho.",
+        usernameTitle: "Usuário do GitHub (opcional — repos públicos)",
+        usernameDesc: "Acompanhe PRs e issues públicos pelo nome de usuário sem login ou token:",
+        usernamePlaceholder: "ex. octocat",
+        testingSyncBtn: "Sincronizando...",
+        toastSyncedDetail: "@{username} sincronizado ({reviews} revisões, {prs} PRs, {issues} issues)",
+        toastSyncFailed: "Falha na sincronização do GitHub: {error}",
+        statusConnected: "Conectado como @{username}",
+        statusViaPat: "via PAT",
+        statusViaSession: "via sessão do navegador",
+        statusViaPublic: "via API pública",
+        statusCounts: "{reviews} revisões · {prs} PRs · {issues} issues",
+        statusNotConnected: "Ainda não conectado. Clique em Testar e Sincronizar para verificar sessão, PAT ou usuário."
     },
     engine: {
         title: "Motor e Desempenho",
@@ -4610,7 +5802,11 @@ const pt = {
         freeGb: "{size} GB Livres",
         battery: "Bateria",
         taskManager: "Gerenciador de Tarefas",
-        tiers: { eco: "ECO", balanced: "EQUILIBRADO", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "EQUILIBRADO",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Modo de Escalonamento de Desempenho",
         scalingModeDesc: "Escalonamento dinâmico de CPU, hibernação de abas e qualidade de desfoque.",
         pillAuto: "Auto",
@@ -4702,11 +5898,26 @@ const pt = {
         subscriptionsTitle: "Assinaturas de Filtros",
         subscriptionsDesc: "Listas comunitárias ativas.",
         filters: {
-            easylist: { name: "EasyList", desc: "Regras principais de bloqueio de anúncios" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Scripts de rastreamento, beacons e telemetria" },
-            annoyances: { name: "Filtros de Cookies e Incômodos", desc: "Diálogos de cookies e pop-ups de newsletter" },
-            malware: { name: "Proteção Malware e Mineração", desc: "Domínios maliciosos e mineradores no navegador" },
-            peterlowe: { name: "Lista de Servidores de Anúncios de Peter Lowe", desc: "Domínios selecionados de anúncios e rastreamento" }
+            easylist: {
+                name: "EasyList",
+                desc: "Regras principais de bloqueio de anúncios"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Scripts de rastreamento, beacons e telemetria"
+            },
+            annoyances: {
+                name: "Filtros de Cookies e Incômodos",
+                desc: "Diálogos de cookies e pop-ups de newsletter"
+            },
+            malware: {
+                name: "Proteção Malware e Mineração",
+                desc: "Domínios maliciosos e mineradores no navegador"
+            },
+            peterlowe: {
+                name: "Lista de Servidores de Anúncios de Peter Lowe",
+                desc: "Domínios selecionados de anúncios e rastreamento"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Exceções e Regras",
@@ -4744,9 +5955,13 @@ const pt = {
         confirmClearBlocklist: "Tem certeza de que deseja limpar todos os {count} domínios bloqueados personalizados?",
         toastClearedBlocklist: "Lista personalizada limpa",
         toastBlocklistEmpty: "A lista de bloqueio está vazia",
-        toastCopiedBlocklist: "{count} domínios copiados para a área de transferência"
+        toastCopiedBlocklist: "{count} domínios copiados para a área de transferência",
+        cnameUncloakingTitle: "Ativar revelação de CNAME DNS",
+        cnameUncloakingDesc: "Resolver subdomínios de rastreamento primários via registros DNS CNAME em segundo plano para bloquear rastreadores disfarçados."
     },
     about: {
+        helpLegalTitle: "Ajuda e informações legais",
+        helpLegalDesc: "Guia do usuário (F1), atalhos de teclado, Termos de Serviço, Política de Privacidade e licença MIT.",
         title: "Sobre e Sistema",
         subtitle: "Arquitetura do sistema, especificações de execução e atualizações do aplicativo.",
         accountSectionTitle: "Conta e Sincronização na Nuvem",
@@ -4834,12 +6049,104 @@ const pt = {
         startupChimeTitle: "Tocar som de boas-vindas ao iniciar",
         startupChimeDesc: "Acorde acústico sintetizado ao abrir o navegador.",
         relaunchSetup: "Reiniciar Configuração Inicial",
-        interactiveTour: "Tour Interativo"
+        interactiveTour: "Tour Interativo",
+        toastNewReleaseExternal: "Nova versão v{version} disponível! Atualize via {format}.",
+        toastNewReleaseLinuxPkg: "Novo lançamento no GitHub v{version} disponível ({format}). Clique em Baixar.",
+        toastLinuxPkgReady: "Pacote v{version} baixado! Abra-o ou execute o comando de instalação.",
+        toastOpeningPackage: "Abrindo pacote de atualização baixado...",
+        toastOpenedPackageFolder: "Pasta de downloads aberta. Execute o comando de instalação para concluir.",
+        toastCommandCopied: "Comando de instalação copiado",
+        updateExternalMsg: "A versão v{version} está disponível. Atualize usando {format}.",
+        updateNoLinuxAssetMsg: "A versão v{version} está no GitHub Releases. Nenhum pacote compatível com {arch} — baixe manualmente.",
+        updateDownloadedLinuxPkgMsg: "Pacote v{version} ({format}) baixado. Abra o pacote ou execute o comando abaixo.",
+        openDownloadedPackage: "Abrir pacote baixado",
+        showInFolder: "Mostrar pacote na pasta",
+        showInFolderBtn: "Pasta",
+        openReleasePage: "Abrir página de lançamento",
+        downloadAppImage: "Baixar AppImage (v{version})",
+        downloadLinuxPkg: "Baixar atualização {format} (v{version})",
+        copyInstallCmdTitle: "Copiar comando de instalação",
+        copyBtn: "Copiar",
+        helpCenterBtn: "Central de Ajuda (F1)",
+        termsBtn: "Termos de Serviço",
+        privacyBtn: "Política de Privacidade",
+        licensesBtn: "Licenças de Código Aberto"
+    },
+    shortcuts: {
+        title: "Atalhos de teclado",
+        subtitle: "Clique em qualquer atalho para gravar uma nova combinação. Pressione Esc para cancelar ou Backspace para redefinir.",
+        searchPlaceholder: "Pesquisar ações ou combinações (ex. \"Split\", \"Ctrl + T\")...",
+        resetAllBtn: "Redefinir tudo",
+        resetAllToast: "Todos os atalhos restaurados para o padrão",
+        restoredDefault: "Atalho restaurado para o padrão",
+        updatedToast: "Atalho atualizado",
+        swappedToast: "Atalhos trocados",
+        conflictBound: "{combo} já está vinculado a \"{action}\".",
+        conflictHint: "Troque os atalhos, substitua o existente ou cancele.",
+        swapReplaceBtn: "Trocar / Substituir",
+        overrideBtn: "Substituir",
+        noMatches: "Nenhum atalho correspondente a \"{query}\".",
+        customizedBadge: "Personalizado",
+        pressKeys: "Pressione as teclas...",
+        recordingTooltip: "Pressione a nova combinação (Esc para cancelar)",
+        recordTooltip: "Clique para gravar novo atalho",
+        restoreDefaultTooltip: "Restaurar atalho padrão",
+        categories: {
+            tabs: "Abas",
+            navigation: "Navegação",
+            view: "Exibição",
+            tools: "Ferramentas",
+            window: "Janela"
+        },
+        actions: {
+            newTab: "Nova aba",
+            closeTab: "Fechar aba",
+            reopenClosedTab: "Reabrir aba fechada",
+            toggleMuteTab: "Silenciar / ativar som da aba",
+            openTabMap: "Mapa de abas (Mission Control)",
+            pinOrBookmarkTab: "Fixar / favoritar aba",
+            openOmnibox: "Abrir Omnibox de comandos",
+            focusAddressBar: "Focar barra de endereços",
+            copyCurrentUrl: "Copiar URL atual",
+            reloadTab: "Recarregar página",
+            hardReloadTab: "Recarregamento forçado (limpar cache)",
+            navigateBack: "Voltar no histórico",
+            navigateForward: "Avançar no histórico",
+            openHistory: "Arquivo de histórico",
+            openFile: "Abrir arquivo local",
+            toggleSidebar: "Alternar barra lateral",
+            toggleRightPanel: "Alternar painel de ferramentas",
+            toggleFramelessMode: "Alternar modo sem bordas / Zen",
+            toggleSplitView: "Alternar visualização dividida",
+            toggleSplitOrientation: "Alternar layout dividido (2 col. / 2 linhas / 2×2)",
+            swapSplitPanes: "Trocar painéis divididos",
+            toggleReaderMode: "Alternar modo de leitura",
+            zoomIn: "Mais zoom",
+            zoomOut: "Menos zoom",
+            resetZoom: "Redefinir zoom",
+            toggleFullscreen: "Tela cheia",
+            findInPage: "Localizar na página",
+            findNext: "Próxima ocorrência",
+            findPrev: "Ocorrência anterior",
+            toggleElementEraser: "Borracha de elementos",
+            toggleScreenshotBar: "Barra de captura de tela",
+            toggleReadAloud: "Assistente de leitura em voz alta",
+            printPage: "Imprimir página",
+            openDevTools: "Ferramentas do desenvolvedor",
+            toggleCaretBrowsing: "Navegação por cursor",
+            newWindow: "Nova janela",
+            newPrivateWindow: "Nova janela privada / Tor",
+            closeWindow: "Fechar janela",
+            openSettings: "Abrir configurações",
+            openHelp: "Central de ajuda e atalhos",
+            openTaskManager: "Gerenciador de tarefas"
+        }
     }
 };
 
 const zh = {
     common: {
+        clear: "清除",
         cancel: "取消",
         save: "保存",
         delete: "删除",
@@ -4876,7 +6183,8 @@ const zh = {
         ai: "ai 人工智能 gemma llama 本地模型 聊天 总结 阅读器 llm gpu 层数 上下文",
         engine: "引擎 性能 硬件加速 gpu 节能模式 极速模式 内存 ram 标签页休眠 bfcache 电池 处理器",
         adblock: "广告拦截 防护 盾牌 跟踪器 easylist ublock 自定义拦截规则 白名单 过滤器 youtube",
-        about: "版本 更新 检查更新 默认浏览器 系统信息 硬件配置 诊断 向导"
+        about: "版本 更新 检查更新 默认浏览器 系统信息 硬件配置 诊断 向导",
+        shortcuts: "键盘快捷键 热键 按键绑定 自定义 ctrl cmd"
     },
     reset: {
         confirmTitle: "重置所有设置？",
@@ -4905,12 +6213,30 @@ const zh = {
         Heart: "爱心"
     },
     presets: {
-        balanced: { name: "均衡", tagline: "个人与工作双工作区，搭配 Google 搜索。" },
-        developer: { name: "开发者", tagline: "独立隔离工作区，集成 GitHub Live PR 追踪。" },
-        classic_reverse: { name: "现代 Arc", tagline: "右侧标签树布局与清爽阅读画布。" },
-        bottom_bar: { name: "人体工学流", tagline: "底部地址栏设计，单手操作更顺手。" },
-        minimalist: { name: "极简专注", tagline: "单一工作区，紧凑无干扰界面。" },
-        privacy: { name: "隐私哨兵", tagline: "严格防追踪保护，搭配 DuckDuckGo 搜索。" },
+        balanced: {
+            name: "均衡",
+            tagline: "个人与工作双工作区，搭配 Google 搜索。"
+        },
+        developer: {
+            name: "开发者",
+            tagline: "独立隔离工作区，集成 GitHub Live PR 追踪。"
+        },
+        classic_reverse: {
+            name: "现代 Arc",
+            tagline: "右侧标签树布局与清爽阅读画布。"
+        },
+        bottom_bar: {
+            name: "人体工学流",
+            tagline: "底部地址栏设计，单手操作更顺手。"
+        },
+        minimalist: {
+            name: "极简专注",
+            tagline: "单一工作区，紧凑无干扰界面。"
+        },
+        privacy: {
+            name: "隐私哨兵",
+            tagline: "严格防追踪保护，搭配 DuckDuckGo 搜索。"
+        },
         appliedToast: "已应用预设：{name}"
     },
     appearance: {
@@ -5007,9 +6333,54 @@ const zh = {
         toastWebCached: "网络壁纸已缓存并应用！",
         toastDownloadFailed: "下载壁纸失败",
         toastApplied: "壁纸已应用！",
-        toastResetWallpaper: "已恢复默认壁纸"
+        toastResetWallpaper: "已恢复默认壁纸",
+        smartDarkExcludeMediaTitle: "排除图片和视频",
+        smartDarkExcludeMediaDesc: "保留照片、视频、画布和嵌入式播放器的自然色彩，而不进行反色。",
+        excludedDomainsDesc: "列在此处的网站（及其子域名）将保留原生主题。粘贴域名、完整网址或 *.domain.com 通配符。",
+        smartDarkStatusOn: "强制深色已开启",
+        smartDarkStatusOff: "强制深色已关闭",
+        whitelistInputPlaceholder: "例如 github.com、https://docs.site.com 或 *.example.com",
+        whitelistSearchPlaceholder: "筛选排除的域名...",
+        whitelistWillAdd: "将添加：",
+        whitelistResetBtn: "恢复默认",
+        whitelistResetTooltip: "恢复推荐的原生深色网站",
+        whitelistClearTooltip: "移除所有排除的域名",
+        whitelistEmpty: "暂无排除域名。智能深色模式将自动评估所有网站。",
+        whitelistNoMatches: "没有匹配“{query}”的白名单域名。",
+        whitelistDuplicate: "{domain} 已在白名单中。",
+        whitelistInvalid: "请输入有效的域名、网址或 *.domain.com 通配符。",
+        whitelistAddedToast: "已将 {domain} 排除出智能深色模式",
+        whitelistRemovedToast: "已将 {domain} 从深色模式白名单中移除",
+        whitelistResetToast: "已恢复 {count} 个推荐默认域名",
+        whitelistResetToastShort: "已恢复默认深色模式白名单",
+        whitelistClearedToast: "已清空深色模式白名单",
+        highlightAccentLabel: "强调色",
+        textHighlightTitle: "文本高亮颜色与样式",
+        textHighlightDesc: "自定义浏览器和网页中选中文本的外观。",
+        textHighlightWebLabel: "应用到网页",
+        textHighlightPreview: "拖动选择此文本以实时预览您的高亮样式。",
+        highlightStyles: {
+            system: "系统",
+            tinted: "浅染",
+            vibrant: "鲜艳",
+            glow: "发光",
+            underline: "下划线"
+        },
+        highlightSwatches: {
+            accent: "跟随强调色",
+            d4bc94: "沙色",
+            "3b82f6": "电光蓝",
+            "10b981": "翡翠绿",
+            f43f5e: "玫瑰红",
+            a855f7: "紫罗兰",
+            f59e0b: "琥珀黄",
+            "06b6d4": "青色",
+            ec4899: "粉色"
+        }
     },
     layout: {
+        framelessModeTitle: "无边框 / 禅模式 (Ctrl+Alt+F)",
+        framelessModeDesc: "将侧边栏和顶栏隐藏为边缘悬停抽屉，而无需进入系统全屏。",
         title: "界面与布局",
         subtitle: "配置空间停靠位置、窗口几何外观、地址栏架构及工具栏控件。",
         spatialTitle: "空间布局定位",
@@ -5021,7 +6392,12 @@ const zh = {
         toolHubPosTitle: "Tool Hub 抽屉位置",
         toolHubPosDesc: "用于扩展、下载、QVault 与 AI 助手的侧边抽屉。",
         collisionNote: "提示：若与侧边栏停靠在同一侧，侧边栏会自动移至对侧以避免界面冲突。",
-        pos: { left: "左侧", right: "右侧", top: "顶部", bottom: "底部" },
+        pos: {
+            left: "左侧",
+            right: "右侧",
+            top: "顶部",
+            bottom: "底部"
+        },
         toastSidebarPos: "侧边栏位置：{pos}",
         toastTopBarPos: "主工具栏位置：{pos}",
         toastToolHubPos: "Tool Hub 位置：{pos}",
@@ -5234,7 +6610,18 @@ const zh = {
         clearDataTitle: "清除浏览数据",
         clearDataDesc: "从本地存储与 SQLite 清除浏览历史、Cookie 和缓存。",
         clearDataBtn: "清除数据...",
-        toastDataCleared: "所有浏览数据已清除！"
+        toastDataCleared: "所有浏览数据已清除！",
+        passkeyProviderTitle: "通行密钥提供程序",
+        passkeyProviderDesc: "选择网站是优先使用 QVault 通行密钥，还是始终直接路由到您的硬件 / 系统安全密钥（YubiKey、FIDO2、Windows Hello、Touch ID、手机二维码）。",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "硬件 / 系统密钥",
+        toastPasskeyModeQvault: "通行密钥提供程序：QVault（支持硬件密钥回退）",
+        toastPasskeyModeHardware: "通行密钥提供程序：始终使用硬件 / 系统安全密钥",
+        passkeyFallbackTitle: "自动硬件密钥回退",
+        passkeyFallbackDesc: "当 QVault 没有匹配的通行密钥、在隐身/Tor 模式下被锁定，或网站要求不支持的算法时，自动回退到 YubiKey、FIDO2、系统生物识别或手机二维码。",
+        passkeyFallbackAlwaysActive: "始终启用",
+        toastPasskeyFallbackEnabled: "已启用自动硬件密钥回退",
+        toastPasskeyFallbackDisabled: "已禁用自动硬件密钥回退"
     },
     cookies: {
         title: "Cookie 与网站权限",
@@ -5259,13 +6646,38 @@ const zh = {
             notifications: "通知",
             clipboard: "剪贴板",
             sound: "声音",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "摄像头",
+            microphone: "麦克风",
+            "clipboard-read": "剪贴板",
+            midi: "MIDI 设备",
+            sensors: "运动与传感器",
+            "idle-detection": "空闲检测",
+            "display-capture": "屏幕共享",
+            "window-management": "窗口管理",
+            "speaker-selection": "音频输出",
+            openExternal: "外部应用"
         },
         permValues: {
             allow: "允许",
             block: "阻止",
             ask: "询问"
-        }
+        },
+        networkSectionTitle: "网络与后台服务",
+        networkSectionDesc: "控制可选的后台网络请求。启用严格离线模式以确保零后台流量。",
+        networkActiveCount: "已启用 {active} / {total}",
+        strictOfflineTitle: "严格离线 / 零后台请求",
+        strictOfflineDesc: "主开关，阻止所有可选的后台网络请求（更新、过滤列表刷新、实时搜索建议、远程图标和云同步）。",
+        bgAutoUpdatesTitle: "自动检查应用更新",
+        bgAutoUpdatesDesc: "定期检查 GitHub Releases 以获取 QBrowse 新版本。",
+        bgFilterUpdatesTitle: "广告拦截过滤列表刷新",
+        bgFilterUpdatesDesc: "在后台下载更新的 EasyList、EasyPrivacy 和 uBlock 过滤列表。",
+        bgLiveSuggestionsTitle: "实时搜索建议",
+        bgLiveSuggestionsDesc: "在多功能框输入时获取实时自动补全建议。",
+        bgRemoteFaviconsTitle: "远程网站图标",
+        bgRemoteFaviconsDesc: "通过 Google 图标服务获取标签页、固定栏和历史记录的网站图标。",
+        bgCloudSyncTitle: "后台云同步",
+        bgCloudSyncDesc: "自动将加密标签页、设置和保险库更改同步到云端。"
     },
     search: {
         title: "搜索与地址栏",
@@ -5317,6 +6729,8 @@ const zh = {
         toastBangRemoved: "已移除自定义 Bang “!{prefix}”",
         filterBangsPlaceholder: "按名称、前缀 (!yt, @github) 或分类筛选...",
         deleteCustomBangTitle: "删除自定义 Bang",
+        bangsFilterCount: "显示 {shown} / {total} 个匹配的 Bang",
+        bangsPreviewCount: "显示 {shown} / {total} 个 — 在上方筛选以浏览全部",
         behaviorSectionTitle: "地址栏行为与显示",
         behaviorSectionDesc: "控制内联计算、实时自动补全以及 URL 显示格式。",
         smartCalcTitle: "地址栏智能计算器",
@@ -5385,7 +6799,19 @@ const zh = {
         patDesc: "QBrowse 会自动检测您的活跃 GitHub 会话。如组织启用了 SSO/SAML，请提供 PAT：",
         testSyncBtn: "测试并同步",
         toastSynced: "已与 GitHub 同步",
-        dormantText: "GitHub Live 集成当前处于休眠状态。在上方开启后即可在工作模式中追踪 PR 与 Issue。"
+        dormantText: "GitHub Live 集成当前处于休眠状态。在上方开启后即可在工作模式中追踪 PR 与 Issue。",
+        usernameTitle: "GitHub 用户名（可选 — 公开仓库）",
+        usernameDesc: "无需登录或添加令牌，按用户名追踪公开 PR 和议题：",
+        usernamePlaceholder: "例如 octocat",
+        testingSyncBtn: "同步中...",
+        toastSyncedDetail: "已同步 @{username}（{reviews} 次审查，{prs} 个 PR，{issues} 个议题）",
+        toastSyncFailed: "GitHub 同步失败：{error}",
+        statusConnected: "已连接 @{username}",
+        statusViaPat: "通过 PAT",
+        statusViaSession: "通过浏览器会话",
+        statusViaPublic: "通过公开 API",
+        statusCounts: "{reviews} 审查 · {prs} PR · {issues} 议题",
+        statusNotConnected: "尚未连接。点击“测试并同步”检查您的会话、PAT 或用户名。"
     },
     engine: {
         title: "引擎与性能",
@@ -5400,7 +6826,11 @@ const zh = {
         freeGb: "{size} GB 可用",
         battery: "电池供电",
         taskManager: "任务管理器",
-        tiers: { eco: "节能", balanced: "均衡", ultra: "极速" },
+        tiers: {
+            eco: "节能",
+            balanced: "均衡",
+            ultra: "极速"
+        },
         scalingModeTitle: "性能调节模式",
         scalingModeDesc: "动态 CPU 调频、后台标签休眠与视觉模糊保真度。",
         pillAuto: "自动",
@@ -5492,11 +6922,26 @@ const zh = {
         subscriptionsTitle: "过滤列表订阅",
         subscriptionsDesc: "当前启用的社区过滤规则库。",
         filters: {
-            easylist: { name: "EasyList", desc: "核心广告拦截规则" },
-            easyprivacy: { name: "EasyPrivacy", desc: "追踪脚本、信标与遥测拦截" },
-            annoyances: { name: "Cookie 与干扰弹窗规则", desc: "Cookie 确认弹窗及订阅浮窗" },
-            malware: { name: "恶意软件与挖矿防护", desc: "已知恶意域名与网页挖矿脚本" },
-            peterlowe: { name: "Peter Lowe 广告服务器列表", desc: "精选广告服务器与追踪域名库" }
+            easylist: {
+                name: "EasyList",
+                desc: "核心广告拦截规则"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "追踪脚本、信标与遥测拦截"
+            },
+            annoyances: {
+                name: "Cookie 与干扰弹窗规则",
+                desc: "Cookie 确认弹窗及订阅浮窗"
+            },
+            malware: {
+                name: "恶意软件与挖矿防护",
+                desc: "已知恶意域名与网页挖矿脚本"
+            },
+            peterlowe: {
+                name: "Peter Lowe 广告服务器列表",
+                desc: "精选广告服务器与追踪域名库"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "例外与自定义规则",
@@ -5534,9 +6979,13 @@ const zh = {
         confirmClearBlocklist: "确定要清空全部 {count} 个自定义拦截域名吗？",
         toastClearedBlocklist: "已清空自定义拦截列表",
         toastBlocklistEmpty: "拦截列表为空",
-        toastCopiedBlocklist: "已复制 {count} 个域名到剪贴板"
+        toastCopiedBlocklist: "已复制 {count} 个域名到剪贴板",
+        cnameUncloakingTitle: "启用 DNS CNAME 反伪装",
+        cnameUncloakingDesc: "在后台通过 DNS CNAME 记录解析第一方追踪子域名，以拦截伪装的第三方追踪器。"
     },
     about: {
+        helpLegalTitle: "帮助与法律信息",
+        helpLegalDesc: "用户指南 (F1)、键盘快捷键、服务条款、隐私政策和 MIT 许可证。",
         title: "关于与系统信息",
         subtitle: "系统架构、运行时版本规格及应用更新。",
         accountSectionTitle: "账户与云同步",
@@ -5624,12 +7073,104 @@ const zh = {
         startupChimeTitle: "播放启动欢迎和弦音效",
         startupChimeDesc: "启动浏览器时播放合成的清脆和弦音。",
         relaunchSetup: "重新运行设置向导",
-        interactiveTour: "交互式功能漫游"
+        interactiveTour: "交互式功能漫游",
+        toastNewReleaseExternal: "新版本 v{version} 可用！请通过 {format} 更新。",
+        toastNewReleaseLinuxPkg: "GitHub 新版本 v{version} 可用（{format}）。点击下载获取安装包。",
+        toastLinuxPkgReady: "更新包 v{version} 已下载！打开它或运行安装命令以应用。",
+        toastOpeningPackage: "正在打开已下载的更新包...",
+        toastOpenedPackageFolder: "已打开下载文件夹。运行安装命令以完成更新。",
+        toastCommandCopied: "安装命令已复制到剪贴板",
+        updateExternalMsg: "版本 v{version} 可用。请使用 {format} 更新。",
+        updateNoLinuxAssetMsg: "GitHub Releases 上有版本 v{version}。没有匹配 {arch} 的预构建包 — 请前往 GitHub Releases 手动下载。",
+        updateDownloadedLinuxPkgMsg: "已下载安装包 v{version}（{format}）。打开安装包或运行下方终端命令进行安装。",
+        openDownloadedPackage: "打开已下载的安装包",
+        showInFolder: "在文件夹中显示",
+        showInFolderBtn: "文件夹",
+        openReleasePage: "打开发布页面",
+        downloadAppImage: "下载 AppImage (v{version})",
+        downloadLinuxPkg: "下载 {format} 更新 (v{version})",
+        copyInstallCmdTitle: "复制终端安装命令",
+        copyBtn: "复制",
+        helpCenterBtn: "帮助中心 (F1)",
+        termsBtn: "服务条款",
+        privacyBtn: "隐私政策",
+        licensesBtn: "开源许可证"
+    },
+    shortcuts: {
+        title: "键盘快捷键",
+        subtitle: "点击任意快捷键可录制新的组合键。按 Esc 取消，或按 Backspace 重置。",
+        searchPlaceholder: "搜索操作或组合键（例如“Split”、“Ctrl + T”）...",
+        resetAllBtn: "重置全部快捷键",
+        resetAllToast: "所有键盘快捷键已恢复默认",
+        restoredDefault: "已恢复默认快捷键",
+        updatedToast: "快捷键已更新",
+        swappedToast: "快捷键已交换",
+        conflictBound: "{combo} 已绑定到“{action}”。",
+        conflictHint: "交换它们的绑定、替换现有快捷键或取消。",
+        swapReplaceBtn: "交换 / 替换",
+        overrideBtn: "覆盖",
+        noMatches: "没有匹配“{query}”的快捷键。",
+        customizedBadge: "自定义",
+        pressKeys: "请按键...",
+        recordingTooltip: "按下新的组合键（Esc 取消）",
+        recordTooltip: "点击录制新快捷键",
+        restoreDefaultTooltip: "恢复默认快捷键",
+        categories: {
+            tabs: "标签页",
+            navigation: "导航",
+            view: "视图",
+            tools: "工具",
+            window: "窗口"
+        },
+        actions: {
+            newTab: "新建标签页",
+            closeTab: "关闭标签页",
+            reopenClosedTab: "重新打开已关闭的标签页",
+            toggleMuteTab: "静音 / 取消静音标签页",
+            openTabMap: "标签页地图 (Mission Control)",
+            pinOrBookmarkTab: "固定 / 收藏标签页",
+            openOmnibox: "打开命令多功能框",
+            focusAddressBar: "聚焦地址栏",
+            copyCurrentUrl: "复制当前网址",
+            reloadTab: "重新加载页面",
+            hardReloadTab: "强制刷新（清除缓存）",
+            navigateBack: "后退",
+            navigateForward: "前进",
+            openHistory: "历史记录存档",
+            openFile: "打开本地文件",
+            toggleSidebar: "切换侧边栏",
+            toggleRightPanel: "切换工具中心 / 右侧面板",
+            toggleFramelessMode: "切换无边框 / 禅模式",
+            toggleSplitView: "切换分屏视图",
+            toggleSplitOrientation: "切换分屏布局（2列 / 2行 / 2×2）",
+            swapSplitPanes: "交换分屏窗格",
+            toggleReaderMode: "切换阅读模式",
+            zoomIn: "放大",
+            zoomOut: "缩小",
+            resetZoom: "重置缩放",
+            toggleFullscreen: "切换全屏",
+            findInPage: "在页面中查找",
+            findNext: "查找下一个匹配项",
+            findPrev: "查找上一个匹配项",
+            toggleElementEraser: "元素橡皮擦",
+            toggleScreenshotBar: "截图与裁剪栏",
+            toggleReadAloud: "朗读助手",
+            printPage: "打印页面",
+            openDevTools: "开发者工具",
+            toggleCaretBrowsing: "切换光标浏览",
+            newWindow: "新建窗口",
+            newPrivateWindow: "新建隐私 / Tor 窗口",
+            closeWindow: "关闭窗口",
+            openSettings: "打开设置",
+            openHelp: "帮助中心与快捷键",
+            openTaskManager: "任务管理器"
+        }
     }
 };
 
 const ja = {
     common: {
+        clear: "クリア",
         cancel: "キャンセル",
         save: "保存",
         delete: "削除",
@@ -5666,7 +7207,8 @@ const ja = {
         ai: "ai gemma llama ローカルモデル チャット 要約 リーダー llm gpu レイヤー コンテキスト",
         engine: "エンジン パフォーマンス ハードウェアアクセラレーション gpu エコモード ウルトラ メモリ ram タブ休止 bfcache バッテリー cpu",
         adblock: "シールド 広告ブロック トラッカー easylist ublock カスタムブロック 許可リスト フィルター youtube",
-        about: "バージョン アップデート 更新確認 既定のブラウザ システム情報 ハードウェア 診断 ツアー"
+        about: "バージョン アップデート 更新確認 既定のブラウザ システム情報 ハードウェア 診断 ツアー",
+        shortcuts: "キーボードショートカット ホットキー キー割り当て カスタマイズ ctrl cmd"
     },
     reset: {
         confirmTitle: "すべての設定をリセットしますか？",
@@ -5695,12 +7237,30 @@ const ja = {
         Heart: "ハート"
     },
     presets: {
-        balanced: { name: "バランス", tagline: "個人・仕事のデュアルワークスペースと Google 検索。" },
-        developer: { name: "デベロッパー", tagline: "独立ワークスペースと GitHub Live PR 連携。" },
-        classic_reverse: { name: "モダン Arc", tagline: "右寄せタブツリーとすっきりした閲覧画面。" },
-        bottom_bar: { name: "エルゴノミック", tagline: "親指で操作しやすい下部アドレスバー配置。" },
-        minimalist: { name: "ミニマル集中", tagline: "単一ワークスペースと邪魔にならないコンパクトUI。" },
-        privacy: { name: "プライバシー番人", tagline: "厳格なトラッカー保護と DuckDuckGo 検索。" },
+        balanced: {
+            name: "バランス",
+            tagline: "個人・仕事のデュアルワークスペースと Google 検索。"
+        },
+        developer: {
+            name: "デベロッパー",
+            tagline: "独立ワークスペースと GitHub Live PR 連携。"
+        },
+        classic_reverse: {
+            name: "モダン Arc",
+            tagline: "右寄せタブツリーとすっきりした閲覧画面。"
+        },
+        bottom_bar: {
+            name: "エルゴノミック",
+            tagline: "親指で操作しやすい下部アドレスバー配置。"
+        },
+        minimalist: {
+            name: "ミニマル集中",
+            tagline: "単一ワークスペースと邪魔にならないコンパクトUI。"
+        },
+        privacy: {
+            name: "プライバシー番人",
+            tagline: "厳格なトラッカー保護と DuckDuckGo 検索。"
+        },
         appliedToast: "プリセットを適用しました: {name}"
     },
     appearance: {
@@ -5797,9 +7357,54 @@ const ja = {
         toastWebCached: "Web 壁紙をキャッシュして適用しました！",
         toastDownloadFailed: "壁紙のダウンロードに失敗しました",
         toastApplied: "壁紙を適用しました！",
-        toastResetWallpaper: "壁紙をデフォルトに戻しました"
+        toastResetWallpaper: "壁紙をデフォルトに戻しました",
+        smartDarkExcludeMediaTitle: "画像と動画を除外",
+        smartDarkExcludeMediaDesc: "写真、動画、キャンバス、埋め込みプレーヤーを反転せず自然な色で表示します。",
+        excludedDomainsDesc: "ここに登録されたサイト（およびサブドメイン）は元のテーマを維持します。ドメイン、URL、または *.domain.com を入力してください。",
+        smartDarkStatusOn: "強制ダーク オン",
+        smartDarkStatusOff: "強制ダーク オフ",
+        whitelistInputPlaceholder: "例: github.com, https://docs.site.com, *.example.com",
+        whitelistSearchPlaceholder: "除外ドメインを絞り込み...",
+        whitelistWillAdd: "追加対象:",
+        whitelistResetBtn: "初期値に戻す",
+        whitelistResetTooltip: "推奨のネイティブダークサイトを復元",
+        whitelistClearTooltip: "すべての除外ドメインを削除",
+        whitelistEmpty: "除外ドメインはありません。スマートダークモードがすべてのサイトを自動判定します。",
+        whitelistNoMatches: "「{query}」に一致するホワイトリストドメインはありません。",
+        whitelistDuplicate: "{domain} はすでにホワイトリストに登録されています。",
+        whitelistInvalid: "有効なドメイン、URL、または *.domain.com を入力してください。",
+        whitelistAddedToast: "{domain} をスマートダークモードから除外しました",
+        whitelistRemovedToast: "{domain} をダークモードのホワイトリストから削除しました",
+        whitelistResetToast: "{count} 件の推奨デフォルトドメインを復元しました",
+        whitelistResetToastShort: "デフォルトのダークモードホワイトリストを復元しました",
+        whitelistClearedToast: "ダークモードホワイトリストをクリアしました",
+        highlightAccentLabel: "アクセント",
+        textHighlightTitle: "テキスト選択ハイライトの色とスタイル",
+        textHighlightDesc: "ブラウザおよびウェブサイト全体での選択テキストの見た目をカスタマイズします。",
+        textHighlightWebLabel: "ウェブサイトに適用",
+        textHighlightPreview: "ドラッグしてこのテキストを選択し、ハイライトスタイルをリアルタイムでプレビューできます。",
+        highlightStyles: {
+            system: "システム",
+            tinted: "ティント",
+            vibrant: "ビビッド",
+            glow: "グロー",
+            underline: "下線"
+        },
+        highlightSwatches: {
+            accent: "アクセントに合わせる",
+            d4bc94: "サンド",
+            "3b82f6": "エレクトリックブルー",
+            "10b981": "エメラルド",
+            f43f5e: "ローズ",
+            a855f7: "バイオレット",
+            f59e0b: "アンバー",
+            "06b6d4": "シアン",
+            ec4899: "ピンク"
+        }
     },
     layout: {
+        framelessModeTitle: "フレームレス / 禅モード (Ctrl+Alt+F)",
+        framelessModeDesc: "OS の全画面表示にせず、サイドバーとトップバーを端ホバーで開くドロワーに隠します。",
         title: "レイアウトと UI",
         subtitle: "パネル配置、ウィンドウ形状、アドレスバー構造、ツールバー操作を設定します。",
         spatialTitle: "空間配置",
@@ -5811,7 +7416,12 @@ const ja = {
         toolHubPosTitle: "Tool Hub ドロワーの位置",
         toolHubPosDesc: "拡張機能、ダウンロード、QVault、AI アシスタント用サイドパネル。",
         collisionNote: "注: サイドバーと同じ側に配置すると、重なりを防ぐためサイドバーが自動的に反対側へ移動します。",
-        pos: { left: "左", right: "右", top: "上", bottom: "下" },
+        pos: {
+            left: "左",
+            right: "右",
+            top: "上",
+            bottom: "下"
+        },
         toastSidebarPos: "サイドバー位置: {pos}",
         toastTopBarPos: "トップバー位置: {pos}",
         toastToolHubPos: "Tool Hub 位置: {pos}",
@@ -6024,7 +7634,18 @@ const ja = {
         clearDataTitle: "閲覧データを消去",
         clearDataDesc: "ローカルストレージと SQLite から履歴・Cookie・キャッシュを削除します。",
         clearDataBtn: "データを消去...",
-        toastDataCleared: "すべての閲覧データを消去しました！"
+        toastDataCleared: "すべての閲覧データを消去しました！",
+        passkeyProviderTitle: "パスキープロバイダー",
+        passkeyProviderDesc: "QVault パスキーを優先するか、常にハードウェア / システムセキュリティキー（YubiKey、FIDO2、Windows Hello、Touch ID、スマホQR）を使用するか選択します。",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "ハードウェア / システムキー",
+        toastPasskeyModeQvault: "パスキープロバイダー: QVault（ハードウェアキー予備あり）",
+        toastPasskeyModeHardware: "パスキープロバイダー: 常にハードウェア / システムキーを使用",
+        passkeyFallbackTitle: "自動ハードウェアキーフォールバック",
+        passkeyFallbackDesc: "QVault に該当するパスキーがない場合や Ghost/Tor でロック中、または非対応アルゴリズムが要求された場合に自動的に YubiKey 等へ切り替えます。",
+        passkeyFallbackAlwaysActive: "常に有効",
+        toastPasskeyFallbackEnabled: "自動ハードウェアキーフォールバックを有効にしました",
+        toastPasskeyFallbackDisabled: "自動ハードウェアキーフォールバックを無効にしました"
     },
     cookies: {
         title: "Cookie とサイト権限",
@@ -6049,13 +7670,38 @@ const ja = {
             notifications: "通知",
             clipboard: "クリップボード",
             sound: "音声",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "カメラ",
+            microphone: "マイク",
+            "clipboard-read": "クリップボード",
+            midi: "MIDI デバイス",
+            sensors: "モーションとセンサー",
+            "idle-detection": "アイドル検出",
+            "display-capture": "画面共有",
+            "window-management": "ウィンドウ管理",
+            "speaker-selection": "音声出力",
+            openExternal: "外部アプリ"
         },
         permValues: {
             allow: "許可",
             block: "ブロック",
             ask: "確認"
-        }
+        },
+        networkSectionTitle: "ネットワークとバックグラウンドサービス",
+        networkSectionDesc: "任意のバックグラウンド通信を制御します。完全オフラインモードを有効にするとバックグラウンド通信をゼロにします。",
+        networkActiveCount: "{total} 件中 {active} 件が有効",
+        strictOfflineTitle: "完全オフライン / バックグラウンド通信ゼロ",
+        strictOfflineDesc: "すべての任意バックグラウンド通信（更新確認、フィルター更新、検索候補、外部ファビコン、クラウド同期）を遮断するマスタースイッチ。",
+        bgAutoUpdatesTitle: "アプリ更新の自動確認",
+        bgAutoUpdatesDesc: "GitHub Releases で QBrowse の新しいバージョンを定期的に確認します。",
+        bgFilterUpdatesTitle: "広告ブロックフィルターの更新",
+        bgFilterUpdatesDesc: "EasyList、EasyPrivacy、uBlock の最新フィルターリストをバックグラウンドで取得します。",
+        bgLiveSuggestionsTitle: "ライブ検索候補",
+        bgLiveSuggestionsDesc: "オムニボックス入力中にリアルタイムのオートコンプリート候補を取得します。",
+        bgRemoteFaviconsTitle: "リモートサイトのファビコン",
+        bgRemoteFaviconsDesc: "タブ、ピン、履歴のサイトアイコンを Google のファビコンサービスから取得します。",
+        bgCloudSyncTitle: "バックグラウンドクラウド同期",
+        bgCloudSyncDesc: "暗号化されたタブ、設定、ボールトの変更を自動的にクラウドへ同期します。"
     },
     search: {
         title: "検索とアドレスバー",
@@ -6107,6 +7753,8 @@ const ja = {
         toastBangRemoved: "カスタム Bang「!{prefix}」を削除しました",
         filterBangsPlaceholder: "名前、ショートカット (!yt, @github)、カテゴリで絞り込み...",
         deleteCustomBangTitle: "カスタム Bang を削除",
+        bangsFilterCount: "一致する Bang {total} 件中 {shown} 件を表示",
+        bangsPreviewCount: "{total} 件中 {shown} 件を表示 — 上で絞り込んですべて閲覧",
         behaviorSectionTitle: "アドレスバーの動作と表示",
         behaviorSectionDesc: "インライン計算、ライブ補完、URL 表示形式を制御します。",
         smartCalcTitle: "アドレスバー内スマート電卓",
@@ -6175,7 +7823,19 @@ const ja = {
         patDesc: "QBrowse は有効な GitHub セッションを自動検出します。組織で SSO/SAML が必須の場合に入力してください:",
         testSyncBtn: "テストと同期",
         toastSynced: "GitHub と同期しました",
-        dormantText: "GitHub Live 連携は現在休止中です。上でオンにするとワークモードで PR と Issue を追跡できます。"
+        dormantText: "GitHub Live 連携は現在休止中です。上でオンにするとワークモードで PR と Issue を追跡できます。",
+        usernameTitle: "GitHub ユーザー名（任意 — 公開リポジトリ）",
+        usernameDesc: "ログインやトークンなしでユーザー名から公開 PR や Issue を追跡:",
+        usernamePlaceholder: "例: octocat",
+        testingSyncBtn: "同期中...",
+        toastSyncedDetail: "@{username} を同期しました（レビュー {reviews}、PR {prs}、Issue {issues}）",
+        toastSyncFailed: "GitHub 同期に失敗しました: {error}",
+        statusConnected: "@{username} として接続済み",
+        statusViaPat: "PAT 経由",
+        statusViaSession: "ブラウザセッション経由",
+        statusViaPublic: "公開 API 経由",
+        statusCounts: "レビュー {reviews} · PR {prs} · Issue {issues}",
+        statusNotConnected: "未接続です。「テスト＆同期」をクリックしてセッション、PAT、またはユーザー名を確認してください。"
     },
     engine: {
         title: "エンジンとパフォーマンス",
@@ -6190,7 +7850,11 @@ const ja = {
         freeGb: "{size} GB 空き",
         battery: "バッテリー",
         taskManager: "タスクマネージャー",
-        tiers: { eco: "エコ", balanced: "バランス", ultra: "ウルトラ" },
+        tiers: {
+            eco: "エコ",
+            balanced: "バランス",
+            ultra: "ウルトラ"
+        },
         scalingModeTitle: "パフォーマンススケーリングモード",
         scalingModeDesc: "動的 CPU スケーリング、バックグラウンドタブ休止、ぼかし描画品質を制御します。",
         pillAuto: "自動",
@@ -6282,11 +7946,26 @@ const ja = {
         subscriptionsTitle: "フィルター購読リスト",
         subscriptionsDesc: "有効なコミュニティフィルターリスト。",
         filters: {
-            easylist: { name: "EasyList", desc: "主要な広告ブロックルール" },
-            easyprivacy: { name: "EasyPrivacy", desc: "追跡スクリプト・ビーコン・テレメトリ対策" },
-            annoyances: { name: "Cookie・迷惑要素フィルター", desc: "Cookie 同意画面とニュースレターポップアップ" },
-            malware: { name: "マルウェア・マイニング対策", desc: "既知の悪質ドメインとブラウザ内マイナー" },
-            peterlowe: { name: "Peter Lowe's 広告サーバーリスト", desc: "厳選された広告・追跡ドメインリスト" }
+            easylist: {
+                name: "EasyList",
+                desc: "主要な広告ブロックルール"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "追跡スクリプト・ビーコン・テレメトリ対策"
+            },
+            annoyances: {
+                name: "Cookie・迷惑要素フィルター",
+                desc: "Cookie 同意画面とニュースレターポップアップ"
+            },
+            malware: {
+                name: "マルウェア・マイニング対策",
+                desc: "既知の悪質ドメインとブラウザ内マイナー"
+            },
+            peterlowe: {
+                name: "Peter Lowe's 広告サーバーリスト",
+                desc: "厳選された広告・追跡ドメインリスト"
+            }
         },
         toastFilterToggle: "{name}: {state}",
         exceptionsTitle: "例外とルール",
@@ -6324,9 +8003,13 @@ const ja = {
         confirmClearBlocklist: "{count} 件のカスタムブロックドメインをすべて消去してもよろしいですか？",
         toastClearedBlocklist: "カスタムブロックリストを消去しました",
         toastBlocklistEmpty: "ブロックリストは空です",
-        toastCopiedBlocklist: "{count} 件のドメインをクリップボードにコピーしました"
+        toastCopiedBlocklist: "{count} 件のドメインをクリップボードにコピーしました",
+        cnameUncloakingTitle: "DNS CNAME アンクローキングを有効化",
+        cnameUncloakingDesc: "ファーストパーティの追跡サブドメインをバックグラウンドで DNS CNAME レコード経由で解決し、偽装されたサードパーティトラッカーをブロックします。"
     },
     about: {
+        helpLegalTitle: "ヘルプと法的情報",
+        helpLegalDesc: "ユーザーガイド (F1)、キーボードショートカット、利用規約、プライバシーポリシー、MIT ライセンス。",
         title: "QBrowse とシステム情報",
         subtitle: "システムアーキテクチャ、ランタイム仕様、アプリのアップデート情報。",
         accountSectionTitle: "アカウントとクラウド同期",
@@ -6414,12 +8097,104 @@ const ja = {
         startupChimeTitle: "起動時にウェルカムチャイムを再生",
         startupChimeDesc: "ブラウザ起動時に合成アコースティック和音を再生します。",
         relaunchSetup: "セットアップを再実行",
-        interactiveTour: "インタラクティブツアー"
+        interactiveTour: "インタラクティブツアー",
+        toastNewReleaseExternal: "新バージョン v{version} が利用可能です！{format} で更新してください。",
+        toastNewReleaseLinuxPkg: "新しい GitHub リリース v{version} が利用可能です（{format}）。ダウンロードをクリックしてください。",
+        toastLinuxPkgReady: "アップデートパッケージ v{version} をダウンロードしました！開くかインストールコマンドを実行してください。",
+        toastOpeningPackage: "ダウンロードしたアップデートパッケージを開いています...",
+        toastOpenedPackageFolder: "ダウンロードフォルダを開きました。インストールコマンドを実行して完了してください。",
+        toastCommandCopied: "インストールコマンドをクリップボードにコピーしました",
+        updateExternalMsg: "バージョン v{version} が利用可能です。{format} を使用して更新してください。",
+        updateNoLinuxAssetMsg: "GitHub Releases に v{version} があります。{arch} 用のビルド済みパッケージがありません — 手動でダウンロードしてください。",
+        updateDownloadedLinuxPkgMsg: "パッケージ v{version}（{format}）をダウンロードしました。開くか下のコマンドを実行してインストールしてください。",
+        openDownloadedPackage: "ダウンロードしたパッケージを開く",
+        showInFolder: "ダウンロードしたパッケージをフォルダに表示",
+        showInFolderBtn: "フォルダ",
+        openReleasePage: "リリースページを開く",
+        downloadAppImage: "AppImage をダウンロード (v{version})",
+        downloadLinuxPkg: "{format} アップデートをダウンロード (v{version})",
+        copyInstallCmdTitle: "ターミナルインストールコマンドをコピー",
+        copyBtn: "コピー",
+        helpCenterBtn: "ヘルプセンター (F1)",
+        termsBtn: "利用規約",
+        privacyBtn: "プライバシーポリシー",
+        licensesBtn: "オープンソースライセンス"
+    },
+    shortcuts: {
+        title: "キーボードショートカット",
+        subtitle: "ショートカットをクリックして新しいキーの組み合わせを記録します。Esc でキャンセル、Backspace でリセットします。",
+        searchPlaceholder: "アクションまたはキーを検索（例: \"Split\", \"Ctrl + T\"）...",
+        resetAllBtn: "すべてリセット",
+        resetAllToast: "すべてのショートカットをデフォルトに戻しました",
+        restoredDefault: "デフォルトのショートカットに戻しました",
+        updatedToast: "ショートカットを更新しました",
+        swappedToast: "ショートカットを入れ替えました",
+        conflictBound: "{combo} はすでに「{action}」に割り当てられています。",
+        conflictHint: "割り当てを入れ替えるか、既存のショートカットを上書きするか、キャンセルしてください。",
+        swapReplaceBtn: "入替 / 置換",
+        overrideBtn: "上書き",
+        noMatches: "「{query}」に一致するショートカットはありません。",
+        customizedBadge: "カスタム",
+        pressKeys: "キーを入力...",
+        recordingTooltip: "新しいキーの組み合わせを押してください（Escでキャンセル）",
+        recordTooltip: "クリックして新しいショートカットを記録",
+        restoreDefaultTooltip: "デフォルトのショートカットに戻す",
+        categories: {
+            tabs: "タブ",
+            navigation: "ナビゲーション",
+            view: "表示",
+            tools: "ツール",
+            window: "ウィンドウ"
+        },
+        actions: {
+            newTab: "新しいタブ",
+            closeTab: "タブを閉じる",
+            reopenClosedTab: "閉じたタブを再度開く",
+            toggleMuteTab: "タブのミュート / 解除",
+            openTabMap: "タブマップ (Mission Control)",
+            pinOrBookmarkTab: "タブを固定 / ブックマーク",
+            openOmnibox: "コマンドオムニボックスを開く",
+            focusAddressBar: "アドレスバーにフォーカス",
+            copyCurrentUrl: "現在のURLをコピー",
+            reloadTab: "ページを再読み込み",
+            hardReloadTab: "スーパーリロード（キャッシュ消去）",
+            navigateBack: "履歴を戻る",
+            navigateForward: "履歴を進む",
+            openHistory: "履歴アーカイブ",
+            openFile: "ローカルファイルを開く",
+            toggleSidebar: "サイドバーを切り替え",
+            toggleRightPanel: "ツールハブ / 右パネルを切り替え",
+            toggleFramelessMode: "フレームレス / 禅モードを切り替え",
+            toggleSplitView: "分割ビューを切り替え",
+            toggleSplitOrientation: "分割レイアウトを切り替え (2列 / 2行 / 2×2)",
+            swapSplitPanes: "分割ペインを入れ替え",
+            toggleReaderMode: "リーダーモードを切り替え",
+            zoomIn: "拡大",
+            zoomOut: "縮小",
+            resetZoom: "ズームをリセット",
+            toggleFullscreen: "フルスクリーン切り替え",
+            findInPage: "ページ内検索",
+            findNext: "次の一致を検索",
+            findPrev: "前の一致を検索",
+            toggleElementEraser: "要素消しゴム",
+            toggleScreenshotBar: "スクリーンショットバー",
+            toggleReadAloud: "読み上げアシスタント",
+            printPage: "ページを印刷",
+            openDevTools: "デベロッパーツール",
+            toggleCaretBrowsing: "キャレットブラウジングを切り替え",
+            newWindow: "新しいウィンドウ",
+            newPrivateWindow: "新しいプライベート / Tor ウィンドウ",
+            closeWindow: "ウィンドウを閉じる",
+            openSettings: "設定を開く",
+            openHelp: "ヘルプセンターとショートカット",
+            openTaskManager: "タスクマネージャー"
+        }
     }
 };
 
 const ru = {
     common: {
+        clear: "Очистить",
         cancel: "Отмена",
         save: "Сохранить",
         delete: "Удалить",
@@ -6456,7 +8231,8 @@ const ru = {
         ai: "ии ai gemma llama локальная модель чат резюме gpu слои контекст",
         engine: "движок производительность аппаратное ускорение gpu эко режим ультра память озу спящий режим bfcache батарея процессор",
         adblock: "щиты блокировщик рекламы трекеры easylist ublock свой список исключения фильтры youtube",
-        about: "версия обновление проверить обновления браузер по умолчанию система оборудование диагностика тур"
+        about: "версия обновление проверить обновления браузер по умолчанию система оборудование диагностика тур",
+        shortcuts: "сочетания клавиш горячие клавиши привязки настроить ctrl cmd"
     },
     reset: {
         confirmTitle: "Сбросить все настройки?",
@@ -6485,12 +8261,30 @@ const ru = {
         Heart: "Сердце"
     },
     presets: {
-        balanced: { name: "Сбалансированный", tagline: "Два пространства (Личное и Работа) с поиском Google." },
-        developer: { name: "Разработчик", tagline: "Изолированные пространства с интеграцией GitHub Live PR." },
-        classic_reverse: { name: "Современный Arc", tagline: "Дерево вкладок справа и чистая область чтения." },
-        bottom_bar: { name: "Эргономичный", tagline: "Нижняя адресная строка для удобной навигации." },
-        minimalist: { name: "Минимальный фокус", tagline: "Одно пространство с компактным интерфейсом без лишнего." },
-        privacy: { name: "Страж приватности", tagline: "Строгая защита от слежки и поиск DuckDuckGo." },
+        balanced: {
+            name: "Сбалансированный",
+            tagline: "Два пространства (Личное и Работа) с поиском Google."
+        },
+        developer: {
+            name: "Разработчик",
+            tagline: "Изолированные пространства с интеграцией GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Современный Arc",
+            tagline: "Дерево вкладок справа и чистая область чтения."
+        },
+        bottom_bar: {
+            name: "Эргономичный",
+            tagline: "Нижняя адресная строка для удобной навигации."
+        },
+        minimalist: {
+            name: "Минимальный фокус",
+            tagline: "Одно пространство с компактным интерфейсом без лишнего."
+        },
+        privacy: {
+            name: "Страж приватности",
+            tagline: "Строгая защита от слежки и поиск DuckDuckGo."
+        },
         appliedToast: "Применён пресет: {name}"
     },
     appearance: {
@@ -6587,9 +8381,54 @@ const ru = {
         toastWebCached: "Веб-обои кэшированы и применены!",
         toastDownloadFailed: "Не удалось скачать обои",
         toastApplied: "Обои применены!",
-        toastResetWallpaper: "Обои сброшены к стандартным"
+        toastResetWallpaper: "Обои сброшены к стандартным",
+        smartDarkExcludeMediaTitle: "Исключить изображения и видео",
+        smartDarkExcludeMediaDesc: "Сохранять естественные цвета фото, видео, canvas и встроенных плееров вместо их инвертирования.",
+        excludedDomainsDesc: "Сайты в этом списке (и их поддомены) сохраняют исходную тему. Вставьте домен, URL или маску *.domain.com.",
+        smartDarkStatusOn: "Тёмная тема вкл.",
+        smartDarkStatusOff: "Тёмная тема выкл.",
+        whitelistInputPlaceholder: "напр. github.com, https://docs.site.com или *.example.com",
+        whitelistSearchPlaceholder: "Фильтр исключённых доменов...",
+        whitelistWillAdd: "Будет добавлено:",
+        whitelistResetBtn: "Сбросить",
+        whitelistResetTooltip: "Восстановить рекомендуемые сайты с тёмной темой",
+        whitelistClearTooltip: "Удалить все исключённые домены",
+        whitelistEmpty: "Нет исключённых доменов. Умная тёмная тема будет оценивать все сайты автоматически.",
+        whitelistNoMatches: "Нет доменов в белом списке для «{query}».",
+        whitelistDuplicate: "{domain} уже в белом списке.",
+        whitelistInvalid: "Введите корректный домен, URL или маску *.domain.com.",
+        whitelistAddedToast: "{domain} исключён из умной тёмной темы",
+        whitelistRemovedToast: "{domain} удалён из белого списка тёмной темы",
+        whitelistResetToast: "Восстановлено {count} рекомендуемых доменов по умолчанию",
+        whitelistResetToastShort: "Восстановлен белый список тёмной темы по умолчанию",
+        whitelistClearedToast: "Белый список тёмной темы очищен",
+        highlightAccentLabel: "Акцент",
+        textHighlightTitle: "Цвет и стиль выделения текста",
+        textHighlightDesc: "Настройте внешний вид выделенного текста в браузере и на сайтах.",
+        textHighlightWebLabel: "Применять к сайтам",
+        textHighlightPreview: "Выделите этот текст, чтобы увидеть стиль выделения в реальном времени.",
+        highlightStyles: {
+            system: "Системный",
+            tinted: "Тонированный",
+            vibrant: "Яркий",
+            glow: "Свечение",
+            underline: "Подчёркивание"
+        },
+        highlightSwatches: {
+            accent: "По акценту",
+            d4bc94: "Песочный",
+            "3b82f6": "Электрик",
+            "10b981": "Изумрудный",
+            f43f5e: "Розовый",
+            a855f7: "Фиолетовый",
+            f59e0b: "Янтарный",
+            "06b6d4": "Голубой",
+            ec4899: "Малиновый"
+        }
     },
     layout: {
+        framelessModeTitle: "Безрамочный / Дзен-режим (Ctrl+Alt+F)",
+        framelessModeDesc: "Скрыть боковую и верхнюю панели в выдвижные края при наведении без перехода в системный полноэкранный режим.",
         title: "Макет и панели",
         subtitle: "Настройка расположения панелей, геометрии окон, омнибокса и элементов управления.",
         spatialTitle: "Пространственное расположение",
@@ -6601,7 +8440,12 @@ const ru = {
         toolHubPosTitle: "Положение панели Tool Hub",
         toolHubPosDesc: "Боковая панель для расширений, загрузок, QVault и ИИ-ассистента.",
         collisionNote: "Примечание: При выборе той же стороны боковая панель автоматически переместится на противоположную.",
-        pos: { left: "Слева", right: "Справа", top: "Сверху", bottom: "Снизу" },
+        pos: {
+            left: "Слева",
+            right: "Справа",
+            top: "Сверху",
+            bottom: "Снизу"
+        },
         toastSidebarPos: "Положение боковой панели: {pos}",
         toastTopBarPos: "Положение верхней панели: {pos}",
         toastToolHubPos: "Положение Tool Hub: {pos}",
@@ -6814,7 +8658,18 @@ const ru = {
         clearDataTitle: "Очистить данные браузера",
         clearDataDesc: "Удалить историю, cookie и кэш из локального хранилища и SQLite.",
         clearDataBtn: "Очистить...",
-        toastDataCleared: "Все данные браузера очищены!"
+        toastDataCleared: "Все данные браузера очищены!",
+        passkeyProviderTitle: "Поставщик ключей доступа",
+        passkeyProviderDesc: "Выберите, использовать ли сначала ключи QVault или сразу перенаправлять к аппаратному / системному ключу (YubiKey, FIDO2, Windows Hello, Touch ID, QR телефона).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Аппаратный / системный ключ",
+        toastPasskeyModeQvault: "Поставщик ключей: QVault (с резервом на аппаратный ключ)",
+        toastPasskeyModeHardware: "Поставщик ключей: Всегда аппаратный / системный ключ",
+        passkeyFallbackTitle: "Автоматический переход на аппаратный ключ",
+        passkeyFallbackDesc: "Автоматически использовать YubiKey, FIDO2, биометрию ОС или QR телефона, если в QVault нет ключа, он заблокирован в Ghost/Tor или сайт требует неподдерживаемый алгоритм.",
+        passkeyFallbackAlwaysActive: "Всегда активно",
+        toastPasskeyFallbackEnabled: "Автоматический переход на аппаратный ключ включён",
+        toastPasskeyFallbackDisabled: "Автоматический переход на аппаратный ключ отключён"
     },
     cookies: {
         title: "Файлы cookie и разрешения",
@@ -6839,13 +8694,38 @@ const ru = {
             notifications: "Уведомления",
             clipboard: "Буфер обмена",
             sound: "Звук",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Камера",
+            microphone: "Микрофон",
+            "clipboard-read": "Буфер обмена",
+            midi: "MIDI-устройства",
+            sensors: "Движение и датчики",
+            "idle-detection": "Определение бездействия",
+            "display-capture": "Демонстрация экрана",
+            "window-management": "Управление окнами",
+            "speaker-selection": "Вывод звука",
+            openExternal: "Внешние приложения"
         },
         permValues: {
             allow: "разрешить",
             block: "блокировать",
             ask: "спрашивать"
-        }
+        },
+        networkSectionTitle: "Сеть и фоновые службы",
+        networkSectionDesc: "Управляйте необязательными фоновыми сетевыми запросами. Включите строгий автономный режим для полного отсутствия фонового трафика.",
+        networkActiveCount: "Активно {active} из {total}",
+        strictOfflineTitle: "Строгий оффлайн / Ноль фоновых запросов",
+        strictOfflineDesc: "Главный выключатель, блокирующий все необязательные фоновые запросы (обновления, фильтры, подсказки, фавиконки и облачную синхронизацию).",
+        bgAutoUpdatesTitle: "Автопроверка обновлений",
+        bgAutoUpdatesDesc: "Периодически проверять GitHub Releases на наличие новых версий QBrowse.",
+        bgFilterUpdatesTitle: "Обновление фильтров Adblock",
+        bgFilterUpdatesDesc: "Загружать обновлённые списки EasyList, EasyPrivacy и uBlock в фоновом режиме.",
+        bgLiveSuggestionsTitle: "Живые поисковые подсказки",
+        bgLiveSuggestionsDesc: "Получать подсказки автодополнения в реальном времени при вводе в омнибоксе.",
+        bgRemoteFaviconsTitle: "Удалённые фавиконки сайтов",
+        bgRemoteFaviconsDesc: "Загружать значки сайтов через сервис Google для вкладок, закреплений и истории.",
+        bgCloudSyncTitle: "Фоновая облачная синхронизация",
+        bgCloudSyncDesc: "Автоматически синхронизировать зашифрованные вкладки, настройки и хранилище с облаком."
     },
     search: {
         title: "Поиск и адресная строка",
@@ -6897,6 +8777,8 @@ const ru = {
         toastBangRemoved: "Удалён свой Bang «!{prefix}»",
         filterBangsPlaceholder: "Поиск по названию, команде (!yt, @github) или категории...",
         deleteCustomBangTitle: "Удалить свой bang",
+        bangsFilterCount: "Показано {shown} из {total} подходящих bang-команд",
+        bangsPreviewCount: "Показано {shown} из {total} — используйте фильтр выше для просмотра всех",
         behaviorSectionTitle: "Поведение и отображение адресной строки",
         behaviorSectionDesc: "Встроенный калькулятор, живые подсказки и отображение полных URL.",
         smartCalcTitle: "Умный калькулятор в адресной строке",
@@ -6965,7 +8847,19 @@ const ru = {
         patDesc: "QBrowse автоматически определяет активную сессию GitHub. Укажите PAT при наличии SSO/SAML:",
         testSyncBtn: "Тест и синхр.",
         toastSynced: "Синхронизировано с GitHub",
-        dormantText: "Интеграция GitHub Live сейчас спит. Включите её выше, чтобы отслеживать PR и Issues в рабочем режиме."
+        dormantText: "Интеграция GitHub Live сейчас спит. Включите её выше, чтобы отслеживать PR и Issues в рабочем режиме.",
+        usernameTitle: "Имя пользователя GitHub (необязательно — публичные репо)",
+        usernameDesc: "Отслеживайте публичные PR и задачи по имени пользователя без входа и токена:",
+        usernamePlaceholder: "напр. octocat",
+        testingSyncBtn: "Синхронизация...",
+        toastSyncedDetail: "Синхронизировано @{username} ({reviews} ревью, {prs} PR, {issues} задач)",
+        toastSyncFailed: "Ошибка синхронизации GitHub: {error}",
+        statusConnected: "Подключено как @{username}",
+        statusViaPat: "через PAT",
+        statusViaSession: "через сессию браузера",
+        statusViaPublic: "через публичное API",
+        statusCounts: "{reviews} ревью · {prs} PR · {issues} задач",
+        statusNotConnected: "Пока не подключено. Нажмите «Тест и синхронизация» для проверки сессии, PAT или имени пользователя."
     },
     engine: {
         title: "Движок и скорость",
@@ -6980,7 +8874,11 @@ const ru = {
         freeGb: "{size} ГБ свободно",
         battery: "Батарея",
         taskManager: "Диспетчер задач",
-        tiers: { eco: "ЭКО", balanced: "БАЛАНС", ultra: "УЛЬТРА" },
+        tiers: {
+            eco: "ЭКО",
+            balanced: "БАЛАНС",
+            ultra: "УЛЬТРА"
+        },
         scalingModeTitle: "Режим масштабирования производительности",
         scalingModeDesc: "Динамическое масштабирование ЦП, гибернация вкладок и качество размытия.",
         pillAuto: "Авто",
@@ -7072,11 +8970,26 @@ const ru = {
         subscriptionsTitle: "Подписки на фильтры",
         subscriptionsDesc: "Активные списки фильтров сообщества.",
         filters: {
-            easylist: { name: "EasyList", desc: "Базовые правила блокировки рекламы" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Скрипты отслеживания, маячки и телеметрия" },
-            annoyances: { name: "Фильтры cookie и раздражителей", desc: "Окна согласия на cookie и всплывающие подписки" },
-            malware: { name: "Защита от malware и майнинга", desc: "Известные вредоносные домены и браузерные майнеры" },
-            peterlowe: { name: "Список серверов рекламы Питера Лоу", desc: "Отобранный список рекламных и трекер-доменов" }
+            easylist: {
+                name: "EasyList",
+                desc: "Базовые правила блокировки рекламы"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Скрипты отслеживания, маячки и телеметрия"
+            },
+            annoyances: {
+                name: "Фильтры cookie и раздражителей",
+                desc: "Окна согласия на cookie и всплывающие подписки"
+            },
+            malware: {
+                name: "Защита от malware и майнинга",
+                desc: "Известные вредоносные домены и браузерные майнеры"
+            },
+            peterlowe: {
+                name: "Список серверов рекламы Питера Лоу",
+                desc: "Отобранный список рекламных и трекер-доменов"
+            }
         },
         toastFilterToggle: "{name}: {state}",
         exceptionsTitle: "Исключения и правила",
@@ -7114,9 +9027,13 @@ const ru = {
         confirmClearBlocklist: "Вы уверены, что хотите очистить все {count} пользовательских заблокированных доменов?",
         toastClearedBlocklist: "Пользовательский список блокировки очищен",
         toastBlocklistEmpty: "Список блокировки пуст",
-        toastCopiedBlocklist: "Скопировано доменов в буфер обмена: {count}"
+        toastCopiedBlocklist: "Скопировано доменов в буфер обмена: {count}",
+        cnameUncloakingTitle: "Включить раскрытие DNS CNAME",
+        cnameUncloakingDesc: "Разрешать поддомены отслеживания первого уровня через записи DNS CNAME в фоне для блокировки замаскированных трекеров."
     },
     about: {
+        helpLegalTitle: "Справка и правовая информация",
+        helpLegalDesc: "Руководство пользователя (F1), горячие клавиши, Условия использования, Политика конфиденциальности и лицензия MIT.",
         title: "О браузере и системе",
         subtitle: "Архитектура системы, характеристики среды выполнения и обновления.",
         accountSectionTitle: "Аккаунт и облачная синхронизация",
@@ -7204,12 +9121,104 @@ const ru = {
         startupChimeTitle: "Проигрывать приветственный аккорд при запуске",
         startupChimeDesc: "Синтезированный акустический аккорд при открытии браузера.",
         relaunchSetup: "Повторить мастер настройки",
-        interactiveTour: "Интерактивный тур"
+        interactiveTour: "Интерактивный тур",
+        toastNewReleaseExternal: "Доступна новая версия v{version}! Обновите через {format}.",
+        toastNewReleaseLinuxPkg: "Доступен новый релиз GitHub v{version} ({format}). Нажмите «Скачать».",
+        toastLinuxPkgReady: "Пакет обновления v{version} загружен! Откройте его или выполните команду установки.",
+        toastOpeningPackage: "Открытие загруженного пакета обновления...",
+        toastOpenedPackageFolder: "Папка загрузок открыта. Выполните команду установки для завершения.",
+        toastCommandCopied: "Команда установки скопирована в буфер обмена",
+        updateExternalMsg: "Доступна версия v{version}. Обновите с помощью {format}.",
+        updateNoLinuxAssetMsg: "Версия v{version} доступна на GitHub Releases. Нет готового пакета для {arch} — скачайте вручную.",
+        updateDownloadedLinuxPkgMsg: "Пакет v{version} ({format}) загружен. Откройте пакет или выполните команду ниже.",
+        openDownloadedPackage: "Открыть загруженный пакет",
+        showInFolder: "Показать пакет в папке",
+        showInFolderBtn: "Папка",
+        openReleasePage: "Открыть страницу релиза",
+        downloadAppImage: "Скачать AppImage (v{version})",
+        downloadLinuxPkg: "Скачать обновление {format} (v{version})",
+        copyInstallCmdTitle: "Копировать команду установки",
+        copyBtn: "Копировать",
+        helpCenterBtn: "Справочный центр (F1)",
+        termsBtn: "Условия использования",
+        privacyBtn: "Политика конфиденциальности",
+        licensesBtn: "Лицензии Open-Source"
+    },
+    shortcuts: {
+        title: "Сочетания клавиш",
+        subtitle: "Нажмите на любое сочетание для записи новой комбинации. Esc — отмена, Backspace — сброс.",
+        searchPlaceholder: "Поиск действий или комбинаций (напр. «Split», «Ctrl + T»)...",
+        resetAllBtn: "Сбросить все",
+        resetAllToast: "Все сочетания клавиш сброшены по умолчанию",
+        restoredDefault: "Сочетание сброшено по умолчанию",
+        updatedToast: "Сочетание обновлено",
+        swappedToast: "Сочетания поменяны местами",
+        conflictBound: "{combo} уже назначено для «{action}».",
+        conflictHint: "Поменяйте сочетания местами, замените существующее или отмените.",
+        swapReplaceBtn: "Поменять / Заменить",
+        overrideBtn: "Перезаписать",
+        noMatches: "Нет сочетаний клавиш, соответствующих «{query}».",
+        customizedBadge: "Свой",
+        pressKeys: "Нажмите клавиши...",
+        recordingTooltip: "Нажмите новую комбинацию (Esc для отмены)",
+        recordTooltip: "Нажмите, чтобы записать новое сочетание",
+        restoreDefaultTooltip: "Восстановить сочетание по умолчанию",
+        categories: {
+            tabs: "Вкладки",
+            navigation: "Навигация",
+            view: "Вид",
+            tools: "Инструменты",
+            window: "Окно"
+        },
+        actions: {
+            newTab: "Новая вкладка",
+            closeTab: "Закрыть вкладку",
+            reopenClosedTab: "Открыть закрытую вкладку",
+            toggleMuteTab: "Выключить / включить звук вкладки",
+            openTabMap: "Карта вкладок (Mission Control)",
+            pinOrBookmarkTab: "Закрепить / добавить в закладки",
+            openOmnibox: "Открыть командный омнибокс",
+            focusAddressBar: "Фокус на адресную строку",
+            copyCurrentUrl: "Копировать текущий URL",
+            reloadTab: "Обновить страницу",
+            hardReloadTab: "Жёсткое обновление (очистить кэш)",
+            navigateBack: "Назад по истории",
+            navigateForward: "Вперёд по истории",
+            openHistory: "Архив истории",
+            openFile: "Открыть локальный файл",
+            toggleSidebar: "Показать / скрыть боковую панель",
+            toggleRightPanel: "Показать / скрыть панель инструментов",
+            toggleFramelessMode: "Безрамочный режим / Дзен",
+            toggleSplitView: "Переключить разделённый вид",
+            toggleSplitOrientation: "Сменить макет разделения (2 ст. / 2 стр. / 2×2)",
+            swapSplitPanes: "Поменять области местами",
+            toggleReaderMode: "Переключить режим чтения",
+            zoomIn: "Увеличить масштаб",
+            zoomOut: "Уменьшить масштаб",
+            resetZoom: "Сбросить масштаб",
+            toggleFullscreen: "Полноэкранный режим",
+            findInPage: "Найти на странице",
+            findNext: "Следующее совпадение",
+            findPrev: "Предыдущее совпадение",
+            toggleElementEraser: "Ластик элементов",
+            toggleScreenshotBar: "Панель скриншотов и фрагментов",
+            toggleReadAloud: "Ассистент чтения вслух",
+            printPage: "Печать страницы",
+            openDevTools: "Инструменты разработчика",
+            toggleCaretBrowsing: "Навигация курсором",
+            newWindow: "Новое окно",
+            newPrivateWindow: "Новое приватное / Tor-окно",
+            closeWindow: "Закрыть окно",
+            openSettings: "Открыть настройки",
+            openHelp: "Справочный центр и сочетания клавиш",
+            openTaskManager: "Диспетчер задач"
+        }
     }
 };
 
 const it = {
     common: {
+        clear: "Cancella",
         cancel: "Annulla",
         save: "Salva",
         delete: "Elimina",
@@ -7246,7 +9255,8 @@ const it = {
         ai: "ia gemma llama modello locale chat riassumi lettore llm gpu livelli contesto",
         engine: "motore prestazioni accelerazione hardware gpu modalità eco ultra memoria ram sospensione schede bfcache batteria processore",
         adblock: "protezione blocco annunci tracker easylist ublock elenco personalizzato siti consentiti filtri youtube",
-        about: "versione aggiornamento verifica aggiornamenti browser predefinito sistema hardware diagnostica tour"
+        about: "versione aggiornamento verifica aggiornamenti browser predefinito sistema hardware diagnostica tour",
+        shortcuts: "scorciatoie tastiera tasti personalizza rimappa ctrl cmd"
     },
     reset: {
         confirmTitle: "Ripristinare tutte le impostazioni?",
@@ -7275,12 +9285,30 @@ const it = {
         Heart: "Cuore"
     },
     presets: {
-        balanced: { name: "Bilanciato", tagline: "Doppio spazio Personale e Lavoro con ricerca Google." },
-        developer: { name: "Sviluppatore", tagline: "Spazi isolati con integrazione GitHub Live PR." },
-        classic_reverse: { name: "Arc Moderno", tagline: "Albero delle schede a destra con area di lettura pulita." },
-        bottom_bar: { name: "Flusso Ergonomico", tagline: "Barra degli indirizzi in basso per una navigazione comoda." },
-        minimalist: { name: "Focus Minimale", tagline: "Spazio singolo con interfaccia compatta senza distrazioni." },
-        privacy: { name: "Sentinella Privacy", tagline: "Protezione rigorosa dai tracker e ricerca DuckDuckGo." },
+        balanced: {
+            name: "Bilanciato",
+            tagline: "Doppio spazio Personale e Lavoro con ricerca Google."
+        },
+        developer: {
+            name: "Sviluppatore",
+            tagline: "Spazi isolati con integrazione GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Arc Moderno",
+            tagline: "Albero delle schede a destra con area di lettura pulita."
+        },
+        bottom_bar: {
+            name: "Flusso Ergonomico",
+            tagline: "Barra degli indirizzi in basso per una navigazione comoda."
+        },
+        minimalist: {
+            name: "Focus Minimale",
+            tagline: "Spazio singolo con interfaccia compatta senza distrazioni."
+        },
+        privacy: {
+            name: "Sentinella Privacy",
+            tagline: "Protezione rigorosa dai tracker e ricerca DuckDuckGo."
+        },
         appliedToast: "Preimpostazione applicata: {name}"
     },
     appearance: {
@@ -7377,9 +9405,54 @@ const it = {
         toastWebCached: "Sfondo web salvato in cache e applicato!",
         toastDownloadFailed: "Download dello sfondo non riuscito",
         toastApplied: "Sfondo applicato!",
-        toastResetWallpaper: "Sfondo ripristinato al valore predefinito"
+        toastResetWallpaper: "Sfondo ripristinato al valore predefinito",
+        smartDarkExcludeMediaTitle: "Escludi immagini e video",
+        smartDarkExcludeMediaDesc: "Mantieni foto, video, canvas e lettori incorporati nei colori naturali invece di invertirli.",
+        excludedDomainsDesc: "I siti elencati qui (e sottodomini) mantengono il tema nativo. Incolla un dominio, URL completo o *.dominio.com.",
+        smartDarkStatusOn: "Scuro forzato attivo",
+        smartDarkStatusOff: "Scuro forzato disattivo",
+        whitelistInputPlaceholder: "es. github.com, https://docs.site.com o *.example.com",
+        whitelistSearchPlaceholder: "Filtra domini esclusi...",
+        whitelistWillAdd: "Verrà aggiunto:",
+        whitelistResetBtn: "Ripristina predefiniti",
+        whitelistResetTooltip: "Ripristina siti nativamente scuri consigliati",
+        whitelistClearTooltip: "Rimuovi tutti i domini esclusi",
+        whitelistEmpty: "Nessun dominio escluso. La modalità scura intelligente valuterà tutti i siti automaticamente.",
+        whitelistNoMatches: "Nessun dominio in whitelist corrispondente a \"{query}\".",
+        whitelistDuplicate: "{domain} è già in whitelist.",
+        whitelistInvalid: "Inserisci un dominio, URL o jolly *.dominio.com valido.",
+        whitelistAddedToast: "{domain} escluso dalla modalità scura intelligente",
+        whitelistRemovedToast: "{domain} rimosso dalla whitelist modalità scura",
+        whitelistResetToast: "Ripristinati {count} domini predefiniti consigliati",
+        whitelistResetToastShort: "Whitelist predefinita ripristinata",
+        whitelistClearedToast: "Whitelist modalità scura svuotata",
+        highlightAccentLabel: "Accento",
+        textHighlightTitle: "Colore e stile evidenziazione testo",
+        textHighlightDesc: "Personalizza l’aspetto del testo selezionato nel browser e sui siti web.",
+        textHighlightWebLabel: "Applica ai siti web",
+        textHighlightPreview: "Trascina per selezionare questo testo e vedere l’anteprima dal vivo.",
+        highlightStyles: {
+            system: "Sistema",
+            tinted: "Colorato",
+            vibrant: "Vivace",
+            glow: "Bagliore",
+            underline: "Sottolineato"
+        },
+        highlightSwatches: {
+            accent: "Segui accento",
+            d4bc94: "Sabbia",
+            "3b82f6": "Blu elettrico",
+            "10b981": "Smeraldo",
+            f43f5e: "Rosa",
+            a855f7: "Viola",
+            f59e0b: "Ambra",
+            "06b6d4": "Ciano",
+            ec4899: "Fucsia"
+        }
     },
     layout: {
+        framelessModeTitle: "Modalità senza bordi / Zen (Ctrl+Alt+F)",
+        framelessModeDesc: "Nascondi la barra laterale e superiore in pannelli a comparsa ai bordi senza attivare lo schermo intero di sistema.",
         title: "Layout e Interfaccia",
         subtitle: "Configura posizionamento, geometria finestre, architettura Omnibox e controlli.",
         spatialTitle: "Posizionamento Spaziale",
@@ -7391,7 +9464,12 @@ const it = {
         toolHubPosTitle: "Posizione Cassetto Tool Hub",
         toolHubPosDesc: "Pannello laterale per estensioni, download, QVault e assistente IA.",
         collisionNote: "Nota: Se ancorato dallo stesso lato della Barra Laterale, quest'ultima si sposterà sul lato opposto.",
-        pos: { left: "Sinistra", right: "Destra", top: "Alto", bottom: "Basso" },
+        pos: {
+            left: "Sinistra",
+            right: "Destra",
+            top: "Alto",
+            bottom: "Basso"
+        },
         toastSidebarPos: "Posizione barra laterale: {pos}",
         toastTopBarPos: "Posizione barra superiore: {pos}",
         toastToolHubPos: "Posizione Tool Hub: {pos}",
@@ -7604,7 +9682,18 @@ const it = {
         clearDataTitle: "Cancella Dati di Navigazione",
         clearDataDesc: "Cancella cronologia, cookie e cache dall'archivio locale e da SQLite.",
         clearDataBtn: "Cancella Dati...",
-        toastDataCleared: "Tutti i dati di navigazione cancellati!"
+        toastDataCleared: "Tutti i dati di navigazione cancellati!",
+        passkeyProviderTitle: "Provider passkey",
+        passkeyProviderDesc: "Scegli se i siti usano prima le passkey QVault o passano direttamente alla chiave hardware / di sistema (YubiKey, FIDO2, Windows Hello, Touch ID, QR telefono).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Chiave hardware / di sistema",
+        toastPasskeyModeQvault: "Provider passkey: QVault (con fallback hardware)",
+        toastPasskeyModeHardware: "Provider passkey: Usa sempre chiave hardware / di sistema",
+        passkeyFallbackTitle: "Fallback automatico chiave hardware",
+        passkeyFallbackDesc: "Passa automaticamente a YubiKey, FIDO2, biometria OS o QR quando QVault non ha passkey, è bloccato in Ghost/Tor o il sito richiede algoritmi non supportati.",
+        passkeyFallbackAlwaysActive: "Sempre attivo",
+        toastPasskeyFallbackEnabled: "Fallback automatico chiave hardware attivato",
+        toastPasskeyFallbackDisabled: "Fallback automatico chiave hardware disattivato"
     },
     cookies: {
         title: "Cookie e Autorizzazioni Siti",
@@ -7629,13 +9718,38 @@ const it = {
             notifications: "Notifiche",
             clipboard: "Appunti",
             sound: "Suono",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Fotocamera",
+            microphone: "Microfono",
+            "clipboard-read": "Appunti",
+            midi: "Dispositivi MIDI",
+            sensors: "Movimento e sensori",
+            "idle-detection": "Rilevamento inattività",
+            "display-capture": "Condivisione schermo",
+            "window-management": "Gestione finestre",
+            "speaker-selection": "Uscita audio",
+            openExternal: "App esterne"
         },
         permValues: {
             allow: "consenti",
             block: "blocca",
             ask: "chiedi"
-        }
+        },
+        networkSectionTitle: "Rete e servizi in background",
+        networkSectionDesc: "Controlla le richieste di rete facoltative in background. Attiva la modalità offline rigorosa per garantire zero traffico.",
+        networkActiveCount: "{active} su {total} attivi",
+        strictOfflineTitle: "Offline rigoroso / Zero richieste in background",
+        strictOfflineDesc: "Interruttore principale che blocca tutte le richieste facoltative in background (aggiornamenti, filtri, suggerimenti, favicon e sincronizzazione cloud).",
+        bgAutoUpdatesTitle: "Controllo automatico aggiornamenti",
+        bgAutoUpdatesDesc: "Controlla periodicamente GitHub Releases per nuove versioni di QBrowse.",
+        bgFilterUpdatesTitle: "Aggiornamento liste filtri Adblock",
+        bgFilterUpdatesDesc: "Scarica le liste EasyList, EasyPrivacy e uBlock aggiornate in background.",
+        bgLiveSuggestionsTitle: "Suggerimenti di ricerca in tempo reale",
+        bgLiveSuggestionsDesc: "Recupera suggerimenti di completamento automatico mentre digiti nell'omnibox.",
+        bgRemoteFaviconsTitle: "Favicon siti remoti",
+        bgRemoteFaviconsDesc: "Recupera le icone dei siti tramite il servizio favicon di Google per schede e cronologia.",
+        bgCloudSyncTitle: "Sincronizzazione cloud in background",
+        bgCloudSyncDesc: "Sincronizza automaticamente schede crittografate, impostazioni e cassaforte nel cloud."
     },
     search: {
         title: "Ricerca e Barra degli Indirizzi",
@@ -7687,6 +9801,8 @@ const it = {
         toastBangRemoved: "Bang personalizzato «!{prefix}» rimosso",
         filterBangsPlaceholder: "Filtra bang per nome, scorciatoia (!yt, @github) o categoria...",
         deleteCustomBangTitle: "Elimina bang personalizzato",
+        bangsFilterCount: "Mostrati {shown} di {total} bang corrispondenti",
+        bangsPreviewCount: "Mostrati {shown} di {total} — filtra sopra per sfogliarli tutti",
         behaviorSectionTitle: "Comportamento e Aspetto Omnibox",
         behaviorSectionDesc: "Controlla calcoli in linea, completamento live e formato URL.",
         smartCalcTitle: "Calcolatrice Smart nell'Omnibox",
@@ -7755,7 +9871,19 @@ const it = {
         patDesc: "QBrowse rileva automaticamente la sessione GitHub attiva. Inserisci un PAT se usi SSO/SAML:",
         testSyncBtn: "Testa e Sincronizza",
         toastSynced: "Sincronizzato con GitHub",
-        dormantText: "L'integrazione GitHub Live è attualmente dormiente. Attivala sopra per seguire PR e Issue in Modalità Lavoro."
+        dormantText: "L'integrazione GitHub Live è attualmente dormiente. Attivala sopra per seguire PR e Issue in Modalità Lavoro.",
+        usernameTitle: "Nome utente GitHub (opzionale — repo pubblici)",
+        usernameDesc: "Segui PR e issue pubblici per nome utente senza accedere o aggiungere token:",
+        usernamePlaceholder: "es. octocat",
+        testingSyncBtn: "Sincronizzazione...",
+        toastSyncedDetail: "Sincronizzato @{username} ({reviews} revisioni, {prs} PR, {issues} issue)",
+        toastSyncFailed: "Sincronizzazione GitHub non riuscita: {error}",
+        statusConnected: "Connesso come @{username}",
+        statusViaPat: "tramite PAT",
+        statusViaSession: "tramite sessione browser",
+        statusViaPublic: "tramite API pubblica",
+        statusCounts: "{reviews} revisioni · {prs} PR · {issues} issue",
+        statusNotConnected: "Non ancora connesso. Fai clic su Testa e sincronizza per verificare sessione, PAT o nome utente."
     },
     engine: {
         title: "Motore e Prestazioni",
@@ -7770,7 +9898,11 @@ const it = {
         freeGb: "{size} GB Liberi",
         battery: "Batteria",
         taskManager: "Gestore Attività",
-        tiers: { eco: "ECO", balanced: "BILANCIATO", ultra: "ULTRA" },
+        tiers: {
+            eco: "ECO",
+            balanced: "BILANCIATO",
+            ultra: "ULTRA"
+        },
         scalingModeTitle: "Modalità Scalabilità Prestazioni",
         scalingModeDesc: "Scalabilità dinamica CPU, sospensione schede in background e qualità sfocatura.",
         pillAuto: "Auto",
@@ -7862,11 +9994,26 @@ const it = {
         subscriptionsTitle: "Sottoscrizioni Filtri",
         subscriptionsDesc: "Elenchi di filtri comunitari attivi.",
         filters: {
-            easylist: { name: "EasyList", desc: "Regole principali per il blocco annunci" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Script di tracciamento, beacon e telemetria" },
-            annoyances: { name: "Filtri Cookie e Fastidi", desc: "Finestre di consenso cookie e popup newsletter" },
-            malware: { name: "Protezione Malware e Mining", desc: "Domini dannosi noti e miner nel browser" },
-            peterlowe: { name: "Elenco Ad Server di Peter Lowe", desc: "Domini curati di server pubblicitari e tracker" }
+            easylist: {
+                name: "EasyList",
+                desc: "Regole principali per il blocco annunci"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Script di tracciamento, beacon e telemetria"
+            },
+            annoyances: {
+                name: "Filtri Cookie e Fastidi",
+                desc: "Finestre di consenso cookie e popup newsletter"
+            },
+            malware: {
+                name: "Protezione Malware e Mining",
+                desc: "Domini dannosi noti e miner nel browser"
+            },
+            peterlowe: {
+                name: "Elenco Ad Server di Peter Lowe",
+                desc: "Domini curati di server pubblicitari e tracker"
+            }
         },
         toastFilterToggle: "{name} {state}",
         exceptionsTitle: "Eccezioni e Regole",
@@ -7904,9 +10051,13 @@ const it = {
         confirmClearBlocklist: "Sei sicuro di voler cancellare tutti i {count} domini bloccati personalizzati?",
         toastClearedBlocklist: "Lista personalizzata svuotata",
         toastBlocklistEmpty: "La lista di blocco è vuota",
-        toastCopiedBlocklist: "Copiati {count} domini negli appunti"
+        toastCopiedBlocklist: "Copiati {count} domini negli appunti",
+        cnameUncloakingTitle: "Abilita smascheramento DNS CNAME",
+        cnameUncloakingDesc: "Risolvi i sottodomini di tracciamento proprietari tramite record DNS CNAME in background per bloccare i tracker mascherati."
     },
     about: {
+        helpLegalTitle: "Guida e note legali",
+        helpLegalDesc: "Guida utente (F1), scorciatoie da tastiera, Termini di servizio, Informativa sulla privacy e licenza MIT.",
         title: "Informazioni e Sistema",
         subtitle: "Architettura di sistema, specifiche di runtime e aggiornamenti app.",
         accountSectionTitle: "Account e Sincronizzazione Cloud",
@@ -7994,12 +10145,104 @@ const it = {
         startupChimeTitle: "Riproduci melodia di benvenuto all'avvio",
         startupChimeDesc: "Accordo acustico sintetizzato all'apertura del browser.",
         relaunchSetup: "Rilancia Configurazione Iniziale",
-        interactiveTour: "Tour Interattivo"
+        interactiveTour: "Tour Interattivo",
+        toastNewReleaseExternal: "Nuova versione v{version} disponibile! Aggiorna tramite {format}.",
+        toastNewReleaseLinuxPkg: "Nuovo rilascio GitHub v{version} disponibile ({format}). Fai clic su Scarica.",
+        toastLinuxPkgReady: "Pacchetto v{version} scaricato! Aprilo o esegui il comando di installazione.",
+        toastOpeningPackage: "Apertura del pacchetto di aggiornamento...",
+        toastOpenedPackageFolder: "Cartella download aperta. Esegui il comando di installazione per completare.",
+        toastCommandCopied: "Comando di installazione copiato",
+        updateExternalMsg: "La versione v{version} è disponibile. Aggiorna usando {format}.",
+        updateNoLinuxAssetMsg: "La versione v{version} è su GitHub Releases. Nessun pacchetto per {arch} — scarica manualmente.",
+        updateDownloadedLinuxPkgMsg: "Pacchetto v{version} ({format}) scaricato. Apri il pacchetto o esegui il comando qui sotto.",
+        openDownloadedPackage: "Apri pacchetto scaricato",
+        showInFolder: "Mostra pacchetto nella cartella",
+        showInFolderBtn: "Cartella",
+        openReleasePage: "Apri pagina di rilascio",
+        downloadAppImage: "Scarica AppImage (v{version})",
+        downloadLinuxPkg: "Scarica aggiornamento {format} (v{version})",
+        copyInstallCmdTitle: "Copia comando di installazione",
+        copyBtn: "Copia",
+        helpCenterBtn: "Centro assistenza (F1)",
+        termsBtn: "Termini di servizio",
+        privacyBtn: "Informativa sulla privacy",
+        licensesBtn: "Licenze open-source"
+    },
+    shortcuts: {
+        title: "Scorciatoie da tastiera",
+        subtitle: "Fai clic su una scorciatoia per registrare una nuova combinazione. Premi Esc per annullare o Backspace per ripristinare.",
+        searchPlaceholder: "Cerca azioni o combinazioni (es. «Split», «Ctrl + T»)...",
+        resetAllBtn: "Ripristina tutte",
+        resetAllToast: "Tutte le scorciatoie ripristinate ai valori predefiniti",
+        restoredDefault: "Scorciatoia predefinita ripristinata",
+        updatedToast: "Scorciatoia aggiornata",
+        swappedToast: "Scorciatoie scambiate",
+        conflictBound: "{combo} è già assegnato a \"{action}\".",
+        conflictHint: "Scambia le associazioni, sostituisci la scorciatoia esistente o annulla.",
+        swapReplaceBtn: "Scambia / Sostituisci",
+        overrideBtn: "Sovrascrivi",
+        noMatches: "Nessuna scorciatoia corrispondente a \"{query}\".",
+        customizedBadge: "Personalizzata",
+        pressKeys: "Premi i tasti...",
+        recordingTooltip: "Premi la nuova combinazione (Esc per annullare)",
+        recordTooltip: "Fai clic per registrare una nuova scorciatoia",
+        restoreDefaultTooltip: "Ripristina scorciatoia predefinita",
+        categories: {
+            tabs: "Schede",
+            navigation: "Navigazione",
+            view: "Vista",
+            tools: "Strumenti",
+            window: "Finestra"
+        },
+        actions: {
+            newTab: "Nuova scheda",
+            closeTab: "Chiudi scheda",
+            reopenClosedTab: "Riapri scheda chiusa",
+            toggleMuteTab: "Disattiva / attiva audio scheda",
+            openTabMap: "Mappa schede (Mission Control)",
+            pinOrBookmarkTab: "Fissa / aggiungi ai segnalibri",
+            openOmnibox: "Apri Omnibox comandi",
+            focusAddressBar: "Attiva barra degli indirizzi",
+            copyCurrentUrl: "Copia URL corrente",
+            reloadTab: "Ricarica pagina",
+            hardReloadTab: "Ricarica forzata (svuota cache)",
+            navigateBack: "Indietro nella cronologia",
+            navigateForward: "Avanti nella cronologia",
+            openHistory: "Archivio cronologia",
+            openFile: "Apri file locale",
+            toggleSidebar: "Mostra / nascondi barra laterale",
+            toggleRightPanel: "Mostra / nascondi pannello strumenti",
+            toggleFramelessMode: "Attiva / disattiva modalità senza bordi / Zen",
+            toggleSplitView: "Attiva / disattiva vista divisa",
+            toggleSplitOrientation: "Cambia layout diviso (2 col. / 2 righe / 2×2)",
+            swapSplitPanes: "Scambia riquadri divisi",
+            toggleReaderMode: "Attiva / disattiva modalità lettura",
+            zoomIn: "Aumenta zoom",
+            zoomOut: "Riduci zoom",
+            resetZoom: "Reimposta zoom",
+            toggleFullscreen: "Schermo intero",
+            findInPage: "Trova nella pagina",
+            findNext: "Risultato successivo",
+            findPrev: "Risultato precedente",
+            toggleElementEraser: "Gomma elementi",
+            toggleScreenshotBar: "Barra screenshot e ritagli",
+            toggleReadAloud: "Assistente lettura ad alta voce",
+            printPage: "Stampa pagina",
+            openDevTools: "Strumenti per sviluppatori",
+            toggleCaretBrowsing: "Navigazione con cursore",
+            newWindow: "Nuova finestra",
+            newPrivateWindow: "Nuova finestra privata / Tor",
+            closeWindow: "Chiudi finestra",
+            openSettings: "Apri impostazioni",
+            openHelp: "Centro assistenza e scorciatoie",
+            openTaskManager: "Gestore attività"
+        }
     }
 };
 
 const uk = {
     common: {
+        clear: "Очистити",
         cancel: "Скасувати",
         save: "Зберегти",
         delete: "Видалити",
@@ -8036,7 +10279,8 @@ const uk = {
         ai: "ші ai gemma llama локальна модель чат підсумок gpu шари контекст",
         engine: "рушій продуктивність апаратне прискорення gpu еко режим ультра пам'ять озу присипляння вкладок bfcache батарея процесор",
         adblock: "щити блокування реклами трекери easylist ublock власний список винятки фільтри youtube",
-        about: "версія оновлення перевірити оновлення браузер за замовчуванням система обладнання діагностика тур"
+        about: "версія оновлення перевірити оновлення браузер за замовчуванням система обладнання діагностика тур",
+        shortcuts: "комбінації клавіш гарячі клавіші скорочення налаштувати ctrl cmd"
     },
     reset: {
         confirmTitle: "Скинути всі налаштування?",
@@ -8065,12 +10309,30 @@ const uk = {
         Heart: "Серце"
     },
     presets: {
-        balanced: { name: "Збалансований", tagline: "Подвійні простори (Особисте й Робота) з пошуком Google." },
-        developer: { name: "Розробник", tagline: "Ізольовані простори з інтеграцією GitHub Live PR." },
-        classic_reverse: { name: "Сучасний Arc", tagline: "Дерево вкладок праворуч і чисте полотно для читання." },
-        bottom_bar: { name: "Ергономічний", tagline: "Нижній адресний рядок для зручної навігації." },
-        minimalist: { name: "Мінімальний фокус", tagline: "Один простір із компактним інтерфейсом без відволікань." },
-        privacy: { name: "Вартовий приватності", tagline: "Суворий захист від стеження і пошук DuckDuckGo." },
+        balanced: {
+            name: "Збалансований",
+            tagline: "Подвійні простори (Особисте й Робота) з пошуком Google."
+        },
+        developer: {
+            name: "Розробник",
+            tagline: "Ізольовані простори з інтеграцією GitHub Live PR."
+        },
+        classic_reverse: {
+            name: "Сучасний Arc",
+            tagline: "Дерево вкладок праворуч і чисте полотно для читання."
+        },
+        bottom_bar: {
+            name: "Ергономічний",
+            tagline: "Нижній адресний рядок для зручної навігації."
+        },
+        minimalist: {
+            name: "Мінімальний фокус",
+            tagline: "Один простір із компактним інтерфейсом без відволікань."
+        },
+        privacy: {
+            name: "Вартовий приватності",
+            tagline: "Суворий захист від стеження і пошук DuckDuckGo."
+        },
         appliedToast: "Застосовано пресет: {name}"
     },
     appearance: {
@@ -8167,9 +10429,54 @@ const uk = {
         toastWebCached: "Веб-шпалери закешовано й застосовано!",
         toastDownloadFailed: "Не вдалося завантажити шпалери",
         toastApplied: "Шпалери застосовано!",
-        toastResetWallpaper: "Шпалери скинуто до стандартних"
+        toastResetWallpaper: "Шпалери скинуто до стандартних",
+        smartDarkExcludeMediaTitle: "Виключити зображення та відео",
+        smartDarkExcludeMediaDesc: "Зберігати природні кольори фото, відео, canvas та вбудованих плеєрів замість їх інвертування.",
+        excludedDomainsDesc: "Сайти в цьому списку (та їхні піддомени) зберігають власну тему. Вставте домен, URL або маску *.domain.com.",
+        smartDarkStatusOn: "Темна тема увімк.",
+        smartDarkStatusOff: "Темна тема вимк.",
+        whitelistInputPlaceholder: "напр. github.com, https://docs.site.com або *.example.com",
+        whitelistSearchPlaceholder: "Фільтрувати виключені домени...",
+        whitelistWillAdd: "Буде додано:",
+        whitelistResetBtn: "Скинути",
+        whitelistResetTooltip: "Відновити рекомендовані сайти з темною темою",
+        whitelistClearTooltip: "Видалити всі виключені домени",
+        whitelistEmpty: "Немає виключених доменів. Розумна темна тема оцінюватиме всі сайти автоматично.",
+        whitelistNoMatches: "Немає доменів у білому списку для «{query}».",
+        whitelistDuplicate: "{domain} вже у білому списку.",
+        whitelistInvalid: "Введіть коректний домен, URL або маску *.domain.com.",
+        whitelistAddedToast: "{domain} виключено з розумної темної теми",
+        whitelistRemovedToast: "{domain} видалено з білого списку темної теми",
+        whitelistResetToast: "Відновлено {count} рекомендованих доменів за замовчуванням",
+        whitelistResetToastShort: "Відновлено білий список темної теми за замовчуванням",
+        whitelistClearedToast: "Білий список темної теми очищено",
+        highlightAccentLabel: "Акцент",
+        textHighlightTitle: "Колір і стиль виділення тексту",
+        textHighlightDesc: "Налаштуйте вигляд виділеного тексту в браузері та на вебсайтах.",
+        textHighlightWebLabel: "Застосовувати до сайтів",
+        textHighlightPreview: "Виділіть цей текст, щоб переглянути стиль виділення наживо.",
+        highlightStyles: {
+            system: "Системний",
+            tinted: "Тонований",
+            vibrant: "Яскравий",
+            glow: "Світіння",
+            underline: "Підкреслення"
+        },
+        highlightSwatches: {
+            accent: "За акцентом",
+            d4bc94: "Пісочний",
+            "3b82f6": "Електричний синій",
+            "10b981": "Смарагдовий",
+            f43f5e: "Трояндовий",
+            a855f7: "Фіолетовий",
+            f59e0b: "Бурштиновий",
+            "06b6d4": "Блакитний",
+            ec4899: "Рожевий"
+        }
     },
     layout: {
+        framelessModeTitle: "Безрамковий / Дзен-режим (Ctrl+Alt+F)",
+        framelessModeDesc: "Приховати бічну та верхню панелі у висувні краї при наведенні без системного повноекранного режиму.",
         title: "Макет та панелі",
         subtitle: "Налаштування розташування панелей, геометрії вікон, адресного рядка та елементів керування.",
         spatialTitle: "Просторове розташування",
@@ -8181,7 +10488,12 @@ const uk = {
         toolHubPosTitle: "Позиція панелі Tool Hub",
         toolHubPosDesc: "Бічна панель для розширень, завантажень, QVault та ШІ-асистента.",
         collisionNote: "Примітка: Якщо закріпити на тому ж боці, що й бічну панель, вона автоматично переміститься на протилежний бік.",
-        pos: { left: "Ліворуч", right: "Праворуч", top: "Зверху", bottom: "Знизу" },
+        pos: {
+            left: "Ліворуч",
+            right: "Праворуч",
+            top: "Зверху",
+            bottom: "Знизу"
+        },
         toastSidebarPos: "Позиція бічної панелі: {pos}",
         toastTopBarPos: "Позиція верхньої панелі: {pos}",
         toastToolHubPos: "Позиція Tool Hub: {pos}",
@@ -8394,7 +10706,18 @@ const uk = {
         clearDataTitle: "Очистити дані перегляду",
         clearDataDesc: "Видалити історію, файли cookie та кеш із локального сховища й SQLite.",
         clearDataBtn: "Очистити дані...",
-        toastDataCleared: "Усі дані перегляду очищено!"
+        toastDataCleared: "Усі дані перегляду очищено!",
+        passkeyProviderTitle: "Постачальник ключів доступу",
+        passkeyProviderDesc: "Виберіть, чи використовувати спочатку ключі QVault, чи одразу направляти до апаратного / системного ключа (YubiKey, FIDO2, Windows Hello, Touch ID, QR телефону).",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "Апаратний / системний ключ",
+        toastPasskeyModeQvault: "Постачальник ключів: QVault (з резервом на апаратний ключ)",
+        toastPasskeyModeHardware: "Постачальник ключів: Завжди апаратний / системний ключ",
+        passkeyFallbackTitle: "Автоматичний перехід на апаратний ключ",
+        passkeyFallbackDesc: "Автоматично використовувати YubiKey, FIDO2, біометрію ОС або QR телефону, якщо у QVault немає ключа, він заблокований у Ghost/Tor або сайт вимагає непідтримуваний алгоритм.",
+        passkeyFallbackAlwaysActive: "Завжди активно",
+        toastPasskeyFallbackEnabled: "Автоматичний перехід на апаратний ключ увімкнено",
+        toastPasskeyFallbackDisabled: "Автоматичний перехід на апаратний ключ вимкнено"
     },
     cookies: {
         title: "Файли cookie та дозволи",
@@ -8419,13 +10742,38 @@ const uk = {
             notifications: "Сповіщення",
             clipboard: "Буфер обміну",
             sound: "Звук",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "Камера",
+            microphone: "Мікрофон",
+            "clipboard-read": "Буфер обміну",
+            midi: "MIDI-пристрої",
+            sensors: "Рух і датчики",
+            "idle-detection": "Визначення бездіяльності",
+            "display-capture": "Демонстрація екрана",
+            "window-management": "Керування вікнами",
+            "speaker-selection": "Вивід звуку",
+            openExternal: "Зовнішні програми"
         },
         permValues: {
             allow: "дозволити",
             block: "блокувати",
             ask: "питати"
-        }
+        },
+        networkSectionTitle: "Мережа та фонові служби",
+        networkSectionDesc: "Керуйте необов'язковими фоновими мережевими запитами. Увімкніть суворий офлайн-режим для гарантії нульового фонового трафіку.",
+        networkActiveCount: "Активно {active} з {total}",
+        strictOfflineTitle: "Суворий офлайн / Нуль фонових запитів",
+        strictOfflineDesc: "Головний вимикач, що блокує всі необов'язкові фонові запити (оновлення, фільтри, підказки, фавіконки та хмарну синхронізацію).",
+        bgAutoUpdatesTitle: "Автоперевірка оновлень",
+        bgAutoUpdatesDesc: "Періодично перевіряти GitHub Releases на наявність нових версій QBrowse.",
+        bgFilterUpdatesTitle: "Оновлення фільтрів Adblock",
+        bgFilterUpdatesDesc: "Завантажувати оновлені списки EasyList, EasyPrivacy та uBlock у фоновому режимі.",
+        bgLiveSuggestionsTitle: "Живі пошукові підказки",
+        bgLiveSuggestionsDesc: "Отримувати підказки автодоповнення в реальному часі під час введення в омнібоксі.",
+        bgRemoteFaviconsTitle: "Віддалені фавіконки сайтів",
+        bgRemoteFaviconsDesc: "Завантажувати значки сайтів через сервіс Google для вкладок, закріплень та історії.",
+        bgCloudSyncTitle: "Фонова хмарна синхронізація",
+        bgCloudSyncDesc: "Автоматично синхронізувати зашифровані вкладки, налаштування та сховище з хмарою."
     },
     search: {
         title: "Пошук та адресний рядок",
@@ -8477,6 +10825,8 @@ const uk = {
         toastBangRemoved: "Видалено власний Bang «!{prefix}»",
         filterBangsPlaceholder: "Фільтрувати за назвою, командою (!yt, @github) або категорією...",
         deleteCustomBangTitle: "Видалити власний bang",
+        bangsFilterCount: "Показано {shown} із {total} відповідних bang-команд",
+        bangsPreviewCount: "Показано {shown} із {total} — скористайтеся фільтром вище, щоб переглянути всі",
         behaviorSectionTitle: "Поведінка та відображення адресного рядка",
         behaviorSectionDesc: "Керуйте вбудованими обчисленнями, живими підказками та форматом URL.",
         smartCalcTitle: "Розумний калькулятор в адресному рядку",
@@ -8545,7 +10895,19 @@ const uk = {
         patDesc: "QBrowse автоматично виявляє активну сесію GitHub. Вкажіть PAT, якщо використовується SSO/SAML:",
         testSyncBtn: "Тест і синхр.",
         toastSynced: "Синхронізовано з GitHub",
-        dormantText: "Інтеграція GitHub Live зараз неактивна. Увімкніть її вище, щоб відстежувати PR та Issues у робочому режимі."
+        dormantText: "Інтеграція GitHub Live зараз неактивна. Увімкніть її вище, щоб відстежувати PR та Issues у робочому режимі.",
+        usernameTitle: "Ім'я користувача GitHub (необов'язково — публічні репо)",
+        usernameDesc: "Відстежуйте публічні PR та завдання за іменем користувача без входу та токена:",
+        usernamePlaceholder: "напр. octocat",
+        testingSyncBtn: "Синхронізація...",
+        toastSyncedDetail: "Синхронізовано @{username} ({reviews} рев'ю, {prs} PR, {issues} завдань)",
+        toastSyncFailed: "Помилка синхронізації GitHub: {error}",
+        statusConnected: "Підключено як @{username}",
+        statusViaPat: "через PAT",
+        statusViaSession: "через сесію браузера",
+        statusViaPublic: "через публічне API",
+        statusCounts: "{reviews} рев'ю · {prs} PR · {issues} завдань",
+        statusNotConnected: "Ще не підключено. Натисніть «Тест і синхронізація» для перевірки сесії, PAT або імені користувача."
     },
     engine: {
         title: "Швидкість і продуктивність",
@@ -8560,7 +10922,11 @@ const uk = {
         freeGb: "{size} ГБ вільно",
         battery: "Батарея",
         taskManager: "Диспетчер завдань",
-        tiers: { eco: "ЕКО", balanced: "БАЛАНС", ultra: "УЛЬТРА" },
+        tiers: {
+            eco: "ЕКО",
+            balanced: "БАЛАНС",
+            ultra: "УЛЬТРА"
+        },
         scalingModeTitle: "Режим масштабування продуктивності",
         scalingModeDesc: "Динамічне масштабування ЦП, присипляння вкладок і якість розмиття.",
         pillAuto: "Авто",
@@ -8652,11 +11018,26 @@ const uk = {
         subscriptionsTitle: "Підписки на фільтри",
         subscriptionsDesc: "Активні списки фільтрів спільноти.",
         filters: {
-            easylist: { name: "EasyList", desc: "Основні правила блокування реклами" },
-            easyprivacy: { name: "EasyPrivacy", desc: "Скрипти стеження, маячки та телеметрія" },
-            annoyances: { name: "Фільтри cookie та подразників", desc: "Вікна згоди на cookie і розсилки" },
-            malware: { name: "Захист від malware і майнінгу", desc: "Відомі шкідливі домени та вебмайнери" },
-            peterlowe: { name: "Список рекламних серверів Пітера Лоу", desc: "Відібраний список рекламних і трекер-доменів" }
+            easylist: {
+                name: "EasyList",
+                desc: "Основні правила блокування реклами"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "Скрипти стеження, маячки та телеметрія"
+            },
+            annoyances: {
+                name: "Фільтри cookie та подразників",
+                desc: "Вікна згоди на cookie і розсилки"
+            },
+            malware: {
+                name: "Захист від malware і майнінгу",
+                desc: "Відомі шкідливі домени та вебмайнери"
+            },
+            peterlowe: {
+                name: "Список рекламних серверів Пітера Лоу",
+                desc: "Відібраний список рекламних і трекер-доменів"
+            }
         },
         toastFilterToggle: "{name}: {state}",
         exceptionsTitle: "Винятки та правила",
@@ -8694,9 +11075,13 @@ const uk = {
         confirmClearBlocklist: "Ви впевнені, що хочете очистити всі {count} власних заблокованих доменів?",
         toastClearedBlocklist: "Власний список блокування очищено",
         toastBlocklistEmpty: "Список блокування порожній",
-        toastCopiedBlocklist: "Скопійовано доменів до буфера обміну: {count}"
+        toastCopiedBlocklist: "Скопійовано доменів до буфера обміну: {count}",
+        cnameUncloakingTitle: "Увімкнути розкриття DNS CNAME",
+        cnameUncloakingDesc: "Розв'язувати піддомени відстеження першого рівня через записи DNS CNAME у фоні для блокування замаскованих трекерів."
     },
     about: {
+        helpLegalTitle: "Довідка та правова інформація",
+        helpLegalDesc: "Посібник користувача (F1), клавіатурні скорочення, Умови використання, Політика конфіденційності та ліцензія MIT.",
         title: "Про браузер і систему",
         subtitle: "Архітектура системи, характеристики середовища виконання та оновлення.",
         accountSectionTitle: "Обліковий запис і хмарна синхронізація",
@@ -8784,12 +11169,104 @@ const uk = {
         startupChimeTitle: "Відтворювати вітальний акорд при запуску",
         startupChimeDesc: "Синтезований акустичний акорд під час запуску браузера.",
         relaunchSetup: "Перезапустити початкове налаштування",
-        interactiveTour: "Інтерактивний тур"
+        interactiveTour: "Інтерактивний тур",
+        toastNewReleaseExternal: "Доступна нова версія v{version}! Оновіть через {format}.",
+        toastNewReleaseLinuxPkg: "Доступний новий реліз GitHub v{version} ({format}). Натисніть «Завантажити».",
+        toastLinuxPkgReady: "Пакет оновлення v{version} завантажено! Відкрийте його або виконайте команду встановлення.",
+        toastOpeningPackage: "Відкриття завантаженого пакета оновлення...",
+        toastOpenedPackageFolder: "Відкрито теку завантажень. Виконайте команду встановлення для завершення.",
+        toastCommandCopied: "Команду встановлення скопійовано",
+        updateExternalMsg: "Доступна версія v{version}. Оновіть за допомогою {format}.",
+        updateNoLinuxAssetMsg: "Версія v{version} доступна на GitHub Releases. Немає готового пакета для {arch} — завантажте вручну.",
+        updateDownloadedLinuxPkgMsg: "Пакет v{version} ({format}) завантажено. Відкрийте пакет або виконайте команду нижче.",
+        openDownloadedPackage: "Відкрити завантажений пакет",
+        showInFolder: "Показати пакет у теці",
+        showInFolderBtn: "Тека",
+        openReleasePage: "Відкрити сторінку релізу",
+        downloadAppImage: "Завантажити AppImage (v{version})",
+        downloadLinuxPkg: "Завантажити оновлення {format} (v{version})",
+        copyInstallCmdTitle: "Копіювати команду встановлення",
+        copyBtn: "Копіювати",
+        helpCenterBtn: "Довідковий центр (F1)",
+        termsBtn: "Умови використання",
+        privacyBtn: "Політика конфіденційності",
+        licensesBtn: "Ліцензії Open-Source"
+    },
+    shortcuts: {
+        title: "Комбінації клавіш",
+        subtitle: "Натисніть на будь-яке скорочення для запису нової комбінації. Esc — скасувати, Backspace — скинути.",
+        searchPlaceholder: "Пошук дій або комбінацій (напр. «Split», «Ctrl + T»)...",
+        resetAllBtn: "Скинути всі",
+        resetAllToast: "Усі комбінації клавіш скинуто до стандартних",
+        restoredDefault: "Скорочення відновлено до стандартного",
+        updatedToast: "Скорочення оновлено",
+        swappedToast: "Скорочення поміняно місцями",
+        conflictBound: "{combo} вже призначено для «{action}».",
+        conflictHint: "Поміняйте комбінації місцями, замініть існуюче скорочення або скасуйте.",
+        swapReplaceBtn: "Поміняти / Замінити",
+        overrideBtn: "Перезаписати",
+        noMatches: "Немає скорочень, що відповідають «{query}».",
+        customizedBadge: "Власне",
+        pressKeys: "Натисніть клавіші...",
+        recordingTooltip: "Натисніть нову комбінацію (Esc для скасування)",
+        recordTooltip: "Натисніть, щоб записати нове скорочення",
+        restoreDefaultTooltip: "Відновити стандартне скорочення",
+        categories: {
+            tabs: "Вкладки",
+            navigation: "Навігація",
+            view: "Вигляд",
+            tools: "Інструменти",
+            window: "Вікно"
+        },
+        actions: {
+            newTab: "Нова вкладка",
+            closeTab: "Закрити вкладку",
+            reopenClosedTab: "Відновити закриту вкладку",
+            toggleMuteTab: "Вимкнути / увімкнути звук вкладки",
+            openTabMap: "Карта вкладок (Mission Control)",
+            pinOrBookmarkTab: "Закріпити / додати до закладок",
+            openOmnibox: "Відкрити командний омнібокс",
+            focusAddressBar: "Фокус на адресний рядок",
+            copyCurrentUrl: "Копіювати поточну URL-адресу",
+            reloadTab: "Оновити сторінку",
+            hardReloadTab: "Жорстке оновлення (очистити кеш)",
+            navigateBack: "Назад в історії",
+            navigateForward: "Вперед в історії",
+            openHistory: "Архів історії",
+            openFile: "Відкрити локальний файл",
+            toggleSidebar: "Показати / приховати бічну панель",
+            toggleRightPanel: "Показати / приховати панель інструментів",
+            toggleFramelessMode: "Безрамковий режим / Дзен",
+            toggleSplitView: "Перемкнути розділений вигляд",
+            toggleSplitOrientation: "Змінити макет розділення (2 ст. / 2 ряд. / 2×2)",
+            swapSplitPanes: "Поміняти панелі місцями",
+            toggleReaderMode: "Перемкнути режим читання",
+            zoomIn: "Збільшити масштаб",
+            zoomOut: "Зменшити масштаб",
+            resetZoom: "Скинути масштаб",
+            toggleFullscreen: "Повноекранний режим",
+            findInPage: "Знайти на сторінці",
+            findNext: "Наступний збіг",
+            findPrev: "Попередній збіг",
+            toggleElementEraser: "Гумка елементів",
+            toggleScreenshotBar: "Панель знімків екрана",
+            toggleReadAloud: "Асистент читання вголос",
+            printPage: "Друкувати сторінку",
+            openDevTools: "Інструменти розробника",
+            toggleCaretBrowsing: "Навігація курсором",
+            newWindow: "Нове вікно",
+            newPrivateWindow: "Нове приватне / Tor-вікно",
+            closeWindow: "Закрити вікно",
+            openSettings: "Відкрити налаштування",
+            openHelp: "Довідковий центр та скорочення",
+            openTaskManager: "Диспетчер завдань"
+        }
     }
 };
 
 const ko = {
     common: {
+        clear: "지우기",
         cancel: "취소",
         save: "저장",
         delete: "삭제",
@@ -8826,7 +11303,8 @@ const ko = {
         ai: "ai gemma llama 로컬 모델 채팅 요약 리더 llm gpu 레이어 컨텍스트",
         engine: "엔진 성능 하드웨어 가속 gpu 에코 모드 울트라 메모리 램 탭 절전 bfcache 배터리 cpu",
         adblock: "보호 광고 차단 트래커 easylist ublock 사용자 차단 목록 허용 목록 필터 유튜브",
-        about: "버전 업데이트 업데이트 확인 기본 브라우저 시스템 정보 하드웨어 진단 투어"
+        about: "버전 업데이트 업데이트 확인 기본 브라우저 시스템 정보 하드웨어 진단 투어",
+        shortcuts: "키보드 단축키 핫키 키 바인딩 사용자 지정 ctrl cmd"
     },
     reset: {
         confirmTitle: "모든 설정을 초기화할까요?",
@@ -8855,12 +11333,30 @@ const ko = {
         Heart: "하트"
     },
     presets: {
-        balanced: { name: "균형", tagline: "개인 및 업무 듀얼 워크스페이스와 Google 검색." },
-        developer: { name: "개발자", tagline: "GitHub Live PR이 통합된 격리형 워크스페이스." },
-        classic_reverse: { name: "모던 Arc", tagline: "오른쪽 탭 트리와 깔끔한 읽기 캔버스." },
-        bottom_bar: { name: "인체공학 플로우", tagline: "손가락이 닿기 편한 하단 주소창 탐색." },
-        minimalist: { name: "미니멀 집중", tagline: "방해 요소 없는 콤팩트한 단일 워크스페이스." },
-        privacy: { name: "프라이버시 파수꾼", tagline: "강력한 추적기 차단과 DuckDuckGo 검색." },
+        balanced: {
+            name: "균형",
+            tagline: "개인 및 업무 듀얼 워크스페이스와 Google 검색."
+        },
+        developer: {
+            name: "개발자",
+            tagline: "GitHub Live PR이 통합된 격리형 워크스페이스."
+        },
+        classic_reverse: {
+            name: "모던 Arc",
+            tagline: "오른쪽 탭 트리와 깔끔한 읽기 캔버스."
+        },
+        bottom_bar: {
+            name: "인체공학 플로우",
+            tagline: "손가락이 닿기 편한 하단 주소창 탐색."
+        },
+        minimalist: {
+            name: "미니멀 집중",
+            tagline: "방해 요소 없는 콤팩트한 단일 워크스페이스."
+        },
+        privacy: {
+            name: "프라이버시 파수꾼",
+            tagline: "강력한 추적기 차단과 DuckDuckGo 검색."
+        },
         appliedToast: "프리셋 적용됨: {name}"
     },
     appearance: {
@@ -8957,9 +11453,54 @@ const ko = {
         toastWebCached: "웹 배경화면이 캐시되어 적용되었습니다!",
         toastDownloadFailed: "배경화면 다운로드에 실패했습니다",
         toastApplied: "배경화면이 적용되었습니다!",
-        toastResetWallpaper: "기본 배경화면으로 재설정되었습니다"
+        toastResetWallpaper: "기본 배경화면으로 재설정되었습니다",
+        smartDarkExcludeMediaTitle: "이미지 및 동영상 제외",
+        smartDarkExcludeMediaDesc: "사진, 동영상, 캔버스 및 임베드 플레이어를 반전하지 않고 원래 색상으로 유지합니다.",
+        excludedDomainsDesc: "여기에 나열된 사이트(및 하위 도메인)는 기본 테마를 유지합니다. 도메인, 전체 URL 또는 *.domain.com을 붙여넣으세요.",
+        smartDarkStatusOn: "강제 다크 켜짐",
+        smartDarkStatusOff: "강제 다크 꺼짐",
+        whitelistInputPlaceholder: "예: github.com, https://docs.site.com 또는 *.example.com",
+        whitelistSearchPlaceholder: "제외된 도메인 필터링...",
+        whitelistWillAdd: "추가 예정:",
+        whitelistResetBtn: "기본값 복원",
+        whitelistResetTooltip: "권장 기본 다크 사이트 복원",
+        whitelistClearTooltip: "모든 제외 도메인 제거",
+        whitelistEmpty: "제외된 도메인이 없습니다. 스마트 다크 모드가 모든 웹사이트를 자동으로 평가합니다.",
+        whitelistNoMatches: "\"{query}\"와 일치하는 허용 목록 도메인이 없습니다.",
+        whitelistDuplicate: "{domain}은(는) 이미 허용 목록에 있습니다.",
+        whitelistInvalid: "유효한 도메인, URL 또는 *.domain.com을 입력하세요.",
+        whitelistAddedToast: "{domain}을(를) 스마트 다크 모드에서 제외했습니다",
+        whitelistRemovedToast: "{domain}을(를) 다크 모드 허용 목록에서 제거했습니다",
+        whitelistResetToast: "권장 기본 도메인 {count}개를 복원했습니다",
+        whitelistResetToastShort: "기본 다크 모드 허용 목록을 복원했습니다",
+        whitelistClearedToast: "다크 모드 허용 목록을 지웠습니다",
+        highlightAccentLabel: "강조",
+        textHighlightTitle: "텍스트 강조 색상 및 스타일",
+        textHighlightDesc: "브라우저와 웹사이트에서 선택한 텍스트의 모양을 사용자 지정합니다.",
+        textHighlightWebLabel: "웹사이트에 적용",
+        textHighlightPreview: "이 텍스트를 드래그하여 선택하고 강조 스타일을 실시간으로 미리 보세요.",
+        highlightStyles: {
+            system: "시스템",
+            tinted: "틴트",
+            vibrant: "선명하게",
+            glow: "글로우",
+            underline: "밑줄"
+        },
+        highlightSwatches: {
+            accent: "강조색 따르기",
+            d4bc94: "샌드",
+            "3b82f6": "일렉트릭 블루",
+            "10b981": "에메랄드",
+            f43f5e: "로즈",
+            a855f7: "바이올렛",
+            f59e0b: "앰버",
+            "06b6d4": "시안",
+            ec4899: "핑크"
+        }
     },
     layout: {
+        framelessModeTitle: "프레임리스 / 젠 모드 (Ctrl+Alt+F)",
+        framelessModeDesc: "OS 전체 화면으로 전환하지 않고 사이드바와 상단 바를 가장자리 호버 서랍으로 숨깁니다.",
         title: "레이아웃 및 UI",
         subtitle: "공간 도킹, 창 모양, 주소창 구조 및 도구 모음 제어를 설정합니다.",
         spatialTitle: "공간 배치",
@@ -8971,7 +11512,12 @@ const ko = {
         toolHubPosTitle: "Tool Hub 서랍 위치",
         toolHubPosDesc: "확장 프로그램, 다운로드, QVault 및 AI 어시스턴트를 위한 측면 패널입니다.",
         collisionNote: "참고: 사이드바와 같은 쪽에 도킹하면 겹침을 방지하기 위해 사이드바가 반대쪽으로 자동 이동합니다.",
-        pos: { left: "왼쪽", right: "오른쪽", top: "위쪽", bottom: "아래쪽" },
+        pos: {
+            left: "왼쪽",
+            right: "오른쪽",
+            top: "위쪽",
+            bottom: "아래쪽"
+        },
         toastSidebarPos: "사이드바 위치: {pos}",
         toastTopBarPos: "상단 바 위치: {pos}",
         toastToolHubPos: "Tool Hub 위치: {pos}",
@@ -9184,7 +11730,18 @@ const ko = {
         clearDataTitle: "인터넷 사용 기록 삭제",
         clearDataDesc: "로컬 저장소 및 SQLite에서 방문 기록, 쿠키, 캐시를 삭제합니다.",
         clearDataBtn: "데이터 삭제...",
-        toastDataCleared: "모든 검색 데이터가 삭제되었습니다!"
+        toastDataCleared: "모든 검색 데이터가 삭제되었습니다!",
+        passkeyProviderTitle: "패스키 공급자",
+        passkeyProviderDesc: "웹사이트가 QVault 패스키를 먼저 사용할지, 항상 하드웨어 / 시스템 보안 키(YubiKey, FIDO2, Windows Hello, Touch ID, 휴대폰 QR)로 직접 연결할지 선택합니다.",
+        passkeyModeQvault: "QVault",
+        passkeyModeHardware: "하드웨어 / 시스템 키",
+        toastPasskeyModeQvault: "패스키 공급자: QVault (하드웨어 키 대체 포함)",
+        toastPasskeyModeHardware: "패스키 공급자: 항상 하드웨어 / 시스템 보안 키 사용",
+        passkeyFallbackTitle: "자동 하드웨어 키 대체",
+        passkeyFallbackDesc: "QVault에 일치하는 패스키가 없거나, Ghost/Tor에서 잠겨 있거나, 사이트가 지원되지 않는 알고리즘을 요청할 때 자동으로 YubiKey, FIDO2, OS 생체 인식 또는 휴대폰 QR로 대체합니다.",
+        passkeyFallbackAlwaysActive: "항상 활성",
+        toastPasskeyFallbackEnabled: "자동 하드웨어 키 대체가 활성화되었습니다",
+        toastPasskeyFallbackDisabled: "자동 하드웨어 키 대체가 비활성화되었습니다"
     },
     cookies: {
         title: "쿠키 및 사이트 권한",
@@ -9209,13 +11766,38 @@ const ko = {
             notifications: "알림",
             clipboard: "클립보드",
             sound: "소리",
-            javascript: "JavaScript"
+            javascript: "JavaScript",
+            camera: "카메라",
+            microphone: "마이크",
+            "clipboard-read": "클립보드",
+            midi: "MIDI 장치",
+            sensors: "동작 및 센서",
+            "idle-detection": "유휴 감지",
+            "display-capture": "화면 공유",
+            "window-management": "창 관리",
+            "speaker-selection": "오디오 출력",
+            openExternal: "외부 앱"
         },
         permValues: {
             allow: "허용",
             block: "차단",
             ask: "묻기"
-        }
+        },
+        networkSectionTitle: "네트워크 및 백그라운드 서비스",
+        networkSectionDesc: "선택적 백그라운드 네트워크 요청을 제어합니다. 백그라운드 트래픽을 완전히 차단하려면 엄격한 오프라인 모드를 활성화하세요.",
+        networkActiveCount: "{total}개 중 {active}개 활성",
+        strictOfflineTitle: "엄격한 오프라인 / 백그라운드 요청 제로",
+        strictOfflineDesc: "모든 선택적 백그라운드 네트워크 요청(업데이트, 필터 새로고침, 실시간 검색 제안, 원격 파비콘, 클라우드 동기화)을 차단하는 마스터 스위치입니다.",
+        bgAutoUpdatesTitle: "자동 앱 업데이트 확인",
+        bgAutoUpdatesDesc: "GitHub Releases에서 새 QBrowse 버전을 주기적으로 확인합니다.",
+        bgFilterUpdatesTitle: "광고 차단 필터 목록 새로고침",
+        bgFilterUpdatesDesc: "백그라운드에서 업데이트된 EasyList, EasyPrivacy 및 uBlock 필터 목록을 다운로드합니다.",
+        bgLiveSuggestionsTitle: "실시간 검색 제안",
+        bgLiveSuggestionsDesc: "옴니박스에 입력하는 동안 실시간 자동 완성 제안을 가져옵니다.",
+        bgRemoteFaviconsTitle: "원격 웹사이트 파비콘",
+        bgRemoteFaviconsDesc: "탭, 고정 항목 및 방문 기록을 위해 Google 파비콘 서비스에서 사이트 아이콘을 가져옵니다.",
+        bgCloudSyncTitle: "백그라운드 클라우드 동기화",
+        bgCloudSyncDesc: "암호화된 탭, 설정 및 볼트 변경 사항을 클라우드에 자동으로 동기화합니다."
     },
     search: {
         title: "검색 및 주소창",
@@ -9267,6 +11849,8 @@ const ko = {
         toastBangRemoved: "사용자 지정 뱅 \"!{prefix}\" 제거됨",
         filterBangsPlaceholder: "이름, 단축키 (!yt, @github) 또는 카테고리로 필터링...",
         deleteCustomBangTitle: "사용자 지정 뱅 삭제",
+        bangsFilterCount: "일치하는 뱅 {total}개 중 {shown}개 표시",
+        bangsPreviewCount: "{total}개 중 {shown}개 표시 — 위에서 필터링하여 전체 보기",
         behaviorSectionTitle: "주소창 동작 및 표시",
         behaviorSectionDesc: "인라인 계산, 실시간 자동 완성 및 URL 표시 형식을 제어합니다.",
         smartCalcTitle: "주소창 스마트 계산기",
@@ -9335,7 +11919,19 @@ const ko = {
         patDesc: "QBrowse는 활성 GitHub 세션을 자동 감지합니다. 조직에서 SSO/SAML을 강제하는 경우 PAT를 입력하세요:",
         testSyncBtn: "테스트 및 동기화",
         toastSynced: "GitHub와 동기화됨",
-        dormantText: "GitHub Live 통합이 현재 대기 상태입니다. 업무 모드에서 PR과 이슈를 추적하려면 위에서 켜세요."
+        dormantText: "GitHub Live 통합이 현재 대기 상태입니다. 업무 모드에서 PR과 이슈를 추적하려면 위에서 켜세요.",
+        usernameTitle: "GitHub 사용자 이름 (선택 사항 — 공개 저장소)",
+        usernameDesc: "로그인이나 토큰 없이 사용자 이름으로 공개 PR 및 이슈를 추적합니다:",
+        usernamePlaceholder: "예: octocat",
+        testingSyncBtn: "동기화 중...",
+        toastSyncedDetail: "@{username} 동기화됨 (리뷰 {reviews}, PR {prs}, 이슈 {issues})",
+        toastSyncFailed: "GitHub 동기화 실패: {error}",
+        statusConnected: "@{username}(으)로 연결됨",
+        statusViaPat: "PAT 사용",
+        statusViaSession: "브라우저 세션 사용",
+        statusViaPublic: "공개 API 사용",
+        statusCounts: "리뷰 {reviews} · PR {prs} · 이슈 {issues}",
+        statusNotConnected: "아직 연결되지 않았습니다. 테스트 및 동기화를 클릭하여 세션, PAT 또는 사용자 이름을 확인하세요."
     },
     engine: {
         title: "엔진 및 성능",
@@ -9350,7 +11946,11 @@ const ko = {
         freeGb: "{size} GB 여유",
         battery: "배터리",
         taskManager: "작업 관리자",
-        tiers: { eco: "에코", balanced: "균형", ultra: "울트라" },
+        tiers: {
+            eco: "에코",
+            balanced: "균형",
+            ultra: "울트라"
+        },
         scalingModeTitle: "성능 스케일링 모드",
         scalingModeDesc: "동적 CPU 조정, 백그라운드 탭 절전 및 시각적 흐림 품질을 제어합니다.",
         pillAuto: "자동",
@@ -9442,11 +12042,26 @@ const ko = {
         subscriptionsTitle: "필터 구독 목록",
         subscriptionsDesc: "활성 커뮤니티 필터 목록.",
         filters: {
-            easylist: { name: "EasyList", desc: "핵심 광고 차단 규칙" },
-            easyprivacy: { name: "EasyPrivacy", desc: "추적 스크립트, 비콘 및 원격 측정 차단" },
-            annoyances: { name: "쿠키 및 성가신 요소 필터", desc: "쿠키 동의 대화 상자 및 뉴스레터 팝업" },
-            malware: { name: "악성코드 및 채굴 보호", desc: "알려진 악성 도메인 및 브라우저 내 채굴기" },
-            peterlowe: { name: "Peter Lowe 광고 서버 목록", desc: "엄선된 광고 서버 및 추적 도메인" }
+            easylist: {
+                name: "EasyList",
+                desc: "핵심 광고 차단 규칙"
+            },
+            easyprivacy: {
+                name: "EasyPrivacy",
+                desc: "추적 스크립트, 비콘 및 원격 측정 차단"
+            },
+            annoyances: {
+                name: "쿠키 및 성가신 요소 필터",
+                desc: "쿠키 동의 대화 상자 및 뉴스레터 팝업"
+            },
+            malware: {
+                name: "악성코드 및 채굴 보호",
+                desc: "알려진 악성 도메인 및 브라우저 내 채굴기"
+            },
+            peterlowe: {
+                name: "Peter Lowe 광고 서버 목록",
+                desc: "엄선된 광고 서버 및 추적 도메인"
+            }
         },
         toastFilterToggle: "{name}: {state}",
         exceptionsTitle: "예외 및 규칙",
@@ -9484,9 +12099,13 @@ const ko = {
         confirmClearBlocklist: "사용자 지정 차단 도메인 {count}개를 모두 지우시겠습니까?",
         toastClearedBlocklist: "사용자 지정 차단 목록이 삭제되었습니다",
         toastBlocklistEmpty: "차단 목록이 비어 있습니다",
-        toastCopiedBlocklist: "클립보드에 {count}개 도메인 복사됨"
+        toastCopiedBlocklist: "클립보드에 {count}개 도메인 복사됨",
+        cnameUncloakingTitle: "DNS CNAME 언클로킹 활성화",
+        cnameUncloakingDesc: "백그라운드에서 DNS CNAME 레코드를 통해 자사 추적 하위 도메인을 확인하여 위장된 타사 추적기를 차단합니다."
     },
     about: {
+        helpLegalTitle: "도움말 및 법적 고지",
+        helpLegalDesc: "사용자 가이드 (F1), 키보드 단축키, 서비스 약관, 개인정보 처리방침 및 MIT 라이선스.",
         title: "QBrowse 및 시스템 정보",
         subtitle: "시스템 아키텍처, 런타임 사양 및 앱 업데이트 정보입니다.",
         accountSectionTitle: "계정 및 클라우드 동기화",
@@ -9574,7 +12193,98 @@ const ko = {
         startupChimeTitle: "시작 시 환영 효과음 재생",
         startupChimeDesc: "브라우저 실행 시 합성된 어쿠스틱 화음을 재생합니다.",
         relaunchSetup: "초기 설정 다시 실행",
-        interactiveTour: "대화형 라이브 투어"
+        interactiveTour: "대화형 라이브 투어",
+        toastNewReleaseExternal: "새 버전 v{version}을(를) 사용할 수 있습니다! {format}(으)로 업데이트하세요.",
+        toastNewReleaseLinuxPkg: "새 GitHub 릴리스 v{version}({format})이 있습니다. 다운로드를 클릭하세요.",
+        toastLinuxPkgReady: "업데이트 패키지 v{version} 다운로드 완료! 열거나 설치 명령을 실행하세요.",
+        toastOpeningPackage: "다운로드한 업데이트 패키지를 여는 중...",
+        toastOpenedPackageFolder: "다운로드 폴더를 열었습니다. 설치 명령을 실행하여 완료하세요.",
+        toastCommandCopied: "설치 명령이 클립보드에 복사되었습니다",
+        updateExternalMsg: "버전 v{version}을(를) 사용할 수 있습니다. {format}을(를) 사용하여 업데이트하세요.",
+        updateNoLinuxAssetMsg: "GitHub Releases에 v{version}이 있습니다. {arch}용 사전 빌드 패키지가 없습니다 — 수동으로 다운로드하세요.",
+        updateDownloadedLinuxPkgMsg: "패키지 v{version}({format})이 다운로드되었습니다. 패키지를 열거나 아래 터미널 명령을 실행하여 설치하세요.",
+        openDownloadedPackage: "다운로드한 패키지 열기",
+        showInFolder: "폴더에서 다운로드한 패키지 표시",
+        showInFolderBtn: "폴더",
+        openReleasePage: "릴리스 페이지 열기",
+        downloadAppImage: "AppImage 다운로드 (v{version})",
+        downloadLinuxPkg: "{format} 업데이트 다운로드 (v{version})",
+        copyInstallCmdTitle: "터미널 설치 명령 복사",
+        copyBtn: "복사",
+        helpCenterBtn: "도움말 센터 (F1)",
+        termsBtn: "서비스 약관",
+        privacyBtn: "개인정보 처리방침",
+        licensesBtn: "오픈 소스 라이선스"
+    },
+    shortcuts: {
+        title: "키보드 단축키",
+        subtitle: "단축키 칩을 클릭하여 새 키 조합을 기록하세요. 취소하려면 Esc, 재설정하려면 Backspace를 누르세요.",
+        searchPlaceholder: "작업 또는 키 조합 검색 (예: \"Split\", \"Ctrl + T\")...",
+        resetAllBtn: "모든 단축키 재설정",
+        resetAllToast: "모든 키보드 단축키가 기본값으로 복원되었습니다",
+        restoredDefault: "단축키가 기본값으로 복원되었습니다",
+        updatedToast: "단축키가 업데이트되었습니다",
+        swappedToast: "단축키가 교체되었습니다",
+        conflictBound: "{combo}은(는) 이미 \"{action}\"에 지정되어 있습니다.",
+        conflictHint: "단축키를 서로 바꾸거나, 기존 단축키를 대체하거나, 취소하세요.",
+        swapReplaceBtn: "교체 / 바꾸기",
+        overrideBtn: "덮어쓰기",
+        noMatches: "\"{query}\"와 일치하는 단축키가 없습니다.",
+        customizedBadge: "사용자 지정",
+        pressKeys: "키를 누르세요...",
+        recordingTooltip: "새 키 조합을 누르세요 (Esc로 취소)",
+        recordTooltip: "클릭하여 새 단축키 기록",
+        restoreDefaultTooltip: "기본 단축키 복원",
+        categories: {
+            tabs: "탭",
+            navigation: "탐색",
+            view: "보기",
+            tools: "도구",
+            window: "창"
+        },
+        actions: {
+            newTab: "새 탭",
+            closeTab: "탭 닫기",
+            reopenClosedTab: "닫은 탭 다시 열기",
+            toggleMuteTab: "탭 음소거 / 해제",
+            openTabMap: "탭 맵 (Mission Control)",
+            pinOrBookmarkTab: "탭 고정 / 북마크",
+            openOmnibox: "명령 옴니박스 열기",
+            focusAddressBar: "주소 표시줄 포커스",
+            copyCurrentUrl: "현재 URL 복사",
+            reloadTab: "페이지 새로고침",
+            hardReloadTab: "강력 새로고침 (캐시 지우기)",
+            navigateBack: "뒤로 가기",
+            navigateForward: "앞으로 가기",
+            openHistory: "방문 기록 아카이브",
+            openFile: "로컬 파일 열기",
+            toggleSidebar: "사이드바 전환",
+            toggleRightPanel: "도구 허브 / 오른쪽 패널 전환",
+            toggleFramelessMode: "프레임리스 / 젠 모드 전환",
+            toggleSplitView: "분할 보기 전환",
+            toggleSplitOrientation: "분할 레이아웃 순환 (2열 / 2행 / 2×2)",
+            swapSplitPanes: "분할 창 전환",
+            toggleReaderMode: "읽기 모드 전환",
+            zoomIn: "확대",
+            zoomOut: "축소",
+            resetZoom: "확대/축소 재설정",
+            toggleFullscreen: "전체 화면 전환",
+            findInPage: "페이지에서 찾기",
+            findNext: "다음 일치 항목 찾기",
+            findPrev: "이전 일치 항목 찾기",
+            toggleElementEraser: "요소 지우개",
+            toggleScreenshotBar: "스크린샷 및 캡처 바",
+            toggleReadAloud: "소리 내어 읽기 도우미",
+            printPage: "페이지 인쇄",
+            openDevTools: "개발자 도구",
+            toggleCaretBrowsing: "캐럿 브라우징 전환",
+            newWindow: "새 창",
+            newPrivateWindow: "새 시크릿 / Tor 창",
+            closeWindow: "창 닫기",
+            openSettings: "설정 열기",
+            openHelp: "도움말 센터 및 단축키",
+            openTaskManager: "작업 관리자"
+        }
     }
 };
 

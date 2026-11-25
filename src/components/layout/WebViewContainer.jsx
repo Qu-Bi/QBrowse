@@ -886,7 +886,12 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleIpcMessage = (e) => {
-            if (e.channel === 'qbrowse-reader-available') {
+            if (e.channel === 'smart-dark-status') {
+                const status = e.args && e.args[0];
+                if (status) {
+                    useUIStore.getState().setTabSmartDarkStatus?.(tab.id, status);
+                }
+            } else if (e.channel === 'qbrowse-reader-available') {
                 const isArticle = Boolean(e.args && e.args[0]);
                 if (isActive && isSpaceActive) {
                     useUIStore.getState().setIsReaderAvailable(isArticle);
@@ -1476,7 +1481,23 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             updateNavState();
         };
 
+        const handleDidStartNavigation = (e) => {
+            if (!e || e.isMainFrame === false || !e.url) return;
+            const existing = useUIStore.getState().smartDarkStatusByTab?.[tab.id];
+            if (!existing?.url) return;
+            try {
+                const prevOrigin = new URL(existing.url).origin;
+                const nextOrigin = new URL(e.url).origin;
+                if (prevOrigin !== nextOrigin) {
+                    useUIStore.getState().clearTabSmartDarkStatus?.(tab.id);
+                }
+            } catch (_) {
+                useUIStore.getState().clearTabSmartDarkStatus?.(tab.id);
+            }
+        };
+
         wv.addEventListener('did-attach', registerWcId);
+        wv.addEventListener('did-start-navigation', handleDidStartNavigation);
         wv.addEventListener('context-menu', handleContextMenu);
         wv.addEventListener('found-in-page', handleFoundInPage);
         wv.addEventListener('did-start-loading', handleDidStartLoading);
@@ -1503,6 +1524,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         return () => {
             wv.removeEventListener('focus', focusThisSplitPane);
             wv.removeEventListener('did-attach', registerWcId);
+            wv.removeEventListener('did-start-navigation', handleDidStartNavigation);
             wv.removeEventListener('context-menu', handleContextMenu);
             wv.removeEventListener('did-start-loading', handleDidStartLoading);
             wv.removeEventListener('did-navigate', handleNavigateSafe);

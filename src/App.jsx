@@ -25,6 +25,7 @@ import TabSwitcherOverlay from './components/common/TabSwitcherOverlay';
 import LanguageWarpOverlay from './components/common/LanguageWarpOverlay';
 import ContextMenuProvider from './components/common/ContextMenuProvider';
 import DefaultBrowserBanner from './components/common/DefaultBrowserBanner';
+import ToolHubEdgeHandle from './components/features/ToolHubEdgeHandle';
 import { resolveActiveLanguage } from './i18n/index';
 import WallpaperEngine from './components/common/WallpaperEngine';
 import { isLikelyDownloadUrl } from './utils/downloadHelpers';
@@ -42,12 +43,16 @@ const AddPinModal = React.lazy(() => import('./components/modals/AddPinModal'));
 const PasskeyVerificationModal = React.lazy(() => import('./components/modals/PasskeyVerificationModal'));
 const UserProfilePopover = React.lazy(() => import('./components/popovers/UserProfilePopover'));
 
-function LazyGate({ when, children }) {
+function LazyGate({ when, keepMounted = false, children }) {
     const [mounted, setMounted] = useState(Boolean(when));
     useEffect(() => {
         if (when && !mounted) setMounted(true);
     }, [when, mounted]);
-    if (!mounted) return null;
+    if (keepMounted) {
+        if (!mounted) return null;
+        return <React.Suspense fallback={null}>{children}</React.Suspense>;
+    }
+    if (!when) return null;
     return <React.Suspense fallback={null}>{children}</React.Suspense>;
 }
 
@@ -829,7 +834,7 @@ export default function App() {
                 className={`flex h-screen w-full overflow-hidden font-sans select-none relative z-0 ${
                     sidebarPosition === 'right' ? 'flex-row-reverse' : 'flex-row'
                 } ${
-                    isBright ? 'text-zinc-900' : 'bg-[#08080a] text-white'
+                    isBright ? 'bg-[#edf0f6] text-zinc-900' : 'bg-[#08080a] text-white'
                 } transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                     isChromeHidden ? '!p-0 !m-0' : uiScale === 'compact' ? 'p-1.5' : 'p-3 md:p-4'
                 } ${
@@ -874,10 +879,11 @@ export default function App() {
                 </div>
 
                 <Omnibox />
-                <LazyGate when={isTabMapOpen}>
+                <LazyGate when={isTabMapOpen} keepMounted>
                     <TabMap />
                 </LazyGate>
-                <LazyGate when={isRightPanelOpen}>
+                <ToolHubEdgeHandle />
+                <LazyGate when={isRightPanelOpen} keepMounted>
                     <ToolHub />
                 </LazyGate>
 

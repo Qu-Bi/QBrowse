@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+
+PackageIdentifier: Qu-Bi.QBrowse
+PackageVersion: 1.5.1
+PackageLocale: en-US
+Publisher: QuBI
+PublisherUrl: https://github.com/Qu-Bi/QBrowse
+PublisherSupportUrl: https://github.com/Qu-Bi/QBrowse/issues
+PackageName: QBrowse
+PackageUrl: https://github.com/Qu-Bi/QBrowse
+License: MIT
+LicenseUrl: https://github.com/Qu-Bi/QBrowse/blob/main/LICENSE
+ShortDescription: Next-generation privacy-first browser with built-in Tor onion routing, local Gemma AI, and encrypted cloud sync.
+Tags:
+  - browser
+  - privacy
+  - tor
+  - ai
+  - electron
+  - rust
+ReleaseNotesUrl: https://github.com/Qu-Bi/QBrowse/releases/tag/v1.5.1
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

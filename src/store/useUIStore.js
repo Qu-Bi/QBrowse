@@ -2414,6 +2414,26 @@ const useUIStore = create((set, get) => ({
   user: null,
   setUser: (user) => set({ user }),
 
+  smartDarkStatusByTab: {},
+  setTabSmartDarkStatus: (tabId, status) => {
+      if (!tabId) return;
+      set((state) => ({
+          smartDarkStatusByTab: {
+              ...state.smartDarkStatusByTab,
+              [tabId]: status
+          }
+      }));
+  },
+  clearTabSmartDarkStatus: (tabId) => {
+      if (!tabId) return;
+      set((state) => {
+          if (!state.smartDarkStatusByTab?.[tabId]) return state;
+          const next = { ...state.smartDarkStatusByTab };
+          delete next[tabId];
+          return { smartDarkStatusByTab: next };
+      });
+  },
+
   isForceDark: localStorage.getItem('qbrowse_isForceDark') === 'true',
   setIsForceDark: (val) => {
       const enabled = Boolean(val);
@@ -3754,6 +3774,7 @@ const useUIStore = create((set, get) => ({
       
       try {
           localStorage.setItem('qbrowse_theme', validTheme);
+          localStorage.setItem('qbrowse_settings_updated_at', String(Date.now()));
           if (typeof document !== 'undefined') {
               if (validTheme === 'light') {
                   document.documentElement.classList.add('theme-light', 'bright-mode');

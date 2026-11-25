@@ -26,7 +26,7 @@ url.workspace = true
 zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = ["Foundation", "Security_Credentials_UI", "Security_Cryptography_DataProtection", "Storage_Streams"] }
+windows = { version = "0.58", features = ["Foundation", "Security_Credentials_UI", "Security_Cryptography_DataProtection", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT"] }
 
 [lib]
 name = "qbrowse_vault"

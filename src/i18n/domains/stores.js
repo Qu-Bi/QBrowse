@@ -197,7 +197,10 @@ const en = {
         perfUltra: "Ultra (Maximum Frame Rates & RAM)",
         perfToast: "Performance: {label}",
         bfcacheEnabled: "Instant Back/Forward Cache enabled",
-        bfcacheDisabled: "Instant Back/Forward Cache disabled"
+        bfcacheDisabled: "Instant Back/Forward Cache disabled",
+        splitHorizontal: "Split View: Side-by-Side",
+        splitVertical: "Split View: Stacked (Top/Bottom)",
+        splitQuad: "Split View: 2×2 Quad Grid",
     },
     ai: {
         downloadingPreset: "Downloading {name}...",
@@ -220,7 +223,11 @@ const en = {
         sidebarHidden: "Sidebar: Hidden",
         sidebarVisible: "Sidebar: Visible",
         caretEnabled: "Caret Browsing enabled (Arrow keys navigate page text)",
-        caretDisabled: "Caret Browsing disabled"
+        caretDisabled: "Caret Browsing disabled",
+        framelessOn: "Frameless Mode: On (Hover edges for bars)",
+        framelessOff: "Frameless Mode: Off",
+        copiedUrl: "Copied URL to clipboard",
+        splitSwapped: "Swapped Split Panes",
     }
 };
 
@@ -421,7 +428,10 @@ const pl = {
         perfUltra: "Ultra (Maksymalny FPS i pamięć RAM)",
         perfToast: "Wydajność: {label}",
         bfcacheEnabled: "Błyskawiczna pamięć wstecz/dalej włączona",
-        bfcacheDisabled: "Błyskawiczna pamięć wstecz/dalej wyłączona"
+        bfcacheDisabled: "Błyskawiczna pamięć wstecz/dalej wyłączona",
+        splitHorizontal: "Widok podzielony: obok siebie",
+        splitVertical: "Widok podzielony: góra / dół",
+        splitQuad: "Widok podzielony: siatka 2×2",
     },
     ai: {
         downloadingPreset: "Pobieranie {name}...",
@@ -444,7 +454,11 @@ const pl = {
         sidebarHidden: "Pasek boczny: Ukryty",
         sidebarVisible: "Pasek boczny: Widoczny",
         caretEnabled: "Przeglądanie kursorem włączone (strzałki nawigują po tekście)",
-        caretDisabled: "Przeglądanie kursorem wyłączone"
+        caretDisabled: "Przeglądanie kursorem wyłączone",
+        framelessOn: "Tryb bez ramek: włączony (najedź na krawędzie)",
+        framelessOff: "Tryb bez ramek: wyłączony",
+        copiedUrl: "Skopiowano URL do schowka",
+        splitSwapped: "Zamieniono panele podziału",
     }
 };
 
@@ -645,7 +659,10 @@ const fr = {
         perfUltra: "Ultra (Images/s & RAM max)",
         perfToast: "Performance : {label}",
         bfcacheEnabled: "Cache instantané Précédent/Suivant activé",
-        bfcacheDisabled: "Cache instantané Précédent/Suivant désactivé"
+        bfcacheDisabled: "Cache instantané Précédent/Suivant désactivé",
+        splitHorizontal: "Vue scindée : Côte à côte",
+        splitVertical: "Vue scindée : Empilée (Haut/Bas)",
+        splitQuad: "Vue scindée : Grille 2×2",
     },
     ai: {
         downloadingPreset: "Téléchargement de {name}...",
@@ -668,7 +685,11 @@ const fr = {
         sidebarHidden: "Barre latérale : Masquée",
         sidebarVisible: "Barre latérale : Visible",
         caretEnabled: "Navigation au curseur activée (flèches dans le texte)",
-        caretDisabled: "Navigation au curseur désactivée"
+        caretDisabled: "Navigation au curseur désactivée",
+        framelessOn: "Mode sans bordure : Activé (Survolez les bords)",
+        framelessOff: "Mode sans bordure : Désactivé",
+        copiedUrl: "URL copiée dans le presse-papiers",
+        splitSwapped: "Volets scindés inversés",
     }
 };
 
@@ -869,7 +890,10 @@ const de = {
         perfUltra: "Ultra (Maximale FPS & RAM)",
         perfToast: "Leistung: {label}",
         bfcacheEnabled: "Sofortiger Zurück/Vor-Cache aktiviert",
-        bfcacheDisabled: "Sofortiger Zurück/Vor-Cache deaktiviert"
+        bfcacheDisabled: "Sofortiger Zurück/Vor-Cache deaktiviert",
+        splitHorizontal: "Geteilte Ansicht: Nebeneinander",
+        splitVertical: "Geteilte Ansicht: Übereinander (Oben/Unten)",
+        splitQuad: "Geteilte Ansicht: 2×2-Raster",
     },
     ai: {
         downloadingPreset: "{name} wird heruntergeladen...",
@@ -892,7 +916,11 @@ const de = {
         sidebarHidden: "Seitenleiste: Ausgeblendet",
         sidebarVisible: "Seitenleiste: Sichtbar",
         caretEnabled: "Caret-Browsing aktiviert (Pfeiltasten navigieren im Text)",
-        caretDisabled: "Caret-Browsing deaktiviert"
+        caretDisabled: "Caret-Browsing deaktiviert",
+        framelessOn: "Rahmenloser Modus: Ein (Ränder berühren für Leisten)",
+        framelessOff: "Rahmenloser Modus: Aus",
+        copiedUrl: "URL in Zwischenablage kopiert",
+        splitSwapped: "Geteilte Bereiche getauscht",
     }
 };
 
@@ -1093,7 +1121,10 @@ const es = {
         perfUltra: "Ultra (Máximo rendimiento y FPS)",
         perfToast: "Rendimiento: {label}",
         bfcacheEnabled: "Caché instantánea Atrás/Adelante activada",
-        bfcacheDisabled: "Caché instantánea Atrás/Adelante desactivada"
+        bfcacheDisabled: "Caché instantánea Atrás/Adelante desactivada",
+        splitHorizontal: "Vista dividida: Lado a lado",
+        splitVertical: "Vista dividida: Apilada (Arriba/Abajo)",
+        splitQuad: "Vista dividida: Cuadrícula 2×2",
     },
     ai: {
         downloadingPreset: "Descargando {name}...",
@@ -1116,7 +1147,11 @@ const es = {
         sidebarHidden: "Barra lateral: Oculta",
         sidebarVisible: "Barra lateral: Visible",
         caretEnabled: "Navegación por cursor activada (las flechas navegan el texto)",
-        caretDisabled: "Navegación por cursor desactivada"
+        caretDisabled: "Navegación por cursor desactivada",
+        framelessOn: "Modo sin bordes: Activado (Pasa el cursor por los bordes)",
+        framelessOff: "Modo sin bordes: Desactivado",
+        copiedUrl: "URL copiada al portapapeles",
+        splitSwapped: "Paneles divididos intercambiados",
     }
 };
 
@@ -1317,7 +1352,10 @@ const pt = {
         perfUltra: "Ultra (FPS e RAM máximos)",
         perfToast: "Desempenho: {label}",
         bfcacheEnabled: "Cache instantâneo Voltar/Avançar ativado",
-        bfcacheDisabled: "Cache instantâneo Voltar/Avançar desativado"
+        bfcacheDisabled: "Cache instantâneo Voltar/Avançar desativado",
+        splitHorizontal: "Visualização dividida: Lado a lado",
+        splitVertical: "Visualização dividida: Empilhada (Superior/Inferior)",
+        splitQuad: "Visualização dividida: Grade 2×2",
     },
     ai: {
         downloadingPreset: "Baixando {name}...",
@@ -1340,7 +1378,11 @@ const pt = {
         sidebarHidden: "Barra lateral: Oculta",
         sidebarVisible: "Barra lateral: Visível",
         caretEnabled: "Navegação por cursor ativada (setas movem pelo texto)",
-        caretDisabled: "Navegação por cursor desativada"
+        caretDisabled: "Navegação por cursor desativada",
+        framelessOn: "Modo sem bordas: Ativado (Passe o cursor nas bordas)",
+        framelessOff: "Modo sem bordas: Desativado",
+        copiedUrl: "URL copiada para a área de transferência",
+        splitSwapped: "Painéis divididos trocados",
     }
 };
 
@@ -1541,7 +1583,10 @@ const zh = {
         perfUltra: "极致（最高帧率与性能）",
         perfToast: "性能：{label}",
         bfcacheEnabled: "快速前进/后退缓存已启用",
-        bfcacheDisabled: "快速前进/后退缓存已停用"
+        bfcacheDisabled: "快速前进/后退缓存已停用",
+        splitHorizontal: "分屏视图：左右并排",
+        splitVertical: "分屏视图：上下堆叠",
+        splitQuad: "分屏视图：2×2 四分格",
     },
     ai: {
         downloadingPreset: "正在下载 {name}...",
@@ -1564,7 +1609,11 @@ const zh = {
         sidebarHidden: "侧边栏：已隐藏",
         sidebarVisible: "侧边栏：已显示",
         caretEnabled: "光标浏览已启用（方向键可在页面文本中移动）",
-        caretDisabled: "光标浏览已停用"
+        caretDisabled: "光标浏览已停用",
+        framelessOn: "无边框模式：开启（悬停边缘显示栏）",
+        framelessOff: "无边框模式：关闭",
+        copiedUrl: "已复制网址到剪贴板",
+        splitSwapped: "已交换分屏窗格",
     }
 };
 
@@ -1765,7 +1814,10 @@ const ja = {
         perfUltra: "ウルトラ（最大フレームレート・RAM）",
         perfToast: "パフォーマンス: {label}",
         bfcacheEnabled: "高速戻る/進むキャッシュを有効化しました",
-        bfcacheDisabled: "高速戻る/進むキャッシュを無効化しました"
+        bfcacheDisabled: "高速戻る/進むキャッシュを無効化しました",
+        splitHorizontal: "分割ビュー: 左右並び",
+        splitVertical: "分割ビュー: 上下並び",
+        splitQuad: "分割ビュー: 2×2 グリッド",
     },
     ai: {
         downloadingPreset: "{name} をダウンロード中...",
@@ -1788,7 +1840,11 @@ const ja = {
         sidebarHidden: "サイドバー: 非表示",
         sidebarVisible: "サイドバー: 表示",
         caretEnabled: "キャレットブラウズを有効化（矢印キーでテキスト移動）",
-        caretDisabled: "キャレットブラウズを無効化"
+        caretDisabled: "キャレットブラウズを無効化",
+        framelessOn: "フレームレスモード: オン（端へのホバーでバー表示）",
+        framelessOff: "フレームレスモード: オフ",
+        copiedUrl: "URL をクリップボードにコピーしました",
+        splitSwapped: "分割ペインを入れ替えました",
     }
 };
 
@@ -1989,7 +2045,10 @@ const ru = {
         perfUltra: "Ультра (Макс. частота кадров и ОЗУ)",
         perfToast: "Производительность: {label}",
         bfcacheEnabled: "Мгновенный кэш Назад/Вперёд включён",
-        bfcacheDisabled: "Мгновенный кэш Назад/Вперёд отключён"
+        bfcacheDisabled: "Мгновенный кэш Назад/Вперёд отключён",
+        splitHorizontal: "Разделённый экран: рядом",
+        splitVertical: "Разделённый экран: сверху и снизу",
+        splitQuad: "Разделённый экран: сетка 2×2",
     },
     ai: {
         downloadingPreset: "Загрузка {name}...",
@@ -2012,7 +2071,11 @@ const ru = {
         sidebarHidden: "Боковая панель: Скрыта",
         sidebarVisible: "Боковая панель: Видима",
         caretEnabled: "Навигация курсором включена (стрелки двигают по тексту)",
-        caretDisabled: "Навигация курсором отключена"
+        caretDisabled: "Навигация курсором отключена",
+        framelessOn: "Безрамочный режим: вкл. (наведите на края для панелей)",
+        framelessOff: "Безрамочный режим: выкл.",
+        copiedUrl: "URL скопирован в буфер обмена",
+        splitSwapped: "Панели разделения поменяны местами",
     }
 };
 
@@ -2213,7 +2276,10 @@ const it = {
         perfUltra: "Ultra (FPS e RAM massimi)",
         perfToast: "Prestazioni: {label}",
         bfcacheEnabled: "Cache istantanea Indietro/Avanti attivata",
-        bfcacheDisabled: "Cache istantanea Indietro/Avanti disattivata"
+        bfcacheDisabled: "Cache istantanea Indietro/Avanti disattivata",
+        splitHorizontal: "Vista divisa: Affiancati",
+        splitVertical: "Vista divisa: Impilati (Sopra/Sotto)",
+        splitQuad: "Vista divisa: Griglia 2×2",
     },
     ai: {
         downloadingPreset: "Download di {name}...",
@@ -2236,7 +2302,11 @@ const it = {
         sidebarHidden: "Barra laterale: Nascosta",
         sidebarVisible: "Barra laterale: Visibile",
         caretEnabled: "Navigazione con cursore attivata (frecce nel testo)",
-        caretDisabled: "Navigazione con cursore disattivata"
+        caretDisabled: "Navigazione con cursore disattivata",
+        framelessOn: "Modalità senza bordi: Attiva (Passa sui bordi per le barre)",
+        framelessOff: "Modalità senza bordi: Disattivata",
+        copiedUrl: "URL copiato negli appunti",
+        splitSwapped: "Riquadri divisi scambiati",
     }
 };
 
@@ -2437,7 +2507,10 @@ const uk = {
         perfUltra: "Ультра (Макс. частота кадрів та ОЗП)",
         perfToast: "Продуктивність: {label}",
         bfcacheEnabled: "Миттєвий кеш Назад/Вперед увімкнено",
-        bfcacheDisabled: "Миттєвий кеш Назад/Вперед вимкнено"
+        bfcacheDisabled: "Миттєвий кеш Назад/Вперед вимкнено",
+        splitHorizontal: "Розділений екран: поруч",
+        splitVertical: "Розділений екран: зверху та знизу",
+        splitQuad: "Розділений екран: сітка 2×2",
     },
     ai: {
         downloadingPreset: "Завантаження {name}...",
@@ -2460,7 +2533,11 @@ const uk = {
         sidebarHidden: "Бічна панель: Прихована",
         sidebarVisible: "Бічна панель: Видима",
         caretEnabled: "Навігацію курсором увімкнено (стрілки рухають текстом)",
-        caretDisabled: "Навігацію курсором вимкнено"
+        caretDisabled: "Навігацію курсором вимкнено",
+        framelessOn: "Безрамковий режим: увімк. (наведіть на краї для панелей)",
+        framelessOff: "Безрамковий режим: вимк.",
+        copiedUrl: "URL скопійовано в буфер обміну",
+        splitSwapped: "Панелі поділу поміняно місцями",
     }
 };
 
@@ -2661,7 +2738,10 @@ const ko = {
         perfUltra: "울트라 (최대 프레임 속도 및 RAM)",
         perfToast: "성능: {label}",
         bfcacheEnabled: "즉시 뒤로/앞으로 캐시 활성화됨",
-        bfcacheDisabled: "즉시 뒤로/앞으로 캐시 비활성화됨"
+        bfcacheDisabled: "즉시 뒤로/앞으로 캐시 비활성화됨",
+        splitHorizontal: "분할 보기: 나란히",
+        splitVertical: "분할 보기: 상하 배치",
+        splitQuad: "분할 보기: 2×2 격자",
     },
     ai: {
         downloadingPreset: "{name} 다운로드 중...",
@@ -2684,7 +2764,11 @@ const ko = {
         sidebarHidden: "사이드바: 숨김",
         sidebarVisible: "사이드바: 표시됨",
         caretEnabled: "캐럿 탐색 활성화됨 (방향키로 텍스트 이동)",
-        caretDisabled: "캐럿 탐색 비활성화됨"
+        caretDisabled: "캐럿 탐색 비활성화됨",
+        framelessOn: "프레임리스 모드: 켜짐 (가장자리에 마우스를 올려 바 표시)",
+        framelessOff: "프레임리스 모드: 꺼짐",
+        copiedUrl: "URL을 클립보드에 복사했습니다",
+        splitSwapped: "분할 창 위치를 바꿨습니다",
     }
 };
 

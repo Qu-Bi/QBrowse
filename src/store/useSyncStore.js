@@ -1184,7 +1184,9 @@ function applyRemoteSettingsToUIStore(decryptedSettings, remoteUpdatedAtMs = 0) 
                 }
             }));
         }
-        if (decryptedSettings._syncTheme && decryptedSettings._syncTheme !== uiStore.theme && typeof uiStore.setTheme === 'function') {
+        const localSettingsUpdatedAtMs = parseTimestampMs(prevSettingsTs);
+        const canApplyRemoteTheme = !localSettingsDirty && !(localSettingsUpdatedAtMs > remoteUpdatedAtMs);
+        if (canApplyRemoteTheme && decryptedSettings._syncTheme && decryptedSettings._syncTheme !== uiStore.theme && typeof uiStore.setTheme === 'function') {
             try {
                 uiStore.setTheme(decryptedSettings._syncTheme);
             } catch (_) {}
@@ -1324,7 +1326,9 @@ function applySyncedUIPresetsAndTheme(decryptedSettings, remoteUpdatedAtMs = 0) 
     })();
     beginRemoteApply();
     try {
-        if (decryptedSettings._syncTheme && decryptedSettings._syncTheme !== uiStore.theme && typeof uiStore.setTheme === 'function') {
+        const localSettingsUpdatedAtMs = parseTimestampMs(prevSettingsTs);
+        const canApplyRemoteTheme = !localSettingsDirty && !(localSettingsUpdatedAtMs > remoteUpdatedAtMs);
+        if (canApplyRemoteTheme && decryptedSettings._syncTheme && decryptedSettings._syncTheme !== uiStore.theme && typeof uiStore.setTheme === 'function') {
             try {
                 uiStore.setTheme(decryptedSettings._syncTheme);
             } catch (_) {}

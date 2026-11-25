@@ -934,6 +934,7 @@ aside#qbrowse-sidebar.is-hidden {
    ========================================================= */
 .settings-bright-mode {
   color: #18181b;
+  background-color: rgba(248, 250, 253, 0.78);
 }
 
 .settings-bright-mode h1,
@@ -1210,11 +1211,11 @@ aside#qbrowse-sidebar.is-hidden {
 }
 
 .liquid-glass-bright {
-  background-color: rgba(255, 255, 255, 0.44) !important;
-  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(110%);
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
-  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.05) !important;
+  background-color: rgba(255, 255, 255, 0.68) !important;
+  backdrop-filter: blur(var(--glass-blur, 24px)) saturate(125%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(125%);
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
   transform: translateZ(0);
   will-change: transform;
   transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),

@@ -4,8 +4,8 @@ pub mod hash_thumb;
 
 pub use fs_probe::{
     autocomplete_path, format_human_size, is_text_extension, list_directory, mime_from_extension,
-    probe_local_file, read_file_range, DirEntryInfo, FileRangeResponse, LocalFileProbe,
-    PathSuggestion, MAX_TEXT_PROBE_BYTES,
+    probe_local_file, read_file_range, strip_windows_extended_prefix, DirEntryInfo,
+    FileRangeResponse, LocalFileProbe, PathSuggestion, MAX_TEXT_PROBE_BYTES,
 };
 pub use gif::{parse_gif_info, strip_gif_loop, GifInfo};
 pub use hash_thumb::{hash_file, save_tab_thumbnail, HashAlgo};
@@ -19,7 +19,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -78,6 +78,40 @@ mod tests {
         assert_eq!(range.status, 206);
         assert_eq!(range.content_range.as_deref(), Some("bytes 2-5/16"));
         assert_eq!(range.bytes, b"2345");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_strip_windows_extended_prefix_and_full_file_read() {
+        assert_eq!(
+            strip_windows_extended_prefix(Path::new(r"\\?\C:\Users\demo\file.pdf")),
+            PathBuf::from(r"C:\Users\demo\file.pdf")
+        );
+        assert_eq!(
+            strip_windows_extended_prefix(Path::new(r"\\?\UNC\server\share\doc.pdf")),
+            PathBuf::from(r"\\server\share\doc.pdf")
+        );
+        assert_eq!(
+            strip_windows_extended_prefix(Path::new(r"C:\Users\demo\file.pdf")),
+            PathBuf::from(r"C:\Users\demo\file.pdf")
+        );
+
+        let dir = temp_dir("full_read");
+        let large_path = dir.join("large.pdf");
+        let payload = vec![0x41u8; 2_500_000];
+        fs::write(&large_path, &payload).unwrap();
+
+        let full = read_file_range(large_path.to_str().unwrap(), None, 0).unwrap();
+        assert_eq!(full.status, 200);
+        assert!(full.content_range.is_none());
+        assert_eq!(full.total_size, 2_500_000);
+        assert_eq!(full.bytes.len(), 2_500_000);
+
+        let ranged = read_file_range(large_path.to_str().unwrap(), Some("bytes=0-"), 1024).unwrap();
+        assert_eq!(ranged.status, 206);
+        assert_eq!(ranged.content_range.as_deref(), Some("bytes 0-1023/2500000"));
+        assert_eq!(ranged.bytes.len(), 1024);
 
         let _ = fs::remove_dir_all(&dir);
     }

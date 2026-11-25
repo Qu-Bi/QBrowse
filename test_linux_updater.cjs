@@ -13,6 +13,7 @@ const {
     sanitizeUpdateFileName,
     detectLinuxInstallType,
     selectLinuxReleaseAsset,
+    selectWindowsReleaseAsset,
     buildLinuxInstallCommand,
     replaceAppImageAtomically,
     resolveLinuxDesktopEntryState
@@ -353,6 +354,35 @@ async function run() {
         const rustDeb = selectLinuxReleaseAsset(mixedAssets, 'deb', 'x64', null, 'rust');
         assert.strictEqual(stdDeb?.name, 'qbrowse_1.5.0_amd64.deb');
         assert.strictEqual(rustDeb?.name, 'qbrowse_rust_1.5.0_amd64.deb');
+    });
+
+    await test('Windows asset selection excludes QBrowse-Web-Setup-*.exe and picks QBrowse-Setup-*.exe', () => {
+        const winAssets = [
+            { name: 'QBrowse-Web-Setup-1.5.1-x64.exe', browser_download_url: 'https://example.com/QBrowse-Web-Setup-1.5.1-x64.exe', size: 2500000 },
+            { name: 'QBrowse-Setup-1.5.1-x64.exe.blockmap', browser_download_url: 'https://example.com/QBrowse-Setup-1.5.1-x64.exe.blockmap', size: 120000 },
+            { name: 'QBrowse-Setup-1.5.1-x64.exe', browser_download_url: 'https://example.com/QBrowse-Setup-1.5.1-x64.exe', size: 110000000 },
+            { name: 'latest.yml', browser_download_url: 'https://example.com/latest.yml', size: 400 }
+        ];
+        const winYml = {
+            version: '1.5.1',
+            path: 'QBrowse-Setup-1.5.1-x64.exe',
+            sha512: 'WIN_SETUP_SHA512',
+            files: [{ url: 'QBrowse-Setup-1.5.1-x64.exe', sha512: 'WIN_SETUP_SHA512', size: 110000000 }]
+        };
+
+        const picked = selectWindowsReleaseAsset(winAssets, winYml);
+        assert.strictEqual(picked?.name, 'QBrowse-Setup-1.5.1-x64.exe');
+        assert.strictEqual(picked?.sha512, 'WIN_SETUP_SHA512');
+
+        // Without ymlData, fallback heuristics must still exclude web-setup / online-setup / bootstrapper / uninstall / .blockmap
+        const webOnlyAssets = [
+            { name: 'QBrowse-Web-Setup-1.5.1-x64.exe', browser_download_url: 'https://example.com/QBrowse-Web-Setup-1.5.1-x64.exe', size: 2500000 },
+            { name: 'QBrowse-Online-Setup-1.5.1-x64.exe', browser_download_url: 'https://example.com/QBrowse-Online-Setup-1.5.1-x64.exe', size: 2500000 },
+            { name: 'QBrowse-Bootstrapper-1.5.1-x64.exe', browser_download_url: 'https://example.com/QBrowse-Bootstrapper-1.5.1-x64.exe', size: 2500000 },
+            { name: 'Uninstall QBrowse.exe', browser_download_url: 'https://example.com/Uninstall.exe', size: 500000 }
+        ];
+        assert.strictEqual(selectWindowsReleaseAsset(webOnlyAssets, null), null);
+        assert.strictEqual(selectWindowsReleaseAsset(winAssets, null)?.name, 'QBrowse-Setup-1.5.1-x64.exe');
     });
 
     console.log(`\n${passed} tests passed.`);

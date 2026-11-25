@@ -23,15 +23,17 @@ mod platform {
     use windows_registry::CURRENT_USER;
 
     const DWMWA_WINDOW_CORNER_PREFERENCE: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(33);
-    const DWMWCP_DEFAULT: u32 = 0;
-    const DWMWCP_ROUND: u32 = 2;
+    pub const DWMWCP_DEFAULT: u32 = 0;
+    pub const DWMWCP_DONOTROUND: u32 = 1;
+    pub const DWMWCP_ROUND: u32 = 2;
+    pub const DWMWCP_ROUNDSMALL: u32 = 3;
 
-    pub fn set_window_rounded_corners(hwnd_isize: isize, enabled: bool) -> Result<()> {
+    pub fn set_window_rounded_corners(hwnd_isize: isize, preference: u32) -> Result<()> {
         if hwnd_isize == 0 {
             return Err(anyhow!("Invalid null HWND"));
         }
         let hwnd = HWND(hwnd_isize as *mut c_void);
-        let pref: u32 = if enabled { DWMWCP_ROUND } else { DWMWCP_DEFAULT };
+        let pref: u32 = super::normalize_corner_preference(preference);
         unsafe {
             DwmSetWindowAttribute(
                 hwnd,
@@ -188,7 +190,7 @@ mod platform {
     use super::DefaultBrowserStatus;
     use anyhow::{anyhow, Result};
 
-    pub fn set_window_rounded_corners(_hwnd_isize: isize, _enabled: bool) -> Result<()> {
+    pub fn set_window_rounded_corners(_hwnd_isize: isize, _preference: u32) -> Result<()> {
         Ok(())
     }
 
@@ -212,9 +214,19 @@ mod platform {
     }
 }
 
+/// Normalize a Windows 11 DWM corner preference code (`0`..=`3`, defaulting to `0` if out of range).
+pub fn normalize_corner_preference(preference: u32) -> u32 {
+    if preference <= 3 {
+        preference
+    } else {
+        0
+    }
+}
+
 /// Set Windows 11 rounded corners via `DwmSetWindowAttribute` (`DWMWA_WINDOW_CORNER_PREFERENCE = 33`).
-pub fn set_window_rounded_corners(hwnd_isize: isize, enabled: bool) -> Result<()> {
-    platform::set_window_rounded_corners(hwnd_isize, enabled)
+/// `preference`: `0` = default, `1` = do not round (sharp), `2` = round, `3` = round small (cohesive).
+pub fn set_window_rounded_corners(hwnd_isize: isize, preference: u32) -> Result<()> {
+    platform::set_window_rounded_corners(hwnd_isize, preference)
 }
 
 /// Query Windows `SPI_GETCLIENTAREAANIMATION` for reduced motion preference.

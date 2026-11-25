@@ -33,6 +33,7 @@ export default function SiteInfoPopover({ isClosing }) {
     const eraserSessionRules = useUIStore(state => state.eraserSessionRules);
     const clearHiddenElementsForDomain = useUIStore(state => state.clearHiddenElementsForDomain);
     const isForceDark = useUIStore(state => state.isForceDark);
+    const smartDarkStatusByTab = useUIStore(state => state.smartDarkStatusByTab);
     const darkExclusions = useUIStore(state => state.darkExclusions);
     const toggleDarkExclusionForUrl = useUIStore(state => state.toggleDarkExclusionForUrl);
 
@@ -244,6 +245,8 @@ export default function SiteInfoPopover({ isClosing }) {
                 if (!darkMatch.hostname) return null;
 
                 const isInheritedMatch = darkMatch.excluded && (darkMatch.matchType === 'subdomain' || darkMatch.matchType === 'wildcard');
+                const tabDarkStatus = smartDarkStatusByTab?.[currentTab?.id];
+                const isNativeDarkDetected = Boolean(isForceDark && !darkMatch.excluded && tabDarkStatus?.isNativelyDark);
                 const handleToggleForceDarkExclusion = () => {
                     const res = toggleDarkExclusionForUrl(currentTab?.url);
                     if (!res.ok) return;
@@ -273,9 +276,11 @@ export default function SiteInfoPopover({ isClosing }) {
                                         ? t('pop.site.darkExcludedVia', { rule: darkMatch.matchedRule }, `Excluded via ${darkMatch.matchedRule}`)
                                         : darkMatch.excluded
                                             ? t('pop.site.darkExcludedExact', { rule: darkMatch.matchedRule }, `Skipped on ${darkMatch.matchedRule}`)
-                                            : isForceDark
-                                                ? t('pop.site.darkActiveOnSite', null, 'Active on this site')
-                                                : t('pop.site.darkGlobalOff', null, 'Force Dark is off')}
+                                            : isNativeDarkDetected
+                                                ? t('pop.site.darkNativeDetected', null, 'Native dark detected · Not inverted')
+                                                : isForceDark
+                                                    ? t('pop.site.darkActiveOnSite', null, 'Active on this site')
+                                                    : t('pop.site.darkGlobalOff', null, 'Force Dark is off')}
                                 </span>
                             </div>
                         </div>

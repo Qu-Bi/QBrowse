@@ -585,10 +585,16 @@ function WallpaperEngine() {
     const isCurrentVideo = isVideoWallpaper(currentUrl);
     const isCurrentGif = isGifWallpaper(currentUrl);
     const cleanUrl = currentUrl ? currentUrl.split('?')[0].split('#')[0] : '';
+    const isUsingDefaultStock = !customWallpaper;
 
-    const visualFilter = (blurWallpaper && wallpaperBlur > 0)
-        ? `saturate(1.1) blur(${wallpaperBlur}px)`
+    const baseVisualFilter = isBright
+        ? (isUsingDefaultStock
+            ? 'brightness(1.42) contrast(0.84) saturate(1.22)'
+            : 'brightness(1.06) saturate(1.06)')
         : 'saturate(1.1)';
+    const visualFilter = (blurWallpaper && wallpaperBlur > 0)
+        ? `${baseVisualFilter} blur(${wallpaperBlur}px)`
+        : baseVisualFilter;
     const visualTransform = (blurWallpaper && wallpaperBlur > 0) ? 'scale(1.05)' : 'scale(1)';
 
     return (
@@ -808,15 +814,39 @@ function WallpaperEngine() {
                 />
             )}
 
-            {/* Backing Ambient Dimming Overlay Layer */}
-            <div
-                className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300"
-                style={{
-                    backgroundColor: isBright
-                        ? `rgba(255, 255, 255, ${(wallpaperDimming / 100) * 0.15})`
-                        : `rgba(0, 0, 0, ${wallpaperDimming / 100})`
-                }}
-            />
+            {/* Backing Ambient Dimming / Daylight Luminous Overlay Layer */}
+            {isBright ? (
+                isUsingDefaultStock ? (
+                    <>
+                        <div
+                            className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300"
+                            style={{
+                                background: 'linear-gradient(135deg, rgba(247,248,252,0.74) 0%, rgba(241,244,250,0.58) 50%, rgba(251,248,243,0.74) 100%)'
+                            }}
+                        />
+                        <div
+                            className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300"
+                            style={{
+                                background: 'radial-gradient(circle at 22% 18%, rgba(var(--accent-rgb), 0.16), transparent 52%), radial-gradient(circle at 80% 82%, rgba(var(--accent-rgb), 0.12), transparent 56%)'
+                            }}
+                        />
+                    </>
+                ) : (
+                    <div
+                        className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300"
+                        style={{
+                            backgroundColor: `rgba(248, 249, 252, ${0.12 + (wallpaperDimming / 100) * 0.55})`
+                        }}
+                    />
+                )
+            ) : (
+                <div
+                    className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-300"
+                    style={{
+                        backgroundColor: `rgba(0, 0, 0, ${wallpaperDimming / 100})`
+                    }}
+                />
+            )}
         </div>
     );
 }

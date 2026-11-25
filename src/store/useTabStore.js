@@ -1217,6 +1217,15 @@ const useTabStore = create((set, get) => ({
                       };
                       if (space === state.activeSpace) {
                           uiStore.setCurrentUrl(remaining[nextActiveIdx].url || '');
+                          const activatedId = remaining[nextActiveIdx].id;
+                          const matchingGroup = (uiStore.parkedSplitGroups || []).find(
+                              pg => pg && pg.space === space && getGroupMemberIds(pg).includes(activatedId)
+                          );
+                          if (matchingGroup) {
+                              const memberIds = getGroupMemberIds(matchingGroup);
+                              const focusIdx = memberIds.indexOf(activatedId);
+                              uiStore.restoreParkedSplitGroup(matchingGroup.id, focusIdx >= 0 ? focusIdx : 0, { instant: true });
+                          }
                       }
                   }
                   finalRemaining = remaining;
@@ -1501,6 +1510,14 @@ const useTabStore = create((set, get) => ({
         const ui = useUIStore.getState();
         ui.setCurrentUrl(nextUrl);
         ui.setIsReaderAvailable(false);
+        const matchingGroup = (ui.parkedSplitGroups || []).find(
+            pg => pg && pg.space === currentSpace && getGroupMemberIds(pg).includes(nextActiveId)
+        );
+        if (matchingGroup) {
+            const memberIds = getGroupMemberIds(matchingGroup);
+            const focusIdx = memberIds.indexOf(nextActiveId);
+            ui.restoreParkedSplitGroup(matchingGroup.id, focusIdx >= 0 ? focusIdx : 0, { instant: true });
+        }
     }
 
     // Remove the tab after its exit animation finishes (250ms)
@@ -1536,6 +1553,14 @@ const useTabStore = create((set, get) => ({
                 const ui = useUIStore.getState();
                 ui.setCurrentUrl(firstAlive.url || '');
                 ui.setIsReaderAvailable(false);
+                const matchingGroup = (ui.parkedSplitGroups || []).find(
+                    pg => pg && pg.space === currentSpace && getGroupMemberIds(pg).includes(firstAlive.id)
+                );
+                if (matchingGroup) {
+                    const memberIds = getGroupMemberIds(matchingGroup);
+                    const focusIdx = memberIds.indexOf(firstAlive.id);
+                    ui.restoreParkedSplitGroup(matchingGroup.id, focusIdx >= 0 ? focusIdx : 0, { instant: true });
+                }
             }
         }
         

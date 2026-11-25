@@ -1,5 +1,4 @@
-// Modular domain translations: chrome namespace
-export { selectPluralForm, formatTabCount } from '../helpers.js';
+// Modular domain translations: chrome namespace (App, TabBar, Sidebar, Toolbar, MainFrame, etc.)
 
 const en = {
     untitledTab: "Untitled",
@@ -33,7 +32,6 @@ const en = {
     refresh: "Refresh",
     collapse: "Collapse",
     expand: "Expand",
-
     defaultAppsLinux: "Default Applications",
     defaultAppsMac: "macOS System Settings",
     defaultAppsWin: "Windows Default Apps",
@@ -51,7 +49,6 @@ const en = {
     defaultBrowserSetBtn: "Set as Default",
     defaultBrowserDontAsk: "Don't ask again",
     dismissForNow: "Dismiss for now",
-
     omniboxTerminalCommands: "Terminal Commands",
     omniboxEnterToRun: "↵ enter to run",
     omniboxRunBadge: "↵ Run",
@@ -80,7 +77,6 @@ const en = {
     omniboxOpenFolder: "Open Folder: {path}",
     omniboxOpenFile: "Open File: {path}",
     omniboxSearchWith: "Search {engine}: \"{query}\"",
-
     bangCat_General: "General",
     bangCat_Media: "Media",
     bangCat_Development: "Development",
@@ -90,7 +86,6 @@ const en = {
     bangCat_AI: "AI",
     bangCat_Custom: "Custom",
     bangCat_Engine: "Engine",
-
     cmd_ls: "List open tabs (Mission Control)",
     cmd_clear: "Clear history & browser cache",
     cmd_top: "Open Resource & Task Manager",
@@ -126,7 +121,6 @@ const en = {
     cmd_screenshot: "Capture Webpage Screenshot (Ctrl+Shift+S)",
     cmd_snip: "Interactive Snip Area (Ctrl+Shift+S)",
     cmd_reader: "Toggle Distraction-Free Reader Mode (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal: Tab Map activated",
     toastCmdClear: "Terminal: History & browser cache cleared!",
     toastCmdTasks: "Terminal: Resource & Task Manager opened",
@@ -159,7 +153,6 @@ const en = {
     toastCmdCircuit: "Terminal: Tor Circuit HUD opened",
     toastCopiedValue: "Copied to clipboard: {value}",
     toastCopiedClipboard: "Copied to clipboard",
-
     torCircuitTooltip: "Tor Onion Circuit & Identity (Click to view circuit)",
     torConnected: "Tor Connected",
     torConnecting: "Connecting Tor...",
@@ -194,7 +187,6 @@ const en = {
     qvaultLabel: "QVault Passwords",
     qvaultTooltip: "QVault Passwords (Right-click to hide)",
     customizeToolbarTooltip: "Customize Toolbar (All icons hidden • Click to manage)",
-
     maxWorkspacesReached: "Maximum of 8 workspaces reached",
     defaultNewWorkspaceName: "Workspace {index}",
     toastOpenedPinBg: "Opened {title} in background tab",
@@ -250,7 +242,6 @@ const en = {
     noOpenTabs: "No open tabs",
     launchPinHint: "Click below to launch an instance of {title}",
     newPinTabBtn: "New {title} Tab",
-
     githubGlance: "GitHub Glance",
     githubGlanceConnectDesc: "Connect GitHub to see live PR and issue previews.",
     githubLoginBtn: "Log In to GitHub",
@@ -279,7 +270,6 @@ const en = {
     refreshLiveData: "Refresh Live Data",
     openOnGithub: "Open on GitHub",
     configureSettings: "Configure Settings...",
-
     dialogAuthTitle: "Authentication Required",
     dialogPromptTitle: "Input Requested",
     dialogConfirmTitle: "Confirm Action",
@@ -289,7 +279,6 @@ const en = {
     passwordPlaceholder: "Password",
     dialogPromptPlaceholder: "Your response...",
     dialogSuppressRepeat: "Prevent this page from creating additional dialogs",
-
     downloadScreenshotType: "Screenshot ({type})",
     downloadScreenshot: "Screenshot",
     downloadVerifiedTitle: "Verified Download",
@@ -344,7 +333,6 @@ const en = {
     zoomOutTooltip: "Zoom Out (Ctrl -)",
     zoomInTooltip: "Zoom In (Ctrl +)",
     resetZoomCtrl0: "Reset Zoom (Ctrl 0)",
-
     drmNote_netflix: "Netflix requires Google Widevine VMP hardware DRM for 1080p/4K playback.",
     drmNote_primevideo: "Prime Video requires hardware DRM certification for HD/UHD playback.",
     drmNote_disneyplus: "Disney+ requires certified hardware DRM for protected video streaming.",
@@ -369,7 +357,6 @@ const en = {
     drmStreamDetected: "{name} Stream Detected",
     drmOpenWithBtn: "Open With...",
     drmDismissTooltip: "Dismiss for this tab",
-
     siteFallback: "Site",
     securityWarningFallback: "Security Warning",
     connectionFailedFallback: "Connection Failed",
@@ -398,7 +385,6 @@ const en = {
     addNoteTooltip: "Add Note",
     noteLabel: "Note",
     copySelectionTooltip: "Copy selection",
-
     errCat_securityWarning: "SECURITY WARNING",
     errCat_navigationError: "NAVIGATION ERROR",
     errCat_dnsResolution: "DNS RESOLUTION",
@@ -414,7 +400,6 @@ const en = {
     errCat_redirectLoop: "REDIRECT LOOP",
     errCat_rendererHalted: "RENDERER HALTED",
     errCat_renderProcessGone: "RENDER PROCESS GONE",
-
     errBadge_unencryptedHttp: "UNENCRYPTED HTTP",
     errBadge_invalidCert: "INVALID CERTIFICATE",
     errBadge_expiredCert: "EXPIRED CERTIFICATE",
@@ -447,7 +432,6 @@ const en = {
     errBadge_tooManyRedirects: "TOO MANY REDIRECTS",
     errBadge_crashed: "CRASHED",
     errBadge_failed: "FAILED",
-
     err_HTTP_INSECURE_title: "Unencrypted Connection (HTTP)",
     err_HTTP_INSECURE_msg: "This website does not support HTTPS encryption. Attackers on public Wi-Fi or your local network could monitor or steal passwords, messages, and sensitive personal information.",
     err_HTTP_INSECURE_risk: "Lack of TLS encryption allows third parties on the network to intercept or alter network packets.",
@@ -540,7 +524,6 @@ const en = {
     errFallback_msg: "The requested webpage could not be loaded. Please verify your connection and try again.",
     errFallback_insecureMsg: "This website does not support HTTPS encryption. Passwords, cookies, and sensitive details can be intercepted.",
     errFallback_risk: "Website authenticity cannot be cryptographically proven.",
-
     errNotSecure: "Not Secure",
     errCode: "Code {code}",
     errCopyUrlTooltip: "Copy URL to clipboard",
@@ -579,7 +562,6 @@ const en = {
     errDiagInsecure: "Insecure",
     errDiagTimestamp: "Timestamp",
     errDiagPlatform: "Platform",
-
     timeRecently: "recently",
     timeJustNow: "just now",
     timeMinutesAgo: "{count}m ago",
@@ -638,6 +620,34 @@ const en = {
     tabMapBadgeAudio: "Audio",
     tabMapBadgeSplit: "Split",
     tabMapOpenSplitTooltip: "Open in Split View",
+    splitShortLabel: "Split",
+    splitSearchPanePlaceholder: "Search or URL for Pane {pane}...",
+    splitSearchBottomPlaceholder: "Search or enter URL for Bottom Pane...",
+    quadWorkspaceSlot: "QUAD • PANE {pane}",
+    splitReloadedBoth: "Reloaded all split panes",
+    clearSplitSlotTooltip: "Clear Pane",
+    splitRatioReset: "Split View: 50 / 50",
+    dragResizeQuadTooltip: "Drag to resize 2×2 grid • Click for options • Double-click to reset",
+    splitHorizontalTooltip: "Side-by-Side (2-Col)",
+    splitVerticalTooltip: "Stacked (2-Row)",
+    splitQuadTooltip: "Quad Grid (2×2)",
+    splitResetTooltip: "Reset 50/50",
+    splitReloadBothTooltip: "Reload All Panes",
+    splitKeepSecondaryTooltip: "Focus Secondary as Full Tab",
+    splitPickTabShort: "Select tab...",
+    quadGroupLabel: "Quad Split",
+    splitGroupLabel: "Split Group",
+    renameSplitGroupTooltip: "Rename Split Group",
+    noCopyableUrls: "No copyable URLs in selected tabs",
+    copyUrls: "Copy URLs",
+    splitQuadSelected: "Open in 2×2 Quad Split",
+    splitViewSelected: "Open in Split View",
+    suspendSelected: "Suspend selected tabs",
+    unmuteSelected: "Unmute selected tabs",
+    muteSelected: "Mute selected tabs",
+    closeSelected: "Close selected tabs",
+    exitFramelessTooltip: "Exit Frameless Mode (Ctrl+Alt+F)",
+    exitFrameless: "Exit Frameless",
     tabMapWakeTabTooltip: "Wake tab",
     tabMapSleepTabTooltip: "Sleep tab",
     tabMapUnmuteTooltip: "Unmute",
@@ -660,7 +670,18 @@ const en = {
     tabMapPanBtn: "Pan",
     tabMapLassoTooltip: "Lasso Selection Tool (S / Shift+Drag)",
     tabMapLassoBtn: "Lasso",
-    tabMapMinimap: "MINIMAP"
+    tabMapMinimap: "MINIMAP",
+    cmd_hide: "Hide Distracting Items on page",
+    eraserTitle: "Hide Distracting Items",
+    eraserHint: "Click element to dissolve • ↑/↓ or Alt+Scroll to resize",
+    eraserUndo: "Undo",
+    eraserUndoTooltip: "Undo last hidden item (Ctrl+Z)",
+    eraserShowAll: "Show All",
+    eraserShowAllTooltip: "Restore all hidden items for this site",
+    eraserDone: "Done",
+    eraserUndoToast: "Restored last hidden item",
+    eraserRestoredAllToast: "Restored all hidden items on this page",
+    eraserUnlockedScrollToast: "Element hidden & page scrolling unlocked"
 };
 
 const pl = {
@@ -695,7 +716,6 @@ const pl = {
     refresh: "Odśwież",
     collapse: "Zwiń",
     expand: "Rozwiń",
-
     defaultAppsLinux: "Domyślne aplikacje",
     defaultAppsMac: "Ustawienia systemu macOS",
     defaultAppsWin: "Domyślne aplikacje Windows",
@@ -713,7 +733,6 @@ const pl = {
     defaultBrowserSetBtn: "Ustaw jako domyślną",
     defaultBrowserDontAsk: "Nie pytaj ponownie",
     dismissForNow: "Odrzuć na razie",
-
     omniboxTerminalCommands: "Polecenia terminala",
     omniboxEnterToRun: "↵ enter, aby uruchomić",
     omniboxRunBadge: "↵ Uruchom",
@@ -742,7 +761,6 @@ const pl = {
     omniboxOpenFolder: "Otwórz folder: {path}",
     omniboxOpenFile: "Otwórz plik: {path}",
     omniboxSearchWith: "Szukaj w {engine}: „{query}”",
-
     bangCat_General: "Ogólne",
     bangCat_Media: "Multimedia",
     bangCat_Development: "Programowanie",
@@ -752,7 +770,6 @@ const pl = {
     bangCat_AI: "AI",
     bangCat_Custom: "Własne",
     bangCat_Engine: "Silnik",
-
     cmd_ls: "Lista otwartych kart (Kontrola misji)",
     cmd_clear: "Wyczyść historię i pamięć podręczną",
     cmd_top: "Otwórz Menedżer zasobów i zadań",
@@ -788,7 +805,6 @@ const pl = {
     cmd_screenshot: "Zrób zrzut ekranu strony (Ctrl+Shift+S)",
     cmd_snip: "Wytnij wybrany obszar (Ctrl+Shift+S)",
     cmd_reader: "Przełącz Tryb czytania (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal: Aktywowano Mapę kart",
     toastCmdClear: "Terminal: Wyczyszczono historię i pamięć podręczną!",
     toastCmdTasks: "Terminal: Otwarto Menedżer zasobów i zadań",
@@ -821,7 +837,6 @@ const pl = {
     toastCmdCircuit: "Terminal: Otwarto HUD obwodu Tor",
     toastCopiedValue: "Skopiowano do schowka: {value}",
     toastCopiedClipboard: "Skopiowano do schowka",
-
     torCircuitTooltip: "Obwód Tor Onion i tożsamość (Kliknij, aby zobaczyć obwód)",
     torConnected: "Tor połączony",
     torConnecting: "Łączenie z Tor...",
@@ -856,7 +871,6 @@ const pl = {
     qvaultLabel: "Hasła QVault",
     qvaultTooltip: "Hasła QVault (Prawy klik, aby ukryć)",
     customizeToolbarTooltip: "Dostosuj pasek narzędzi (Wszystkie ikony ukryte • Kliknij, aby zarządzać)",
-
     maxWorkspacesReached: "Osiągnięto maksimum 8 obszarów roboczych",
     defaultNewWorkspaceName: "Obszar {index}",
     toastOpenedPinBg: "Otwarto {title} w karcie w tle",
@@ -912,7 +926,6 @@ const pl = {
     noOpenTabs: "Brak otwartych kart",
     launchPinHint: "Kliknij poniżej, aby uruchomić {title}",
     newPinTabBtn: "Nowa karta {title}",
-
     githubGlance: "Podgląd GitHub",
     githubGlanceConnectDesc: "Połącz konto GitHub, aby oglądać podgląd PR i zgłoszeń na żywo.",
     githubLoginBtn: "Zaloguj się do GitHub",
@@ -941,7 +954,6 @@ const pl = {
     refreshLiveData: "Odśwież dane na żywo",
     openOnGithub: "Otwórz w GitHub",
     configureSettings: "Konfiguruj ustawienia...",
-
     dialogAuthTitle: "Wymagane uwierzytelnienie",
     dialogPromptTitle: "Wymagane dane",
     dialogConfirmTitle: "Potwierdź czynność",
@@ -951,7 +963,6 @@ const pl = {
     passwordPlaceholder: "Hasło",
     dialogPromptPlaceholder: "Twoja odpowiedź...",
     dialogSuppressRepeat: "Blokuj tworzenie kolejnych okien dialogowych przez tę stronę",
-
     downloadScreenshotType: "Zrzut ekranu ({type})",
     downloadScreenshot: "Zrzut ekranu",
     downloadVerifiedTitle: "Zweryfikowano pobranie",
@@ -998,7 +1009,6 @@ const pl = {
     zoomOutTooltip: "Pomniejsz (Ctrl -)",
     zoomInTooltip: "Powiększ (Ctrl +)",
     resetZoomCtrl0: "Resetuj powiększenie (Ctrl 0)",
-
     drmNote_netflix: "Netflix wymaga sprzętowego DRM Google Widevine VMP do odtwarzania w 1080p/4K.",
     drmNote_primevideo: "Prime Video wymaga certyfikacji sprzętowej DRM do odtwarzania w HD/UHD.",
     drmNote_disneyplus: "Disney+ wymaga certyfikowanego sprzętowego DRM dla chronionego wideo.",
@@ -1023,7 +1033,6 @@ const pl = {
     drmStreamDetected: "Wykryto strumień {name}",
     drmOpenWithBtn: "Otwórz za pomocą...",
     drmDismissTooltip: "Ukryj dla tej karty",
-
     siteFallback: "Strona",
     securityWarningFallback: "Ostrzeżenie bezpieczeństwa",
     connectionFailedFallback: "Połączenie nieudane",
@@ -1052,7 +1061,6 @@ const pl = {
     addNoteTooltip: "Dodaj notatkę",
     noteLabel: "Notatka",
     copySelectionTooltip: "Kopiuj zaznaczenie",
-
     errCat_securityWarning: "OSTRZEŻENIE BEZPIECZEŃSTWA",
     errCat_navigationError: "BŁĄD NAWIGACJI",
     errCat_dnsResolution: "ROZWIĄZYWANIE DNS",
@@ -1068,7 +1076,6 @@ const pl = {
     errCat_redirectLoop: "PĘTLA PRZEKIEROWAŃ",
     errCat_rendererHalted: "ZATRZYMANO RENDERER",
     errCat_renderProcessGone: "AWARIA PROCESU",
-
     errBadge_unencryptedHttp: "NIESZYFROWANE HTTP",
     errBadge_invalidCert: "NIEPRAWIDŁOWY CERTYFIKAT",
     errBadge_expiredCert: "WYGASŁY CERTYFIKAT",
@@ -1101,7 +1108,6 @@ const pl = {
     errBadge_tooManyRedirects: "ZA DUŻO PRZEKIEROWAŃ",
     errBadge_crashed: "AWARIA",
     errBadge_failed: "NIEPOWODZENIE",
-
     err_HTTP_INSECURE_title: "Nieszyfrowane połączenie (HTTP)",
     err_HTTP_INSECURE_msg: "Ta witryna nie obsługuje szyfrowania HTTPS. Atakujący w publicznej sieci Wi-Fi lub sieci lokalnej mogą przechwycić hasła, wiadomości i poufne dane.",
     err_HTTP_INSECURE_risk: "Brak szyfrowania TLS pozwala osobom trzecim w sieci na przechwytywanie lub modyfikowanie pakietów.",
@@ -1194,7 +1200,6 @@ const pl = {
     errFallback_msg: "Nie udało się załadować żądanej strony. Sprawdź połączenie i spróbuj ponownie.",
     errFallback_insecureMsg: "Ta witryna nie obsługuje szyfrowania HTTPS. Hasła, pliki cookie i poufne dane mogą zostać przechwycone.",
     errFallback_risk: "Autentyczność witryny nie może zostać kryptograficznie potwierdzona.",
-
     errNotSecure: "Niezabezpieczona",
     errCode: "Kod {code}",
     errCopyUrlTooltip: "Kopiuj URL do schowka",
@@ -1233,7 +1238,6 @@ const pl = {
     errDiagInsecure: "Niezabezpieczone",
     errDiagTimestamp: "Znacznik czasu",
     errDiagPlatform: "Platforma",
-
     timeRecently: "niedawno",
     timeJustNow: "przed chwilą",
     timeMinutesAgo: "{count} min temu",
@@ -1292,6 +1296,34 @@ const pl = {
     tabMapBadgeAudio: "Dźwięk",
     tabMapBadgeSplit: "Podział",
     tabMapOpenSplitTooltip: "Otwórz w podziale ekranu",
+    splitShortLabel: "Podział",
+    splitSearchPanePlaceholder: "Szukaj lub wpisz URL dla panelu {pane}...",
+    splitSearchBottomPlaceholder: "Szukaj lub wpisz URL dla dolnego panelu...",
+    quadWorkspaceSlot: "QUAD • PANEL {pane}",
+    splitReloadedBoth: "Odświeżono wszystkie panele podziału",
+    clearSplitSlotTooltip: "Wyczyść panel",
+    splitRatioReset: "Widok podzielony: 50 / 50",
+    dragResizeQuadTooltip: "Przeciągnij, aby zmienić rozmiar siatki 2×2 • Kliknij po opcje • Kliknij dwukrotnie, aby zresetować",
+    splitHorizontalTooltip: "Obok siebie (2 kolumny)",
+    splitVerticalTooltip: "Jeden nad drugim (2 wiersze)",
+    splitQuadTooltip: "Siatka poczwórna (2×2)",
+    splitResetTooltip: "Resetuj 50/50",
+    splitReloadBothTooltip: "Odśwież wszystkie panele",
+    splitKeepSecondaryTooltip: "Otwórz drugi panel jako pełną kartę",
+    splitPickTabShort: "Wybierz kartę...",
+    quadGroupLabel: "Podział 2×2",
+    splitGroupLabel: "Grupa podziału",
+    renameSplitGroupTooltip: "Zmień nazwę grupy podziału",
+    noCopyableUrls: "Brak adresów URL do skopiowania w wybranych kartach",
+    copyUrls: "Kopiuj adresy URL",
+    splitQuadSelected: "Otwórz w podziale 2×2",
+    splitViewSelected: "Otwórz w widoku podzielonym",
+    suspendSelected: "Uśpij wybrane karty",
+    unmuteSelected: "Wyłącz wyciszenie wybranych kart",
+    muteSelected: "Wycisz wybrane karty",
+    closeSelected: "Zamknij wybrane karty",
+    exitFramelessTooltip: "Wyjdź z trybu bez ramek (Ctrl+Alt+F)",
+    exitFrameless: "Wyjdź z bezramkowego",
     tabMapWakeTabTooltip: "Obudź kartę",
     tabMapSleepTabTooltip: "Uśpij kartę",
     tabMapUnmuteTooltip: "Wyłącz wyciszenie",
@@ -1314,7 +1346,26 @@ const pl = {
     tabMapPanBtn: "Przesuń",
     tabMapLassoTooltip: "Zaznaczenie lassem (S / Shift+Przeciągnij)",
     tabMapLassoBtn: "Lasso",
-    tabMapMinimap: "MINIMAPA"
+    tabMapMinimap: "MINIMAPA",
+    cmd_hide: "Ukryj elementy rozpraszające na stronie",
+    eraserTitle: "Ukryj elementy rozpraszające",
+    eraserHint: "Kliknij element, aby go rozproszyć • ↑/↓ lub Alt+Scroll zmienia zakres",
+    eraserUndo: "Cofnij",
+    eraserUndoTooltip: "Cofnij ostatnio ukryty element (Ctrl+Z)",
+    eraserShowAll: "Pokaż wszystkie",
+    eraserShowAllTooltip: "Przywróć wszystkie ukryte elementy dla tej witryny",
+    eraserDone: "Gotowe",
+    eraserUndoToast: "Przywrócono ostatnio ukryty element",
+    eraserRestoredAllToast: "Przywrócono wszystkie ukryte elementy na tej stronie",
+    eraserUnlockedScrollToast: "Element ukryty i przewijanie strony odblokowane",
+    downloadCancelledTitle: "Pobieranie anulowane",
+    downloadCancelled: "Anulowano",
+    downloadFailed: "Niepowodzenie",
+    smartDarkExcludeMedia: "Wyklucz obrazy i wideo",
+    smartDarkExcludeMediaDesc: "Zachowaj zdjęcia, wideo i osadzone odtwarzacze",
+    whitelistedDomainsLabel: "Witryny na białej liście",
+    whitelistEmptyShort: "Brak wykluczonych witryn",
+    manageWhitelistSettings: "Zarządzaj w ustawieniach"
 };
 
 const fr = {
@@ -1349,7 +1400,6 @@ const fr = {
     refresh: "Actualiser",
     collapse: "Réduire",
     expand: "Développer",
-
     defaultAppsLinux: "Applications par défaut",
     defaultAppsMac: "Réglages Système macOS",
     defaultAppsWin: "Applications par défaut Windows",
@@ -1367,7 +1417,6 @@ const fr = {
     defaultBrowserSetBtn: "Définir par défaut",
     defaultBrowserDontAsk: "Ne plus demander",
     dismissForNow: "Ignorer pour l'instant",
-
     omniboxTerminalCommands: "Commandes du terminal",
     omniboxEnterToRun: "↵ entrée pour exécuter",
     omniboxRunBadge: "↵ Exécuter",
@@ -1396,7 +1445,6 @@ const fr = {
     omniboxOpenFolder: "Ouvrir le dossier : {path}",
     omniboxOpenFile: "Ouvrir le fichier : {path}",
     omniboxSearchWith: "Rechercher sur {engine} : « {query} »",
-
     bangCat_General: "Général",
     bangCat_Media: "Médias",
     bangCat_Development: "Développement",
@@ -1406,7 +1454,6 @@ const fr = {
     bangCat_AI: "IA",
     bangCat_Custom: "Personnalisé",
     bangCat_Engine: "Moteur",
-
     cmd_ls: "Lister les onglets ouverts (Mission Control)",
     cmd_clear: "Effacer l'historique et le cache du navigateur",
     cmd_top: "Ouvrir le gestionnaire de ressources et tâches",
@@ -1442,7 +1489,6 @@ const fr = {
     cmd_screenshot: "Capturer une image de la page (Ctrl+Shift+S)",
     cmd_snip: "Capture interactive d'une zone (Ctrl+Shift+S)",
     cmd_reader: "Basculer le mode lecture sans distraction (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal : Carte des onglets activée",
     toastCmdClear: "Terminal : Historique et cache effacés !",
     toastCmdTasks: "Terminal : Gestionnaire des tâches ouvert",
@@ -1475,7 +1521,6 @@ const fr = {
     toastCmdCircuit: "Terminal : HUD du circuit Tor ouvert",
     toastCopiedValue: "Copié dans le presse-papiers : {value}",
     toastCopiedClipboard: "Copié dans le presse-papiers",
-
     torCircuitTooltip: "Circuit Tor Onion & Identité (Cliquer pour afficher)",
     torConnected: "Tor connecté",
     torConnecting: "Connexion à Tor...",
@@ -1510,7 +1555,6 @@ const fr = {
     qvaultLabel: "Mots de passe QVault",
     qvaultTooltip: "Mots de passe QVault (Clic droit pour masquer)",
     customizeToolbarTooltip: "Personnaliser la barre (Icônes masquées • Cliquer pour gérer)",
-
     maxWorkspacesReached: "Maximum de 8 espaces de travail atteint",
     defaultNewWorkspaceName: "Espace {index}",
     toastOpenedPinBg: "{title} ouvert dans un onglet en arrière-plan",
@@ -1566,7 +1610,6 @@ const fr = {
     noOpenTabs: "Aucun onglet ouvert",
     launchPinHint: "Cliquez ci-dessous pour lancer {title}",
     newPinTabBtn: "Nouvel onglet {title}",
-
     githubGlance: "Aperçu GitHub",
     githubGlanceConnectDesc: "Connectez GitHub pour voir l'aperçu des PR et tickets en direct.",
     githubLoginBtn: "Se connecter à GitHub",
@@ -1595,7 +1638,6 @@ const fr = {
     refreshLiveData: "Actualiser les données",
     openOnGithub: "Ouvrir sur GitHub",
     configureSettings: "Configurer les paramètres...",
-
     dialogAuthTitle: "Authentification requise",
     dialogPromptTitle: "Saisie demandée",
     dialogConfirmTitle: "Confirmer l'action",
@@ -1605,7 +1647,6 @@ const fr = {
     passwordPlaceholder: "Mot de passe",
     dialogPromptPlaceholder: "Votre réponse...",
     dialogSuppressRepeat: "Empêcher cette page d'afficher d'autres boîtes de dialogue",
-
     downloadScreenshotType: "Capture d'écran ({type})",
     downloadScreenshot: "Capture d'écran",
     downloadVerifiedTitle: "Téléchargement vérifié",
@@ -1652,7 +1693,6 @@ const fr = {
     zoomOutTooltip: "Dézoomer (Ctrl -)",
     zoomInTooltip: "Zoomer (Ctrl +)",
     resetZoomCtrl0: "Réinitialiser le zoom (Ctrl 0)",
-
     drmNote_netflix: "Netflix nécessite le DRM matériel Google Widevine VMP pour la lecture 1080p/4K.",
     drmNote_primevideo: "Prime Video nécessite une certification DRM matérielle pour la lecture HD/UHD.",
     drmNote_disneyplus: "Disney+ nécessite un DRM matériel certifié pour le streaming vidéo protégé.",
@@ -1677,7 +1717,6 @@ const fr = {
     drmStreamDetected: "Flux {name} détecté",
     drmOpenWithBtn: "Ouvrir avec...",
     drmDismissTooltip: "Ignorer pour cet onglet",
-
     siteFallback: "Site",
     securityWarningFallback: "Alerte de sécurité",
     connectionFailedFallback: "Échec de connexion",
@@ -1706,7 +1745,6 @@ const fr = {
     addNoteTooltip: "Ajouter une note",
     noteLabel: "Note",
     copySelectionTooltip: "Copier la sélection",
-
     errCat_securityWarning: "ALERTE DE SÉCURITÉ",
     errCat_navigationError: "ERREUR DE NAVIGATION",
     errCat_dnsResolution: "RÉSOLUTION DNS",
@@ -1722,7 +1760,6 @@ const fr = {
     errCat_redirectLoop: "BOUCLE DE REDIRECTION",
     errCat_rendererHalted: "MOTEUR ARRÊTÉ",
     errCat_renderProcessGone: "PROCESSUS INTERROMPU",
-
     errBadge_unencryptedHttp: "HTTP NON CHIFFRÉ",
     errBadge_invalidCert: "CERTIFICAT INVALIDE",
     errBadge_expiredCert: "CERTIFICAT EXPIRÉ",
@@ -1755,7 +1792,6 @@ const fr = {
     errBadge_tooManyRedirects: "TROP DE REDIRECTIONS",
     errBadge_crashed: "PLANTAGE",
     errBadge_failed: "ÉCHEC",
-
     err_HTTP_INSECURE_title: "Connexion non chiffrée (HTTP)",
     err_HTTP_INSECURE_msg: "Ce site ne prend pas en charge le chiffrement HTTPS. Sur un Wi-Fi public ou votre réseau local, des attaquants peuvent intercepter mots de passe et données sensibles.",
     err_HTTP_INSECURE_risk: "L'absence de chiffrement TLS permet à des tiers d'intercepter ou de modifier les paquets réseau.",
@@ -1848,7 +1884,6 @@ const fr = {
     errFallback_msg: "La page demandée n'a pas pu être chargée. Vérifiez votre connexion et réessayez.",
     errFallback_insecureMsg: "Ce site ne prend pas en charge le HTTPS. Mots de passe, cookies et données sensibles peuvent être interceptés.",
     errFallback_risk: "L'authenticité du site ne peut pas être prouvée cryptographiquement.",
-
     errNotSecure: "Non sécurisé",
     errCode: "Code {code}",
     errCopyUrlTooltip: "Copier l'URL dans le presse-papiers",
@@ -1887,7 +1922,6 @@ const fr = {
     errDiagInsecure: "Non sécurisé",
     errDiagTimestamp: "Horodatage",
     errDiagPlatform: "Plateforme",
-
     timeRecently: "récemment",
     timeJustNow: "à l'instant",
     timeMinutesAgo: "il y a {count}m",
@@ -1946,6 +1980,34 @@ const fr = {
     tabMapBadgeAudio: "Audio",
     tabMapBadgeSplit: "Divisé",
     tabMapOpenSplitTooltip: "Ouvrir en vue fractionnée",
+    splitShortLabel: "Scinder",
+    splitSearchPanePlaceholder: "Rechercher ou URL pour le volet {pane}...",
+    splitSearchBottomPlaceholder: "Rechercher ou saisir une URL pour le volet inférieur...",
+    quadWorkspaceSlot: "QUAD • VOLET {pane}",
+    splitReloadedBoth: "Tous les volets scindés ont été rechargés",
+    clearSplitSlotTooltip: "Effacer le volet",
+    splitRatioReset: "Vue scindée : 50 / 50",
+    dragResizeQuadTooltip: "Glisser pour redimensionner la grille 2×2 • Cliquer pour les options • Double-cliquer pour réinitialiser",
+    splitHorizontalTooltip: "Côte à côte (2 col.)",
+    splitVerticalTooltip: "Empilé (2 lignes)",
+    splitQuadTooltip: "Grille quadruple (2×2)",
+    splitResetTooltip: "Réinitialiser 50/50",
+    splitReloadBothTooltip: "Recharger tous les volets",
+    splitKeepSecondaryTooltip: "Afficher le volet secondaire en onglet complet",
+    splitPickTabShort: "Choisir un onglet...",
+    quadGroupLabel: "Division 2×2",
+    splitGroupLabel: "Groupe scindé",
+    renameSplitGroupTooltip: "Renommer le groupe scindé",
+    noCopyableUrls: "Aucune URL copiable dans les onglets sélectionnés",
+    copyUrls: "Copier les URL",
+    splitQuadSelected: "Ouvrir en division 2×2",
+    splitViewSelected: "Ouvrir en vue scindée",
+    suspendSelected: "Suspendre les onglets sélectionnés",
+    unmuteSelected: "Réactiver le son des onglets sélectionnés",
+    muteSelected: "Couper le son des onglets sélectionnés",
+    closeSelected: "Fermer les onglets sélectionnés",
+    exitFramelessTooltip: "Quitter le mode sans bordure (Ctrl+Alt+F)",
+    exitFrameless: "Quitter sans bordure",
     tabMapWakeTabTooltip: "Réveiller l'onglet",
     tabMapSleepTabTooltip: "Mettre l'onglet en veille",
     tabMapUnmuteTooltip: "Rétablir le son",
@@ -1968,7 +2030,26 @@ const fr = {
     tabMapPanBtn: "Déplacer",
     tabMapLassoTooltip: "Outil sélection lasso (S / Shift+Glisser)",
     tabMapLassoBtn: "Lasso",
-    tabMapMinimap: "MINICARTE"
+    tabMapMinimap: "MINICARTE",
+    cmd_hide: "Masquer les éléments gênants sur la page",
+    eraserTitle: "Masquer les éléments gênants",
+    eraserHint: "Cliquez sur un élément pour le dissoudre • ↑/↓ ou Alt+Molette pour ajuster",
+    eraserUndo: "Annuler",
+    eraserUndoTooltip: "Restaurer le dernier élément masqué (Ctrl+Z)",
+    eraserShowAll: "Tout afficher",
+    eraserShowAllTooltip: "Restaurer tous les éléments masqués sur ce site",
+    eraserDone: "Terminé",
+    eraserUndoToast: "Dernier élément masqué restauré",
+    eraserRestoredAllToast: "Tous les éléments masqués de cette page ont été restaurés",
+    eraserUnlockedScrollToast: "Élément masqué et défilement de la page déverrouillé",
+    downloadCancelledTitle: "Téléchargement annulé",
+    downloadCancelled: "Annulé",
+    downloadFailed: "Échec",
+    smartDarkExcludeMedia: "Exclure les images et vidéos",
+    smartDarkExcludeMediaDesc: "Préserver les photos, vidéos et intégrations",
+    whitelistedDomainsLabel: "Sites autorisés",
+    whitelistEmptyShort: "Aucun site exclu",
+    manageWhitelistSettings: "Gérer dans les paramètres"
 };
 
 const de = {
@@ -2003,7 +2084,6 @@ const de = {
     refresh: "Aktualisieren",
     collapse: "Einklappen",
     expand: "Ausklappen",
-
     defaultAppsLinux: "Standardanwendungen",
     defaultAppsMac: "macOS-Systemeinstellungen",
     defaultAppsWin: "Windows-Standard-Apps",
@@ -2021,7 +2101,6 @@ const de = {
     defaultBrowserSetBtn: "Als Standard festlegen",
     defaultBrowserDontAsk: "Nicht mehr fragen",
     dismissForNow: "Vorerst schließen",
-
     omniboxTerminalCommands: "Terminal-Befehle",
     omniboxEnterToRun: "↵ Eingabe zum Ausführen",
     omniboxRunBadge: "↵ Start",
@@ -2050,7 +2129,6 @@ const de = {
     omniboxOpenFolder: "Ordner öffnen: {path}",
     omniboxOpenFile: "Datei öffnen: {path}",
     omniboxSearchWith: "Mit {engine} suchen: „{query}“",
-
     bangCat_General: "Allgemein",
     bangCat_Media: "Medien",
     bangCat_Development: "Entwicklung",
@@ -2060,7 +2138,6 @@ const de = {
     bangCat_AI: "KI",
     bangCat_Custom: "Benutzerdefiniert",
     bangCat_Engine: "Suchmaschine",
-
     cmd_ls: "Geöffnete Tabs auflisten (Mission Control)",
     cmd_clear: "Verlauf & Browser-Cache löschen",
     cmd_top: "Ressourcen- & Task-Manager öffnen",
@@ -2096,7 +2173,6 @@ const de = {
     cmd_screenshot: "Webseiten-Screenshot aufnehmen (Ctrl+Shift+S)",
     cmd_snip: "Bereich interaktiv ausschneiden (Ctrl+Shift+S)",
     cmd_reader: "Ablenkungsfreien Lesemodus umschalten (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal: Tab-Übersicht aktiviert",
     toastCmdClear: "Terminal: Verlauf & Browser-Cache gelöscht!",
     toastCmdTasks: "Terminal: Ressourcen- & Task-Manager geöffnet",
@@ -2129,7 +2205,6 @@ const de = {
     toastCmdCircuit: "Terminal: Tor-Circuit-HUD geöffnet",
     toastCopiedValue: "In Zwischenablage kopiert: {value}",
     toastCopiedClipboard: "In Zwischenablage kopiert",
-
     torCircuitTooltip: "Tor-Onion-Circuit & Identität (Klicken zum Anzeigen)",
     torConnected: "Tor verbunden",
     torConnecting: "Tor wird verbunden...",
@@ -2164,7 +2239,6 @@ const de = {
     qvaultLabel: "QVault-Passwörter",
     qvaultTooltip: "QVault-Passwörter (Rechtsklick zum Ausblenden)",
     customizeToolbarTooltip: "Symbolleiste anpassen (Alle Symbole ausgeblendet • Klicken zum Verwalten)",
-
     maxWorkspacesReached: "Maximal 8 Arbeitsbereiche erreicht",
     defaultNewWorkspaceName: "Arbeitsbereich {index}",
     toastOpenedPinBg: "{title} im Hintergrund-Tab geöffnet",
@@ -2220,7 +2294,6 @@ const de = {
     noOpenTabs: "Keine offenen Tabs",
     launchPinHint: "Unten klicken, um {title} zu starten",
     newPinTabBtn: "Neuer {title}-Tab",
-
     githubGlance: "GitHub Glance",
     githubGlanceConnectDesc: "Verbinde GitHub für Live-Vorschauen von PRs und Issues.",
     githubLoginBtn: "Bei GitHub anmelden",
@@ -2249,7 +2322,6 @@ const de = {
     refreshLiveData: "Live-Daten aktualisieren",
     openOnGithub: "Auf GitHub öffnen",
     configureSettings: "Einstellungen konfigurieren...",
-
     dialogAuthTitle: "Authentifizierung erforderlich",
     dialogPromptTitle: "Eingabe angefordert",
     dialogConfirmTitle: "Aktion bestätigen",
@@ -2259,7 +2331,6 @@ const de = {
     passwordPlaceholder: "Passwort",
     dialogPromptPlaceholder: "Ihre Antwort...",
     dialogSuppressRepeat: "Erstellen weiterer Dialoge durch diese Seite verhindern",
-
     downloadScreenshotType: "Screenshot ({type})",
     downloadScreenshot: "Screenshot",
     downloadVerifiedTitle: "Verifizierter Download",
@@ -2306,7 +2377,6 @@ const de = {
     zoomOutTooltip: "Verkleinern (Ctrl -)",
     zoomInTooltip: "Vergrößern (Ctrl +)",
     resetZoomCtrl0: "Zoom zurücksetzen (Ctrl 0)",
-
     drmNote_netflix: "Netflix erfordert Google Widevine VMP Hardware-DRM für 1080p/4K-Wiedergabe.",
     drmNote_primevideo: "Prime Video erfordert Hardware-DRM-Zertifizierung für HD/UHD-Wiedergabe.",
     drmNote_disneyplus: "Disney+ erfordert zertifiziertes Hardware-DRM für geschütztes Video-Streaming.",
@@ -2331,7 +2401,6 @@ const de = {
     drmStreamDetected: "{name}-Stream erkannt",
     drmOpenWithBtn: "Öffnen mit...",
     drmDismissTooltip: "Für diesen Tab verwerfen",
-
     siteFallback: "Website",
     securityWarningFallback: "Sicherheitswarnung",
     connectionFailedFallback: "Verbindung fehlgeschlagen",
@@ -2360,7 +2429,6 @@ const de = {
     addNoteTooltip: "Notiz hinzufügen",
     noteLabel: "Notiz",
     copySelectionTooltip: "Auswahl kopieren",
-
     errCat_securityWarning: "SICHERHEITSWARNUNG",
     errCat_navigationError: "NAVIGATIONSFEHLER",
     errCat_dnsResolution: "DNS-AUFLÖSUNG",
@@ -2376,7 +2444,6 @@ const de = {
     errCat_redirectLoop: "UMLEITUNGSSCHLEIFE",
     errCat_rendererHalted: "RENDERER ANGEHALTEN",
     errCat_renderProcessGone: "RENDER-PROZESS BEENDET",
-
     errBadge_unencryptedHttp: "UNVERSCHLÜSSELTES HTTP",
     errBadge_invalidCert: "UNGÜLTIGES ZERTIFIKAT",
     errBadge_expiredCert: "ABGELAUFENES ZERTIFIKAT",
@@ -2409,7 +2476,6 @@ const de = {
     errBadge_tooManyRedirects: "ZU VIELE UMLEITUNGEN",
     errBadge_crashed: "ABGESTÜRZT",
     errBadge_failed: "FEHLGESCHLAGEN",
-
     err_HTTP_INSECURE_title: "Unverschlüsselte Verbindung (HTTP)",
     err_HTTP_INSECURE_msg: "Diese Website unterstützt keine HTTPS-Verschlüsselung. Angreifer in öffentlichen WLANs oder lokalen Netzen könnten Passwörter, Nachrichten und Daten mitlesen.",
     err_HTTP_INSECURE_risk: "Fehlende TLS-Verschlüsselung ermöglicht Dritten das Mitlesen oder Verändern von Netzwerkpaketen.",
@@ -2502,7 +2568,6 @@ const de = {
     errFallback_msg: "Die angeforderte Webseite konnte nicht geladen werden. Überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
     errFallback_insecureMsg: "Diese Website unterstützt keine HTTPS-Verschlüsselung. Passwörter, Cookies und Daten können mitgelesen werden.",
     errFallback_risk: "Die Echtheit der Website kann nicht kryptografisch bewiesen werden.",
-
     errNotSecure: "Nicht sicher",
     errCode: "Code {code}",
     errCopyUrlTooltip: "URL in Zwischenablage kopieren",
@@ -2541,7 +2606,6 @@ const de = {
     errDiagInsecure: "Unsicher",
     errDiagTimestamp: "Zeitstempel",
     errDiagPlatform: "Plattform",
-
     timeRecently: "kürzlich",
     timeJustNow: "gerade eben",
     timeMinutesAgo: "vor {count} Min.",
@@ -2600,6 +2664,34 @@ const de = {
     tabMapBadgeAudio: "Audio",
     tabMapBadgeSplit: "Geteilt",
     tabMapOpenSplitTooltip: "In geteilter Ansicht öffnen",
+    splitShortLabel: "Teilen",
+    splitSearchPanePlaceholder: "Suche oder URL für Bereich {pane}...",
+    splitSearchBottomPlaceholder: "Suche oder URL für den unteren Bereich eingeben...",
+    quadWorkspaceSlot: "QUAD • BEREICH {pane}",
+    splitReloadedBoth: "Alle geteilten Bereiche neu geladen",
+    clearSplitSlotTooltip: "Bereich leeren",
+    splitRatioReset: "Geteilte Ansicht: 50 / 50",
+    dragResizeQuadTooltip: "Ziehen zum Ändern des 2×2-Rasters • Klicken für Optionen • Doppelklick zum Zurücksetzen",
+    splitHorizontalTooltip: "Nebeneinander (2 Spalten)",
+    splitVerticalTooltip: "Übereinander (2 Zeilen)",
+    splitQuadTooltip: "Vierfach-Raster (2×2)",
+    splitResetTooltip: "50/50 zurücksetzen",
+    splitReloadBothTooltip: "Alle Bereiche neu laden",
+    splitKeepSecondaryTooltip: "Zweiten Bereich als vollen Tab öffnen",
+    splitPickTabShort: "Tab auswählen...",
+    quadGroupLabel: "Vierfach-Teilung",
+    splitGroupLabel: "Geteilte Gruppe",
+    renameSplitGroupTooltip: "Geteilte Gruppe umbenennen",
+    noCopyableUrls: "Keine kopierbaren URLs in den ausgewählten Tabs",
+    copyUrls: "URLs kopieren",
+    splitQuadSelected: "Im 2×2-Raster öffnen",
+    splitViewSelected: "In geteilter Ansicht öffnen",
+    suspendSelected: "Ausgewählte Tabs in den Ruhezustand versetzen",
+    unmuteSelected: "Stummschaltung ausgewählter Tabs aufheben",
+    muteSelected: "Ausgewählte Tabs stummschalten",
+    closeSelected: "Ausgewählte Tabs schließen",
+    exitFramelessTooltip: "Rahmenlosen Modus beenden (Ctrl+Alt+F)",
+    exitFrameless: "Rahmenlos beenden",
     tabMapWakeTabTooltip: "Tab aufwecken",
     tabMapSleepTabTooltip: "Tab pausieren",
     tabMapUnmuteTooltip: "Ton aktivieren",
@@ -2622,7 +2714,26 @@ const de = {
     tabMapPanBtn: "Schwenken",
     tabMapLassoTooltip: "Lasso-Auswahl (S / Shift+Ziehen)",
     tabMapLassoBtn: "Lasso",
-    tabMapMinimap: "MINIKARTE"
+    tabMapMinimap: "MINIKARTE",
+    cmd_hide: "Störende Objekte auf der Seite ausblenden",
+    eraserTitle: "Störende Objekte ausblenden",
+    eraserHint: "Element zum Auflösen anklicken • ↑/↓ oder Alt+Scrollen zum Anpassen",
+    eraserUndo: "Rückgängig",
+    eraserUndoTooltip: "Zuletzt ausgeblendetes Objekt wiederherstellen (Strg+Z)",
+    eraserShowAll: "Alle einblenden",
+    eraserShowAllTooltip: "Alle ausgeblendeten Objekte für diese Website wiederherstellen",
+    eraserDone: "Fertig",
+    eraserUndoToast: "Zuletzt ausgeblendetes Objekt wiederhergestellt",
+    eraserRestoredAllToast: "Alle ausgeblendeten Objekte auf dieser Seite wiederhergestellt",
+    eraserUnlockedScrollToast: "Element ausgeblendet & Seiten-Scrollen entsperrt",
+    downloadCancelledTitle: "Download abgebrochen",
+    downloadCancelled: "Abgebrochen",
+    downloadFailed: "Fehlgeschlagen",
+    smartDarkExcludeMedia: "Bilder & Videos ausschließen",
+    smartDarkExcludeMediaDesc: "Fotos, Videos & Einbettungen bewahren",
+    whitelistedDomainsLabel: "Ausgenommene Websites",
+    whitelistEmptyShort: "Keine Websites ausgeschlossen",
+    manageWhitelistSettings: "In Einstellungen verwalten"
 };
 
 const es = {
@@ -2657,7 +2768,6 @@ const es = {
     refresh: "Actualizar",
     collapse: "Contraer",
     expand: "Expandir",
-
     defaultAppsLinux: "Aplicaciones predeterminadas",
     defaultAppsMac: "Ajustes del Sistema de macOS",
     defaultAppsWin: "Aplicaciones predeterminadas de Windows",
@@ -2675,7 +2785,6 @@ const es = {
     defaultBrowserSetBtn: "Usar como predeterminado",
     defaultBrowserDontAsk: "No volver a preguntar",
     dismissForNow: "Cerrar por ahora",
-
     omniboxTerminalCommands: "Comandos de terminal",
     omniboxEnterToRun: "↵ enter para ejecutar",
     omniboxRunBadge: "↵ Ejecutar",
@@ -2704,7 +2813,6 @@ const es = {
     omniboxOpenFolder: "Abrir carpeta: {path}",
     omniboxOpenFile: "Abrir archivo: {path}",
     omniboxSearchWith: "Buscar en {engine}: «{query}»",
-
     bangCat_General: "General",
     bangCat_Media: "Multimedia",
     bangCat_Development: "Desarrollo",
@@ -2714,7 +2822,6 @@ const es = {
     bangCat_AI: "IA",
     bangCat_Custom: "Personalizado",
     bangCat_Engine: "Motor",
-
     cmd_ls: "Listar pestañas abiertas (Control de misión)",
     cmd_clear: "Borrar historial y caché del navegador",
     cmd_top: "Abrir Gestor de recursos y tareas",
@@ -2750,7 +2857,6 @@ const es = {
     cmd_screenshot: "Capturar pantalla de la página (Ctrl+Shift+S)",
     cmd_snip: "Recorte interactivo de área (Ctrl+Shift+S)",
     cmd_reader: "Alternar Modo Lectura sin distracciones (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal: Mapa de pestañas activado",
     toastCmdClear: "Terminal: ¡Historial y caché borrados!",
     toastCmdTasks: "Terminal: Gestor de recursos y tareas abierto",
@@ -2783,7 +2889,6 @@ const es = {
     toastCmdCircuit: "Terminal: HUD de circuito Tor abierto",
     toastCopiedValue: "Copiado al portapapeles: {value}",
     toastCopiedClipboard: "Copiado al portapapeles",
-
     torCircuitTooltip: "Circuito Tor Onion e identidad (Clic para ver)",
     torConnected: "Tor conectado",
     torConnecting: "Conectando a Tor...",
@@ -2818,7 +2923,6 @@ const es = {
     qvaultLabel: "Contraseñas QVault",
     qvaultTooltip: "Contraseñas QVault (Clic derecho para ocultar)",
     customizeToolbarTooltip: "Personalizar barra (Iconos ocultos • Clic para gestionar)",
-
     maxWorkspacesReached: "Se alcanzó el máximo de 8 espacios de trabajo",
     defaultNewWorkspaceName: "Espacio {index}",
     toastOpenedPinBg: "{title} abierto en segundo plano",
@@ -2874,7 +2978,6 @@ const es = {
     noOpenTabs: "No hay pestañas abiertas",
     launchPinHint: "Pulsa abajo para abrir {title}",
     newPinTabBtn: "Nueva pestaña de {title}",
-
     githubGlance: "Vista rápida GitHub",
     githubGlanceConnectDesc: "Conecta GitHub para ver avances de PR e incidencias en vivo.",
     githubLoginBtn: "Iniciar sesión en GitHub",
@@ -2903,7 +3006,6 @@ const es = {
     refreshLiveData: "Actualizar datos en vivo",
     openOnGithub: "Abrir en GitHub",
     configureSettings: "Configurar ajustes...",
-
     dialogAuthTitle: "Autenticación requerida",
     dialogPromptTitle: "Entrada solicitada",
     dialogConfirmTitle: "Confirmar acción",
@@ -2913,7 +3015,6 @@ const es = {
     passwordPlaceholder: "Contraseña",
     dialogPromptPlaceholder: "Tu respuesta...",
     dialogSuppressRepeat: "Evitar que esta página cree cuadros de diálogo adicionales",
-
     downloadScreenshotType: "Captura ({type})",
     downloadScreenshot: "Captura de pantalla",
     downloadVerifiedTitle: "Descarga verificada",
@@ -2960,7 +3061,6 @@ const es = {
     zoomOutTooltip: "Alejar (Ctrl -)",
     zoomInTooltip: "Acercar (Ctrl +)",
     resetZoomCtrl0: "Restablecer zoom (Ctrl 0)",
-
     drmNote_netflix: "Netflix requiere DRM por hardware Google Widevine VMP para reproducción 1080p/4K.",
     drmNote_primevideo: "Prime Video requiere certificación DRM por hardware para HD/UHD.",
     drmNote_disneyplus: "Disney+ requiere DRM por hardware certificado para streaming protegido.",
@@ -2985,7 +3085,6 @@ const es = {
     drmStreamDetected: "Stream de {name} detectado",
     drmOpenWithBtn: "Abrir con...",
     drmDismissTooltip: "Descartar en esta pestaña",
-
     siteFallback: "Sitio",
     securityWarningFallback: "Alerta de seguridad",
     connectionFailedFallback: "Error de conexión",
@@ -3014,7 +3113,6 @@ const es = {
     addNoteTooltip: "Añadir nota",
     noteLabel: "Nota",
     copySelectionTooltip: "Copiar selección",
-
     errCat_securityWarning: "ALERTA DE SEGURIDAD",
     errCat_navigationError: "ERROR DE NAVEGACIÓN",
     errCat_dnsResolution: "RESOLUCIÓN DNS",
@@ -3030,7 +3128,6 @@ const es = {
     errCat_redirectLoop: "BUCLE DE REDIRECCIÓN",
     errCat_rendererHalted: "MOTOR DETENIDO",
     errCat_renderProcessGone: "PROCESO FINALIZADO",
-
     errBadge_unencryptedHttp: "HTTP SIN CIFRAR",
     errBadge_invalidCert: "CERTIFICADO INVÁLIDO",
     errBadge_expiredCert: "CERTIFICADO CADUCADO",
@@ -3063,7 +3160,6 @@ const es = {
     errBadge_tooManyRedirects: "DEMASIADAS REDIRECCIONES",
     errBadge_crashed: "BLOQUEADO",
     errBadge_failed: "FALLIDO",
-
     err_HTTP_INSECURE_title: "Conexión sin cifrar (HTTP)",
     err_HTTP_INSECURE_msg: "Este sitio no admite cifrado HTTPS. Atacantes en redes Wi-Fi públicas o locales podrían interceptar contraseñas y datos privados.",
     err_HTTP_INSECURE_risk: "La falta de cifrado TLS permite a terceros interceptar o alterar paquetes de red.",
@@ -3156,7 +3252,6 @@ const es = {
     errFallback_msg: "No se pudo cargar la página solicitada. Comprueba tu conexión e inténtalo de nuevo.",
     errFallback_insecureMsg: "Este sitio no admite HTTPS. Contraseñas, cookies y datos sensibles pueden ser interceptados.",
     errFallback_risk: "No se puede demostrar criptográficamente la autenticidad del sitio.",
-
     errNotSecure: "No seguro",
     errCode: "Código {code}",
     errCopyUrlTooltip: "Copiar URL al portapapeles",
@@ -3195,7 +3290,6 @@ const es = {
     errDiagInsecure: "Inseguro",
     errDiagTimestamp: "Marca de tiempo",
     errDiagPlatform: "Plataforma",
-
     timeRecently: "recientemente",
     timeJustNow: "ahora mismo",
     timeMinutesAgo: "hace {count}m",
@@ -3254,6 +3348,34 @@ const es = {
     tabMapBadgeAudio: "Audio",
     tabMapBadgeSplit: "Dividida",
     tabMapOpenSplitTooltip: "Abrir en vista dividida",
+    splitShortLabel: "Dividir",
+    splitSearchPanePlaceholder: "Buscar o URL para el panel {pane}...",
+    splitSearchBottomPlaceholder: "Buscar o ingresar URL para el panel inferior...",
+    quadWorkspaceSlot: "QUAD • PANEL {pane}",
+    splitReloadedBoth: "Se recargaron todos los paneles divididos",
+    clearSplitSlotTooltip: "Limpiar panel",
+    splitRatioReset: "Vista dividida: 50 / 50",
+    dragResizeQuadTooltip: "Arrastra para redimensionar la cuadrícula 2×2 • Clic para opciones • Doble clic para restablecer",
+    splitHorizontalTooltip: "Lado a lado (2 col.)",
+    splitVerticalTooltip: "Apilado (2 filas)",
+    splitQuadTooltip: "Cuadrícula cuádruple (2×2)",
+    splitResetTooltip: "Restablecer 50/50",
+    splitReloadBothTooltip: "Recargar todos los paneles",
+    splitKeepSecondaryTooltip: "Enfocar panel secundario como pestaña completa",
+    splitPickTabShort: "Seleccionar pestaña...",
+    quadGroupLabel: "División cuádruple",
+    splitGroupLabel: "Grupo dividido",
+    renameSplitGroupTooltip: "Renombrar grupo dividido",
+    noCopyableUrls: "No hay URLs copiables en las pestañas seleccionadas",
+    copyUrls: "Copiar URLs",
+    splitQuadSelected: "Abrir en división cuádruple 2×2",
+    splitViewSelected: "Abrir en vista dividida",
+    suspendSelected: "Suspender pestañas seleccionadas",
+    unmuteSelected: "Activar sonido de pestañas seleccionadas",
+    muteSelected: "Silenciar pestañas seleccionadas",
+    closeSelected: "Cerrar pestañas seleccionadas",
+    exitFramelessTooltip: "Salir del modo sin bordes (Ctrl+Alt+F)",
+    exitFrameless: "Salir sin bordes",
     tabMapWakeTabTooltip: "Despertar pestaña",
     tabMapSleepTabTooltip: "Suspender pestaña",
     tabMapUnmuteTooltip: "Activar sonido",
@@ -3276,7 +3398,26 @@ const es = {
     tabMapPanBtn: "Mover",
     tabMapLassoTooltip: "Herramienta lazo (S / Shift+Arrastrar)",
     tabMapLassoBtn: "Lazo",
-    tabMapMinimap: "MINIMAPA"
+    tabMapMinimap: "MINIMAPA",
+    cmd_hide: "Ocultar elementos distractores en la página",
+    eraserTitle: "Ocultar elementos distractores",
+    eraserHint: "Haz clic en un elemento para disolverlo • ↑/↓ o Alt+Rueda para ajustar",
+    eraserUndo: "Deshacer",
+    eraserUndoTooltip: "Restaurar el último elemento oculto (Ctrl+Z)",
+    eraserShowAll: "Mostrar todo",
+    eraserShowAllTooltip: "Restaurar todos los elementos ocultos en este sitio",
+    eraserDone: "Listo",
+    eraserUndoToast: "Último elemento oculto restaurado",
+    eraserRestoredAllToast: "Se restauraron todos los elementos ocultos en esta página",
+    eraserUnlockedScrollToast: "Elemento oculto y desplazamiento de página desbloqueado",
+    downloadCancelledTitle: "Descarga cancelada",
+    downloadCancelled: "Cancelada",
+    downloadFailed: "Error",
+    smartDarkExcludeMedia: "Excluir imágenes y vídeos",
+    smartDarkExcludeMediaDesc: "Conservar fotos, vídeos e incrustaciones",
+    whitelistedDomainsLabel: "Sitios en lista blanca",
+    whitelistEmptyShort: "Sin sitios excluidos",
+    manageWhitelistSettings: "Gestionar en Configuración"
 };
 
 const pt = {
@@ -3311,7 +3452,6 @@ const pt = {
     refresh: "Atualizar",
     collapse: "Recolher",
     expand: "Expandir",
-
     defaultAppsLinux: "Aplicativos padrão",
     defaultAppsMac: "Ajustes do Sistema macOS",
     defaultAppsWin: "Aplicativos padrão do Windows",
@@ -3329,7 +3469,6 @@ const pt = {
     defaultBrowserSetBtn: "Definir como padrão",
     defaultBrowserDontAsk: "Não perguntar novamente",
     dismissForNow: "Dispensar por enquanto",
-
     omniboxTerminalCommands: "Comandos do terminal",
     omniboxEnterToRun: "↵ enter para executar",
     omniboxRunBadge: "↵ Executar",
@@ -3358,7 +3497,6 @@ const pt = {
     omniboxOpenFolder: "Abrir pasta: {path}",
     omniboxOpenFile: "Abrir arquivo: {path}",
     omniboxSearchWith: "Pesquisar no {engine}: \"{query}\"",
-
     bangCat_General: "Geral",
     bangCat_Media: "Mídia",
     bangCat_Development: "Desenvolvimento",
@@ -3368,7 +3506,6 @@ const pt = {
     bangCat_AI: "IA",
     bangCat_Custom: "Personalizado",
     bangCat_Engine: "Mecanismo",
-
     cmd_ls: "Listar guias abertas (Controle de missão)",
     cmd_clear: "Limpar histórico e cache do navegador",
     cmd_top: "Abrir Gerenciador de recursos e tarefas",
@@ -3404,7 +3541,6 @@ const pt = {
     cmd_screenshot: "Capturar tela da página (Ctrl+Shift+S)",
     cmd_snip: "Recorte interativo de área (Ctrl+Shift+S)",
     cmd_reader: "Alternar Modo Leitura sem distrações (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminal: Mapa de Guias ativado",
     toastCmdClear: "Terminal: Histórico e cache limpos!",
     toastCmdTasks: "Terminal: Gerenciador de recursos e tarefas aberto",
@@ -3437,7 +3573,6 @@ const pt = {
     toastCmdCircuit: "Terminal: HUD de circuito Tor aberto",
     toastCopiedValue: "Copiado para a área de transferência: {value}",
     toastCopiedClipboard: "Copiado para a área de transferência",
-
     torCircuitTooltip: "Circuito Tor Onion e identidade (Clique para ver)",
     torConnected: "Tor conectado",
     torConnecting: "Conectando ao Tor...",
@@ -3472,7 +3607,6 @@ const pt = {
     qvaultLabel: "Senhas QVault",
     qvaultTooltip: "Senhas QVault (Botão direito para ocultar)",
     customizeToolbarTooltip: "Personalizar barra (Ícones ocultos • Clique para gerenciar)",
-
     maxWorkspacesReached: "Limite máximo de 8 espaços de trabalho atingido",
     defaultNewWorkspaceName: "Espaço {index}",
     toastOpenedPinBg: "{title} aberto em segundo plano",
@@ -3528,7 +3662,6 @@ const pt = {
     noOpenTabs: "Nenhuma guia aberta",
     launchPinHint: "Clique abaixo para iniciar {title}",
     newPinTabBtn: "Nova guia {title}",
-
     githubGlance: "Resumo GitHub",
     githubGlanceConnectDesc: "Conecte o GitHub para visualizar PRs e issues em tempo real.",
     githubLoginBtn: "Entrar no GitHub",
@@ -3557,7 +3690,6 @@ const pt = {
     refreshLiveData: "Atualizar dados ao vivo",
     openOnGithub: "Abrir no GitHub",
     configureSettings: "Configurar ajustes...",
-
     dialogAuthTitle: "Autenticação necessária",
     dialogPromptTitle: "Entrada solicitada",
     dialogConfirmTitle: "Confirmar ação",
@@ -3567,7 +3699,6 @@ const pt = {
     passwordPlaceholder: "Senha",
     dialogPromptPlaceholder: "Sua resposta...",
     dialogSuppressRepeat: "Impedir que esta página crie caixas de diálogo adicionais",
-
     downloadScreenshotType: "Captura ({type})",
     downloadScreenshot: "Captura de tela",
     downloadVerifiedTitle: "Download verificado",
@@ -3614,7 +3745,6 @@ const pt = {
     zoomOutTooltip: "Diminuir zoom (Ctrl -)",
     zoomInTooltip: "Aumentar zoom (Ctrl +)",
     resetZoomCtrl0: "Redefinir zoom (Ctrl 0)",
-
     drmNote_netflix: "A Netflix exige DRM de hardware Google Widevine VMP para reprodução em 1080p/4K.",
     drmNote_primevideo: "O Prime Video exige certificação DRM de hardware para HD/UHD.",
     drmNote_disneyplus: "O Disney+ exige DRM de hardware certificado para transmissão protegida.",
@@ -3639,7 +3769,6 @@ const pt = {
     drmStreamDetected: "Stream {name} detectado",
     drmOpenWithBtn: "Abrir com...",
     drmDismissTooltip: "Dispensar nesta guia",
-
     siteFallback: "Site",
     securityWarningFallback: "Aviso de segurança",
     connectionFailedFallback: "Falha na conexão",
@@ -3668,7 +3797,6 @@ const pt = {
     addNoteTooltip: "Adicionar nota",
     noteLabel: "Nota",
     copySelectionTooltip: "Copiar seleção",
-
     errCat_securityWarning: "AVISO DE SEGURANÇA",
     errCat_navigationError: "ERRO DE NAVEGAÇÃO",
     errCat_dnsResolution: "RESOLUÇÃO DNS",
@@ -3684,7 +3812,6 @@ const pt = {
     errCat_redirectLoop: "LOOP DE REDIRECIONAMENTO",
     errCat_rendererHalted: "RENDERIZADOR PARADO",
     errCat_renderProcessGone: "PROCESSO ENCERRADO",
-
     errBadge_unencryptedHttp: "HTTP NÃO CRIPTOGRAFADO",
     errBadge_invalidCert: "CERTIFICADO INVÁLIDO",
     errBadge_expiredCert: "CERTIFICADO EXPIRADO",
@@ -3717,7 +3844,6 @@ const pt = {
     errBadge_tooManyRedirects: "MUITOS REDIRECIONAMENTOS",
     errBadge_crashed: "TRAVADO",
     errBadge_failed: "FALHOU",
-
     err_HTTP_INSECURE_title: "Conexão não criptografada (HTTP)",
     err_HTTP_INSECURE_msg: "Este site não suporta criptografia HTTPS. Invasores em redes Wi-Fi públicas ou locais podem monitorar senhas e dados pessoais.",
     err_HTTP_INSECURE_risk: "A ausência de criptografia TLS permite que terceiros interceptem ou alterem pacotes de rede.",
@@ -3810,7 +3936,6 @@ const pt = {
     errFallback_msg: "Não foi possível carregar a página solicitada. Verifique sua conexão e tente novamente.",
     errFallback_insecureMsg: "Este site não suporta HTTPS. Senhas, cookies e dados confidenciais podem ser interceptados.",
     errFallback_risk: "A autenticidade do site não pode ser provada criptograficamente.",
-
     errNotSecure: "Não seguro",
     errCode: "Código {code}",
     errCopyUrlTooltip: "Copiar URL para área de transferência",
@@ -3849,7 +3974,6 @@ const pt = {
     errDiagInsecure: "Inseguro",
     errDiagTimestamp: "Data/Hora",
     errDiagPlatform: "Plataforma",
-
     timeRecently: "recentemente",
     timeJustNow: "agora mesmo",
     timeMinutesAgo: "há {count}m",
@@ -3908,6 +4032,34 @@ const pt = {
     tabMapBadgeAudio: "Áudio",
     tabMapBadgeSplit: "Dividida",
     tabMapOpenSplitTooltip: "Abrir em visualização dividida",
+    splitShortLabel: "Dividir",
+    splitSearchPanePlaceholder: "Pesquisar ou URL para o painel {pane}...",
+    splitSearchBottomPlaceholder: "Pesquisar ou inserir URL para o painel inferior...",
+    quadWorkspaceSlot: "QUAD • PAINEL {pane}",
+    splitReloadedBoth: "Todos os painéis divididos foram recarregados",
+    clearSplitSlotTooltip: "Limpar painel",
+    splitRatioReset: "Visualização dividida: 50 / 50",
+    dragResizeQuadTooltip: "Arraste para redimensionar a grade 2×2 • Clique para opções • Clique duplo para redefinir",
+    splitHorizontalTooltip: "Lado a lado (2 col.)",
+    splitVerticalTooltip: "Empilhado (2 linhas)",
+    splitQuadTooltip: "Grade quádrupla (2×2)",
+    splitResetTooltip: "Redefinir 50/50",
+    splitReloadBothTooltip: "Recarregar todos os painéis",
+    splitKeepSecondaryTooltip: "Focar painel secundário como aba completa",
+    splitPickTabShort: "Selecionar aba...",
+    quadGroupLabel: "Divisão quádrupla",
+    splitGroupLabel: "Grupo dividido",
+    renameSplitGroupTooltip: "Renomear grupo dividido",
+    noCopyableUrls: "Nenhum URL copiável nas abas selecionadas",
+    copyUrls: "Copiar URLs",
+    splitQuadSelected: "Abrir em divisão quádrupla 2×2",
+    splitViewSelected: "Abrir em visualização dividida",
+    suspendSelected: "Suspender abas selecionadas",
+    unmuteSelected: "Reativar som das abas selecionadas",
+    muteSelected: "Silenciar abas selecionadas",
+    closeSelected: "Fechar abas selecionadas",
+    exitFramelessTooltip: "Sair do modo sem bordas (Ctrl+Alt+F)",
+    exitFrameless: "Sair sem bordas",
     tabMapWakeTabTooltip: "Acordar guia",
     tabMapSleepTabTooltip: "Suspender guia",
     tabMapUnmuteTooltip: "Ativar som",
@@ -3930,7 +4082,26 @@ const pt = {
     tabMapPanBtn: "Mover",
     tabMapLassoTooltip: "Ferramenta laço (S / Shift+Arrastar)",
     tabMapLassoBtn: "Laço",
-    tabMapMinimap: "MINIMAPA"
+    tabMapMinimap: "MINIMAPA",
+    cmd_hide: "Ocultar itens de distração na página",
+    eraserTitle: "Ocultar itens de distração",
+    eraserHint: "Clique em um elemento para dissolver • ↑/↓ ou Alt+Scroll para ajustar",
+    eraserUndo: "Desfazer",
+    eraserUndoTooltip: "Restaurar o último item oculto (Ctrl+Z)",
+    eraserShowAll: "Mostrar tudo",
+    eraserShowAllTooltip: "Restaurar todos os itens ocultos neste site",
+    eraserDone: "Concluído",
+    eraserUndoToast: "Último item oculto restaurado",
+    eraserRestoredAllToast: "Todos os itens ocultos nesta página foram restaurados",
+    eraserUnlockedScrollToast: "Elemento oculto e rolagem da página desbloqueada",
+    downloadCancelledTitle: "Download cancelado",
+    downloadCancelled: "Cancelado",
+    downloadFailed: "Falhou",
+    smartDarkExcludeMedia: "Excluir imagens e vídeos",
+    smartDarkExcludeMediaDesc: "Preservar fotos, vídeos e incorporações",
+    whitelistedDomainsLabel: "Sites na lista de permissões",
+    whitelistEmptyShort: "Nenhum site excluído",
+    manageWhitelistSettings: "Gerenciar nas Configurações"
 };
 
 const zh = {
@@ -3965,7 +4136,6 @@ const zh = {
     refresh: "刷新",
     collapse: "收起",
     expand: "展开",
-
     defaultAppsLinux: "默认应用程序",
     defaultAppsMac: "macOS 系统设置",
     defaultAppsWin: "Windows 默认应用",
@@ -3983,7 +4153,6 @@ const zh = {
     defaultBrowserSetBtn: "设为默认",
     defaultBrowserDontAsk: "不再询问",
     dismissForNow: "暂不设置",
-
     omniboxTerminalCommands: "终端命令",
     omniboxEnterToRun: "↵ 回车执行",
     omniboxRunBadge: "↵ 运行",
@@ -4012,7 +4181,6 @@ const zh = {
     omniboxOpenFolder: "打开文件夹：{path}",
     omniboxOpenFile: "打开文件：{path}",
     omniboxSearchWith: "使用 {engine} 搜索：“{query}”",
-
     bangCat_General: "综合",
     bangCat_Media: "媒体",
     bangCat_Development: "开发",
@@ -4022,7 +4190,6 @@ const zh = {
     bangCat_AI: "AI",
     bangCat_Custom: "自定义",
     bangCat_Engine: "引擎",
-
     cmd_ls: "列出已打开的标签页（任务控制）",
     cmd_clear: "清除历史记录与浏览器缓存",
     cmd_top: "打开资源与任务管理器",
@@ -4058,7 +4225,6 @@ const zh = {
     cmd_screenshot: "截取网页长图 (Ctrl+Shift+S)",
     cmd_snip: "交互式区域截图 (Ctrl+Shift+S)",
     cmd_reader: "切换无干扰阅读模式 (Ctrl+Alt+R)",
-
     toastCmdTabMap: "终端：已激活标签地图",
     toastCmdClear: "终端：已清除历史记录与缓存！",
     toastCmdTasks: "终端：已打开资源与任务管理器",
@@ -4091,7 +4257,6 @@ const zh = {
     toastCmdCircuit: "终端：已打开 Tor 链路 HUD",
     toastCopiedValue: "已复制到剪贴板：{value}",
     toastCopiedClipboard: "已复制到剪贴板",
-
     torCircuitTooltip: "Tor 洋葱链路与身份（点击查看）",
     torConnected: "Tor 已连接",
     torConnecting: "正在连接 Tor...",
@@ -4126,7 +4291,6 @@ const zh = {
     qvaultLabel: "QVault 密码库",
     qvaultTooltip: "QVault 密码库（右键隐藏）",
     customizeToolbarTooltip: "自定义工具栏（图标已全部隐藏 • 点击管理）",
-
     maxWorkspacesReached: "最多可创建 8 个工作区",
     defaultNewWorkspaceName: "工作区 {index}",
     toastOpenedPinBg: "已在后台打开 {title}",
@@ -4182,7 +4346,6 @@ const zh = {
     noOpenTabs: "暂无打开的标签页",
     launchPinHint: "点击下方启动 {title} 实例",
     newPinTabBtn: "新建 {title} 标签页",
-
     githubGlance: "GitHub 速览",
     githubGlanceConnectDesc: "连接 GitHub 以实时预览 PR 和议题。",
     githubLoginBtn: "登录 GitHub",
@@ -4211,7 +4374,6 @@ const zh = {
     refreshLiveData: "刷新实时数据",
     openOnGithub: "在 GitHub 上打开",
     configureSettings: "配置设置...",
-
     dialogAuthTitle: "需要身份验证",
     dialogPromptTitle: "请求输入",
     dialogConfirmTitle: "确认操作",
@@ -4221,7 +4383,6 @@ const zh = {
     passwordPlaceholder: "密码",
     dialogPromptPlaceholder: "请输入您的回复...",
     dialogSuppressRepeat: "禁止此页面继续创建对话框",
-
     downloadScreenshotType: "截图 ({type})",
     downloadScreenshot: "截图",
     downloadVerifiedTitle: "已验证下载",
@@ -4268,7 +4429,6 @@ const zh = {
     zoomOutTooltip: "缩小 (Ctrl -)",
     zoomInTooltip: "放大 (Ctrl +)",
     resetZoomCtrl0: "重置缩放 (Ctrl 0)",
-
     drmNote_netflix: "Netflix 需要 Google Widevine VMP 硬件 DRM 才能播放 1080p/4K 视频。",
     drmNote_primevideo: "Prime Video 需要硬件 DRM 认证才能播放 HD/UHD 视频。",
     drmNote_disneyplus: "Disney+ 需要经过认证的硬件 DRM 才能播放受保护视频。",
@@ -4293,7 +4453,6 @@ const zh = {
     drmStreamDetected: "检测到 {name} 视频流",
     drmOpenWithBtn: "打开方式...",
     drmDismissTooltip: "在此标签页中关闭",
-
     siteFallback: "站点",
     securityWarningFallback: "安全警告",
     connectionFailedFallback: "连接失败",
@@ -4322,7 +4481,6 @@ const zh = {
     addNoteTooltip: "添加笔记",
     noteLabel: "笔记",
     copySelectionTooltip: "复制选中内容",
-
     errCat_securityWarning: "安全警告",
     errCat_navigationError: "导航错误",
     errCat_dnsResolution: "DNS 解析",
@@ -4338,7 +4496,6 @@ const zh = {
     errCat_redirectLoop: "重定向循环",
     errCat_rendererHalted: "渲染器已停止",
     errCat_renderProcessGone: "渲染进程终止",
-
     errBadge_unencryptedHttp: "未加密 HTTP",
     errBadge_invalidCert: "无效证书",
     errBadge_expiredCert: "证书已过期",
@@ -4371,7 +4528,6 @@ const zh = {
     errBadge_tooManyRedirects: "重定向次数过多",
     errBadge_crashed: "已崩溃",
     errBadge_failed: "失败",
-
     err_HTTP_INSECURE_title: "未加密连接 (HTTP)",
     err_HTTP_INSECURE_msg: "此网站不支持 HTTPS 加密。公共 Wi-Fi 或局域网中的攻击者可能会窃听密码、消息和敏感信息。",
     err_HTTP_INSECURE_risk: "缺乏 TLS 加密会使网络上的第三方能够拦截或篡改数据包。",
@@ -4464,7 +4620,6 @@ const zh = {
     errFallback_msg: "无法加载请求的网页。请检查网络连接后重试。",
     errFallback_insecureMsg: "此网站不支持 HTTPS 加密。密码、Cookie 和敏感信息可能会被拦截。",
     errFallback_risk: "无法通过加密方式验证该网站的真实性。",
-
     errNotSecure: "不安全",
     errCode: "错误代码 {code}",
     errCopyUrlTooltip: "复制网址到剪贴板",
@@ -4503,7 +4658,6 @@ const zh = {
     errDiagInsecure: "不安全",
     errDiagTimestamp: "时间戳",
     errDiagPlatform: "平台",
-
     timeRecently: "刚刚",
     timeJustNow: "刚才",
     timeMinutesAgo: "{count}分钟前",
@@ -4562,6 +4716,34 @@ const zh = {
     tabMapBadgeAudio: "音频",
     tabMapBadgeSplit: "分屏",
     tabMapOpenSplitTooltip: "在分屏视图中打开",
+    splitShortLabel: "分屏",
+    splitSearchPanePlaceholder: "搜索或输入窗格 {pane} 的网址...",
+    splitSearchBottomPlaceholder: "搜索或输入下方窗格的网址...",
+    quadWorkspaceSlot: "四分屏 • 窗格 {pane}",
+    splitReloadedBoth: "已重新加载所有分屏窗格",
+    clearSplitSlotTooltip: "清空窗格",
+    splitRatioReset: "分屏视图：50 / 50",
+    dragResizeQuadTooltip: "拖动调整 2×2 网格大小 • 点击查看选项 • 双击重置",
+    splitHorizontalTooltip: "左右并排 (2 列)",
+    splitVerticalTooltip: "上下堆叠 (2 行)",
+    splitQuadTooltip: "四分屏网格 (2×2)",
+    splitResetTooltip: "重置为 50/50",
+    splitReloadBothTooltip: "重新加载所有窗格",
+    splitKeepSecondaryTooltip: "将副窗格设为完整标签页",
+    splitPickTabShort: "选择标签页...",
+    quadGroupLabel: "四分屏组",
+    splitGroupLabel: "分屏组",
+    renameSplitGroupTooltip: "重命名分屏组",
+    noCopyableUrls: "所选标签页中没有可复制的网址",
+    copyUrls: "复制网址",
+    splitQuadSelected: "在 2×2 四分屏中打开",
+    splitViewSelected: "在分屏视图中打开",
+    suspendSelected: "挂起所选标签页",
+    unmuteSelected: "取消静音所选标签页",
+    muteSelected: "静音所选标签页",
+    closeSelected: "关闭所选标签页",
+    exitFramelessTooltip: "退出无边框模式 (Ctrl+Alt+F)",
+    exitFrameless: "退出无边框",
     tabMapWakeTabTooltip: "唤醒标签页",
     tabMapSleepTabTooltip: "休眠标签页",
     tabMapUnmuteTooltip: "取消静音",
@@ -4584,7 +4766,26 @@ const zh = {
     tabMapPanBtn: "平移",
     tabMapLassoTooltip: "套索选择工具 (S / Shift+拖动)",
     tabMapLassoBtn: "套索",
-    tabMapMinimap: "小地图"
+    tabMapMinimap: "小地图",
+    cmd_hide: "隐藏页面上的干扰内容",
+    eraserTitle: "隐藏干扰项目",
+    eraserHint: "点击元素将其消散 • ↑/↓ 或 Alt+滚轮调整范围",
+    eraserUndo: "撤销",
+    eraserUndoTooltip: "恢复上一个隐藏的项目 (Ctrl+Z)",
+    eraserShowAll: "全部显示",
+    eraserShowAllTooltip: "恢复此网站上所有隐藏的项目",
+    eraserDone: "完成",
+    eraserUndoToast: "已恢复上一个隐藏项目",
+    eraserRestoredAllToast: "已恢复此页面上所有隐藏的项目",
+    eraserUnlockedScrollToast: "已隐藏元素并解锁页面滚动",
+    downloadCancelledTitle: "下载已取消",
+    downloadCancelled: "已取消",
+    downloadFailed: "失败",
+    smartDarkExcludeMedia: "排除图片和视频",
+    smartDarkExcludeMediaDesc: "保留照片、视频与嵌入内容",
+    whitelistedDomainsLabel: "白名单网站",
+    whitelistEmptyShort: "无排除网站",
+    manageWhitelistSettings: "在设置中管理"
 };
 
 const ja = {
@@ -4619,7 +4820,6 @@ const ja = {
     refresh: "更新",
     collapse: "折りたたむ",
     expand: "展開",
-
     defaultAppsLinux: "既定のアプリケーション",
     defaultAppsMac: "macOS システム設定",
     defaultAppsWin: "Windows 既定のアプリ",
@@ -4637,7 +4837,6 @@ const ja = {
     defaultBrowserSetBtn: "既定に設定",
     defaultBrowserDontAsk: "今後表示しない",
     dismissForNow: "今は閉じる",
-
     omniboxTerminalCommands: "ターミナルコマンド",
     omniboxEnterToRun: "↵ Enter で実行",
     omniboxRunBadge: "↵ 実行",
@@ -4666,7 +4865,6 @@ const ja = {
     omniboxOpenFolder: "フォルダを開く: {path}",
     omniboxOpenFile: "ファイルを開く: {path}",
     omniboxSearchWith: "{engine} で検索: 「{query}」",
-
     bangCat_General: "一般",
     bangCat_Media: "メディア",
     bangCat_Development: "開発",
@@ -4676,7 +4874,6 @@ const ja = {
     bangCat_AI: "AI",
     bangCat_Custom: "カスタム",
     bangCat_Engine: "エンジン",
-
     cmd_ls: "開いているタブを一覧表示 (ミッションコントロール)",
     cmd_clear: "履歴とブラウザキャッシュを消去",
     cmd_top: "リソース・タスクマネージャーを開く",
@@ -4712,7 +4909,6 @@ const ja = {
     cmd_screenshot: "ページのスクリーンショットを撮る (Ctrl+Shift+S)",
     cmd_snip: "範囲を選択してスクリーンショット (Ctrl+Shift+S)",
     cmd_reader: "リーダーモードを切り替え (Ctrl+Alt+R)",
-
     toastCmdTabMap: "ターミナル: タブマップを起動しました",
     toastCmdClear: "ターミナル: 履歴とキャッシュを消去しました！",
     toastCmdTasks: "ターミナル: リソース＆タスクマネージャーを開きました",
@@ -4745,7 +4941,6 @@ const ja = {
     toastCmdCircuit: "ターミナル: Tor サーキット HUD を開きました",
     toastCopiedValue: "クリップボードにコピーしました: {value}",
     toastCopiedClipboard: "クリップボードにコピーしました",
-
     torCircuitTooltip: "Tor オニオンサーキットと ID (クリックして表示)",
     torConnected: "Tor 接続済み",
     torConnecting: "Tor に接続中...",
@@ -4780,7 +4975,6 @@ const ja = {
     qvaultLabel: "QVault パスワード",
     qvaultTooltip: "QVault パスワード (右クリックで非表示)",
     customizeToolbarTooltip: "ツールバー設定 (すべて非表示 • クリックで管理)",
-
     maxWorkspacesReached: "ワークスペースは最大 8 個までです",
     defaultNewWorkspaceName: "ワークスペース {index}",
     toastOpenedPinBg: "{title} をバックグラウンドで開きました",
@@ -4836,7 +5030,6 @@ const ja = {
     noOpenTabs: "開いているタブはありません",
     launchPinHint: "下をクリックして {title} を起動",
     newPinTabBtn: "新しい {title} タブ",
-
     githubGlance: "GitHub Glance",
     githubGlanceConnectDesc: "GitHub に接続して PR や Issue をリアルタイムプレビュー。",
     githubLoginBtn: "GitHub にログイン",
@@ -4865,7 +5058,6 @@ const ja = {
     refreshLiveData: "ライブデータを更新",
     openOnGithub: "GitHub で開く",
     configureSettings: "設定を開く...",
-
     dialogAuthTitle: "認証が必要です",
     dialogPromptTitle: "入力が必要です",
     dialogConfirmTitle: "操作の確認",
@@ -4875,7 +5067,6 @@ const ja = {
     passwordPlaceholder: "パスワード",
     dialogPromptPlaceholder: "入力してください...",
     dialogSuppressRepeat: "このページからの追加ダイアログ表示をブロックする",
-
     downloadScreenshotType: "スクリーンショット ({type})",
     downloadScreenshot: "スクリーンショット",
     downloadVerifiedTitle: "検証済みダウンロード",
@@ -4922,7 +5113,6 @@ const ja = {
     zoomOutTooltip: "縮小 (Ctrl -)",
     zoomInTooltip: "拡大 (Ctrl +)",
     resetZoomCtrl0: "ズームをリセット (Ctrl 0)",
-
     drmNote_netflix: "Netflix の 1080p/4K 再生には Google Widevine VMP ハードウェア DRM が必要です。",
     drmNote_primevideo: "Prime Video の HD/UHD 再生にはハードウェア DRM 認証が必要です。",
     drmNote_disneyplus: "Disney+ の保護された動画ストリーミングには認証済みハードウェア DRM が必要です。",
@@ -4947,7 +5137,6 @@ const ja = {
     drmStreamDetected: "{name} ストリームを検出",
     drmOpenWithBtn: "アプリで開く...",
     drmDismissTooltip: "このタブでは閉じる",
-
     siteFallback: "サイト",
     securityWarningFallback: "セキュリティ警告",
     connectionFailedFallback: "接続失敗",
@@ -4976,7 +5165,6 @@ const ja = {
     addNoteTooltip: "メモを追加",
     noteLabel: "メモ",
     copySelectionTooltip: "選択範囲をコピー",
-
     errCat_securityWarning: "セキュリティ警告",
     errCat_navigationError: "ナビゲーションエラー",
     errCat_dnsResolution: "DNS 名前解決",
@@ -4992,7 +5180,6 @@ const ja = {
     errCat_redirectLoop: "リダイレクトループ",
     errCat_rendererHalted: "レンダラー停止",
     errCat_renderProcessGone: "プロセス終了",
-
     errBadge_unencryptedHttp: "暗号化なし HTTP",
     errBadge_invalidCert: "無効な証明書",
     errBadge_expiredCert: "有効期限切れ証明書",
@@ -5025,7 +5212,6 @@ const ja = {
     errBadge_tooManyRedirects: "リダイレクト過多",
     errBadge_crashed: "クラッシュ",
     errBadge_failed: "失敗",
-
     err_HTTP_INSECURE_title: "暗号化されていない接続 (HTTP)",
     err_HTTP_INSECURE_msg: "このウェブサイトは HTTPS 暗号化に対応していません。公衆 Wi-Fi や同一ネットワーク上の第三者にパスワードや個人情報が盗み見られる可能性があります。",
     err_HTTP_INSECURE_risk: "TLS 暗号化がないため、ネットワーク上の第三者が通信内容を傍受・改ざんできます。",
@@ -5118,7 +5304,6 @@ const ja = {
     errFallback_msg: "要求されたウェブページを読み込めませんでした。接続を確認してもう一度お試しください。",
     errFallback_insecureMsg: "このサイトは HTTPS 暗号化に対応していません。パスワード、Cookie、機密情報が傍受される可能性があります。",
     errFallback_risk: "ウェブサイトの真正性を暗号学的に証明できません。",
-
     errNotSecure: "保護されていない通信",
     errCode: "コード {code}",
     errCopyUrlTooltip: "URL をクリップボードにコピー",
@@ -5157,7 +5342,6 @@ const ja = {
     errDiagInsecure: "安全でない接続",
     errDiagTimestamp: "タイムスタンプ",
     errDiagPlatform: "プラットフォーム",
-
     timeRecently: "最近",
     timeJustNow: "たった今",
     timeMinutesAgo: "{count}分前",
@@ -5216,6 +5400,34 @@ const ja = {
     tabMapBadgeAudio: "音声",
     tabMapBadgeSplit: "分割",
     tabMapOpenSplitTooltip: "分割表示で開く",
+    splitShortLabel: "分割",
+    splitSearchPanePlaceholder: "ペイン {pane} の検索または URL...",
+    splitSearchBottomPlaceholder: "下ペインの検索または URL を入力...",
+    quadWorkspaceSlot: "4分割 • ペイン {pane}",
+    splitReloadedBoth: "すべての分割ペインを再読み込みしました",
+    clearSplitSlotTooltip: "ペインをクリア",
+    splitRatioReset: "分割ビュー: 50 / 50",
+    dragResizeQuadTooltip: "ドラッグして 2×2 グリッドのサイズを変更 • クリックでオプション • ダブルクリックでリセット",
+    splitHorizontalTooltip: "左右並び (2列)",
+    splitVerticalTooltip: "上下並び (2行)",
+    splitQuadTooltip: "4分割グリッド (2×2)",
+    splitResetTooltip: "50/50 にリセット",
+    splitReloadBothTooltip: "すべてのペインを再読み込み",
+    splitKeepSecondaryTooltip: "サブペインを全画面タブとして表示",
+    splitPickTabShort: "タブを選択...",
+    quadGroupLabel: "4分割グループ",
+    splitGroupLabel: "分割グループ",
+    renameSplitGroupTooltip: "分割グループ名を変更",
+    noCopyableUrls: "選択したタブにコピー可能な URL がありません",
+    copyUrls: "URL をコピー",
+    splitQuadSelected: "2×2 4分割で開く",
+    splitViewSelected: "分割ビューで開く",
+    suspendSelected: "選択したタブをスリープ",
+    unmuteSelected: "選択したタブのミュートを解除",
+    muteSelected: "選択したタブをミュート",
+    closeSelected: "選択したタブを閉じる",
+    exitFramelessTooltip: "フレームレスモードを終了 (Ctrl+Alt+F)",
+    exitFrameless: "フレームレス終了",
     tabMapWakeTabTooltip: "タブを再開",
     tabMapSleepTabTooltip: "タブを休止",
     tabMapUnmuteTooltip: "ミュート解除",
@@ -5238,7 +5450,26 @@ const ja = {
     tabMapPanBtn: "移動",
     tabMapLassoTooltip: "なげなわ選択 (S / Shift+ドラッグ)",
     tabMapLassoBtn: "選択",
-    tabMapMinimap: "ミニマップ"
+    tabMapMinimap: "ミニマップ",
+    cmd_hide: "ページ上の気を散らす項目を非表示にする",
+    eraserTitle: "気を散らす項目を非表示",
+    eraserHint: "要素をクリックして消去 • ↑/↓ または Alt+スクロールで範囲調整",
+    eraserUndo: "元に戻す",
+    eraserUndoTooltip: "直前に非表示にした項目を戻す (Ctrl+Z)",
+    eraserShowAll: "すべて表示",
+    eraserShowAllTooltip: "このサイトの非表示項目をすべて復元",
+    eraserDone: "完了",
+    eraserUndoToast: "直前の非表示項目を復元しました",
+    eraserRestoredAllToast: "このページの非表示項目をすべて復元しました",
+    eraserUnlockedScrollToast: "要素を非表示にしページのスクロール制限を解除しました",
+    downloadCancelledTitle: "ダウンロードをキャンセルしました",
+    downloadCancelled: "キャンセル",
+    downloadFailed: "失敗",
+    smartDarkExcludeMedia: "画像と動画を除外",
+    smartDarkExcludeMediaDesc: "写真、動画、埋め込みを保持",
+    whitelistedDomainsLabel: "ホワイトリストのサイト",
+    whitelistEmptyShort: "除外サイトなし",
+    manageWhitelistSettings: "設定で管理"
 };
 
 const ru = {
@@ -5273,7 +5504,6 @@ const ru = {
     refresh: "Обновить",
     collapse: "Свернуть",
     expand: "Развернуть",
-
     defaultAppsLinux: "Приложения по умолчанию",
     defaultAppsMac: "Системные настройки macOS",
     defaultAppsWin: "Приложения по умолчанию Windows",
@@ -5291,7 +5521,6 @@ const ru = {
     defaultBrowserSetBtn: "Выбрать по умолчанию",
     defaultBrowserDontAsk: "Больше не спрашивать",
     dismissForNow: "Закрыть сейчас",
-
     omniboxTerminalCommands: "Команды терминала",
     omniboxEnterToRun: "↵ enter для запуска",
     omniboxRunBadge: "↵ Запуск",
@@ -5320,7 +5549,6 @@ const ru = {
     omniboxOpenFolder: "Открыть папку: {path}",
     omniboxOpenFile: "Открыть файл: {path}",
     omniboxSearchWith: "Искать в {engine}: «{query}»",
-
     bangCat_General: "Общее",
     bangCat_Media: "Медиа",
     bangCat_Development: "Разработка",
@@ -5330,7 +5558,6 @@ const ru = {
     bangCat_AI: "ИИ",
     bangCat_Custom: "Своё",
     bangCat_Engine: "Поиск",
-
     cmd_ls: "Список открытых вкладок (Центр управления)",
     cmd_clear: "Очистить историю и кэш браузера",
     cmd_top: "Открыть диспетчер ресурсов и задач",
@@ -5366,7 +5593,6 @@ const ru = {
     cmd_screenshot: "Сделать снимок страницы (Ctrl+Shift+S)",
     cmd_snip: "Интерактивный снимок области (Ctrl+Shift+S)",
     cmd_reader: "Переключить режим чтения (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Терминал: Карта вкладок активирована",
     toastCmdClear: "Терминал: История и кэш очищены!",
     toastCmdTasks: "Терминал: Диспетчер задач и ресурсов открыт",
@@ -5399,7 +5625,6 @@ const ru = {
     toastCmdCircuit: "Терминал: HUD цепочки Tor открыт",
     toastCopiedValue: "Скопировано в буфер: {value}",
     toastCopiedClipboard: "Скопировано в буфер обмена",
-
     torCircuitTooltip: "Цепочка Tor Onion и личность (Нажмите для просмотра)",
     torConnected: "Tor подключён",
     torConnecting: "Подключение к Tor...",
@@ -5434,7 +5659,6 @@ const ru = {
     qvaultLabel: "Пароли QVault",
     qvaultTooltip: "Пароли QVault (ПКМ чтобы скрыть)",
     customizeToolbarTooltip: "Настроить панель (Все значки скрыты • Нажмите для управления)",
-
     maxWorkspacesReached: "Достигнут лимит в 8 рабочих пространств",
     defaultNewWorkspaceName: "Пространство {index}",
     toastOpenedPinBg: "{title} открыто в фоновой вкладке",
@@ -5490,7 +5714,6 @@ const ru = {
     noOpenTabs: "Нет открытых вкладок",
     launchPinHint: "Нажмите ниже, чтобы запустить {title}",
     newPinTabBtn: "Новая вкладка {title}",
-
     githubGlance: "Обзор GitHub",
     githubGlanceConnectDesc: "Подключите GitHub для предпросмотра PR и задач в реальном времени.",
     githubLoginBtn: "Войти в GitHub",
@@ -5519,7 +5742,6 @@ const ru = {
     refreshLiveData: "Обновить данные",
     openOnGithub: "Открыть на GitHub",
     configureSettings: "Настройки...",
-
     dialogAuthTitle: "Требуется аутентификация",
     dialogPromptTitle: "Запрос ввода",
     dialogConfirmTitle: "Подтвердите действие",
@@ -5529,7 +5751,6 @@ const ru = {
     passwordPlaceholder: "Пароль",
     dialogPromptPlaceholder: "Ваш ответ...",
     dialogSuppressRepeat: "Запретить этой странице создавать новые диалоги",
-
     downloadScreenshotType: "Снимок ({type})",
     downloadScreenshot: "Снимок экрана",
     downloadVerifiedTitle: "Проверенная загрузка",
@@ -5576,7 +5797,6 @@ const ru = {
     zoomOutTooltip: "Уменьшить (Ctrl -)",
     zoomInTooltip: "Увеличить (Ctrl +)",
     resetZoomCtrl0: "Сбросить масштаб (Ctrl 0)",
-
     drmNote_netflix: "Netflix требует аппаратный DRM Google Widevine VMP для воспроизведения в 1080p/4K.",
     drmNote_primevideo: "Prime Video требует аппаратной сертификации DRM для HD/UHD.",
     drmNote_disneyplus: "Disney+ требует сертифицированный аппаратный DRM для защищённого видео.",
@@ -5601,7 +5821,6 @@ const ru = {
     drmStreamDetected: "Обнаружен поток {name}",
     drmOpenWithBtn: "Открыть с помощью...",
     drmDismissTooltip: "Скрыть для этой вкладки",
-
     siteFallback: "Сайт",
     securityWarningFallback: "Предупреждение безопасности",
     connectionFailedFallback: "Ошибка подключения",
@@ -5630,7 +5849,6 @@ const ru = {
     addNoteTooltip: "Добавить заметку",
     noteLabel: "Заметка",
     copySelectionTooltip: "Копировать выделенное",
-
     errCat_securityWarning: "ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ",
     errCat_navigationError: "ОШИБКА НАВИГАЦИИ",
     errCat_dnsResolution: "РАЗРЕШЕНИЕ DNS",
@@ -5646,7 +5864,6 @@ const ru = {
     errCat_redirectLoop: "ЦИКЛ ПЕРЕАДРЕСАЦИИ",
     errCat_rendererHalted: "РЕНДЕРЕР ОСТАНОВЛЕН",
     errCat_renderProcessGone: "СБОЙ ПРОЦЕССА",
-
     errBadge_unencryptedHttp: "НЕШИФРОВАННЫЙ HTTP",
     errBadge_invalidCert: "НЕВЕРНЫЙ СЕРТИФИКАТ",
     errBadge_expiredCert: "ПРОСРОЧЕННЫЙ СЕРТИФИКАТ",
@@ -5679,7 +5896,6 @@ const ru = {
     errBadge_tooManyRedirects: "СЛИШКОМ МНОГО ПЕРЕХОДОВ",
     errBadge_crashed: "АВАРИЯ",
     errBadge_failed: "ОШИБКА",
-
     err_HTTP_INSECURE_title: "Незашифрованное соединение (HTTP)",
     err_HTTP_INSECURE_msg: "Этот сайт не поддерживает HTTPS-шифрование. Злоумышленники в публичной сети Wi-Fi или локальной сети могут перехватывать пароли и личные данные.",
     err_HTTP_INSECURE_risk: "Отсутствие TLS-шифрования позволяет третьим лицам перехватывать или изменять сетевые пакеты.",
@@ -5772,7 +5988,6 @@ const ru = {
     errFallback_msg: "Не удалось загрузить запрошенную страницу. Проверьте подключение и повторите попытку.",
     errFallback_insecureMsg: "Этот сайт не поддерживает HTTPS-шифрование. Пароли и данные могут быть перехвачены.",
     errFallback_risk: "Подлинность сайта невозможно криптографически подтвердить.",
-
     errNotSecure: "Не защищено",
     errCode: "Код {code}",
     errCopyUrlTooltip: "Скопировать URL в буфер",
@@ -5811,7 +6026,6 @@ const ru = {
     errDiagInsecure: "Небезопасно",
     errDiagTimestamp: "Время",
     errDiagPlatform: "Платформа",
-
     timeRecently: "недавно",
     timeJustNow: "только что",
     timeMinutesAgo: "{count}м назад",
@@ -5870,6 +6084,34 @@ const ru = {
     tabMapBadgeAudio: "Звук",
     tabMapBadgeSplit: "Экран",
     tabMapOpenSplitTooltip: "Открыть в раздельном экране",
+    splitShortLabel: "Разделить",
+    splitSearchPanePlaceholder: "Поиск или URL для панели {pane}...",
+    splitSearchBottomPlaceholder: "Поиск или URL для нижней панели...",
+    quadWorkspaceSlot: "КВАДРО • ПАНЕЛЬ {pane}",
+    splitReloadedBoth: "Все разделённые панели перезагружены",
+    clearSplitSlotTooltip: "Очистить панель",
+    splitRatioReset: "Разделённый экран: 50 / 50",
+    dragResizeQuadTooltip: "Перетащите для изменения сетки 2×2 • Нажмите для настроек • Двойной клик для сброса",
+    splitHorizontalTooltip: "Рядом (2 столбца)",
+    splitVerticalTooltip: "Друг над другом (2 строки)",
+    splitQuadTooltip: "Сетка 2×2",
+    splitResetTooltip: "Сбросить 50/50",
+    splitReloadBothTooltip: "Перезагрузить все панели",
+    splitKeepSecondaryTooltip: "Открыть вторую панель как полную вкладку",
+    splitPickTabShort: "Выбрать вкладку...",
+    quadGroupLabel: "Квадро-разделение",
+    splitGroupLabel: "Группа разделения",
+    renameSplitGroupTooltip: "Переименовать группу разделения",
+    noCopyableUrls: "Нет URL-адресов для копирования в выбранных вкладках",
+    copyUrls: "Копировать URL",
+    splitQuadSelected: "Открыть в сетке 2×2",
+    splitViewSelected: "Открыть в разделённом виде",
+    suspendSelected: "Приостановить выбранные вкладки",
+    unmuteSelected: "Включить звук на выбранных вкладках",
+    muteSelected: "Отключить звук на выбранных вкладках",
+    closeSelected: "Закрыть выбранные вкладки",
+    exitFramelessTooltip: "Выйти из безрамочного режима (Ctrl+Alt+F)",
+    exitFrameless: "Выйти из безрамочного",
     tabMapWakeTabTooltip: "Разбудить вкладку",
     tabMapSleepTabTooltip: "Усыпить вкладку",
     tabMapUnmuteTooltip: "Включить звук",
@@ -5892,7 +6134,26 @@ const ru = {
     tabMapPanBtn: "Обзор",
     tabMapLassoTooltip: "Выделение лассо (S / Shift+Перетащить)",
     tabMapLassoBtn: "Лассо",
-    tabMapMinimap: "МИНИКАРТА"
+    tabMapMinimap: "МИНИКАРТА",
+    cmd_hide: "Скрыть отвлекающие объекты на странице",
+    eraserTitle: "Скрыть отвлекающие объекты",
+    eraserHint: "Нажмите на элемент для распыления • ↑/↓ или Alt+Колесо для выбора",
+    eraserUndo: "Отменить",
+    eraserUndoTooltip: "Вернуть последний скрытый элемент (Ctrl+Z)",
+    eraserShowAll: "Показать все",
+    eraserShowAllTooltip: "Восстановить все скрытые элементы для этого сайта",
+    eraserDone: "Готово",
+    eraserUndoToast: "Последний скрытый элемент восстановлен",
+    eraserRestoredAllToast: "Все скрытые элементы на этой странице восстановлены",
+    eraserUnlockedScrollToast: "Элемент скрыт, прокрутка страницы разблокирована",
+    downloadCancelledTitle: "Загрузка отменена",
+    downloadCancelled: "Отменено",
+    downloadFailed: "Ошибка",
+    smartDarkExcludeMedia: "Исключить изображения и видео",
+    smartDarkExcludeMediaDesc: "Сохранять фото, видео и встраивания",
+    whitelistedDomainsLabel: "Сайты в белом списке",
+    whitelistEmptyShort: "Нет исключённых сайтов",
+    manageWhitelistSettings: "Управлять в настройках"
 };
 
 const it = {
@@ -5927,7 +6188,6 @@ const it = {
     refresh: "Aggiorna",
     collapse: "Comprimi",
     expand: "Espandi",
-
     defaultAppsLinux: "Applicazioni predefinite",
     defaultAppsMac: "Impostazioni di Sistema macOS",
     defaultAppsWin: "App predefinite di Windows",
@@ -5945,7 +6205,6 @@ const it = {
     defaultBrowserSetBtn: "Imposta predefinito",
     defaultBrowserDontAsk: "Non chiedere più",
     dismissForNow: "Chiudi per ora",
-
     omniboxTerminalCommands: "Comandi terminale",
     omniboxEnterToRun: "↵ invio per eseguire",
     omniboxRunBadge: "↵ Esegui",
@@ -5974,7 +6233,6 @@ const it = {
     omniboxOpenFolder: "Apri cartella: {path}",
     omniboxOpenFile: "Apri file: {path}",
     omniboxSearchWith: "Cerca con {engine}: \"{query}\"",
-
     bangCat_General: "Generale",
     bangCat_Media: "Media",
     bangCat_Development: "Sviluppo",
@@ -5984,7 +6242,6 @@ const it = {
     bangCat_AI: "IA",
     bangCat_Custom: "Personalizzato",
     bangCat_Engine: "Motore",
-
     cmd_ls: "Elenca schede aperte (Mission Control)",
     cmd_clear: "Cancella cronologia e cache del browser",
     cmd_top: "Apri Gestione risorse e attività",
@@ -6020,7 +6277,6 @@ const it = {
     cmd_screenshot: "Acquisisci schermata pagina (Ctrl+Shift+S)",
     cmd_snip: "Ritaglio interattivo area (Ctrl+Shift+S)",
     cmd_reader: "Attiva/disattiva Modalità Lettura (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Terminale: Mappa schede attivata",
     toastCmdClear: "Terminale: Cronologia e cache cancellate!",
     toastCmdTasks: "Terminale: Gestione risorse e attività aperta",
@@ -6053,7 +6309,6 @@ const it = {
     toastCmdCircuit: "Terminale: HUD circuito Tor aperto",
     toastCopiedValue: "Copiato negli appunti: {value}",
     toastCopiedClipboard: "Copiato negli appunti",
-
     torCircuitTooltip: "Circuito Tor Onion e Identità (Clicca per vedere)",
     torConnected: "Tor connesso",
     torConnecting: "Connessione a Tor...",
@@ -6088,7 +6343,6 @@ const it = {
     qvaultLabel: "Password QVault",
     qvaultTooltip: "Password QVault (Clic destro per nascondere)",
     customizeToolbarTooltip: "Personalizza barra (Icone nascoste • Clicca per gestire)",
-
     maxWorkspacesReached: "Raggiunto il massimo di 8 spazi di lavoro",
     defaultNewWorkspaceName: "Spazio {index}",
     toastOpenedPinBg: "{title} aperto in background",
@@ -6144,7 +6398,6 @@ const it = {
     noOpenTabs: "Nessuna scheda aperta",
     launchPinHint: "Clicca qui sotto per avviare {title}",
     newPinTabBtn: "Nuova scheda {title}",
-
     githubGlance: "Panoramica GitHub",
     githubGlanceConnectDesc: "Collega GitHub per anteprime live di PR e issue.",
     githubLoginBtn: "Accedi a GitHub",
@@ -6173,7 +6426,6 @@ const it = {
     refreshLiveData: "Aggiorna dati live",
     openOnGithub: "Apri su GitHub",
     configureSettings: "Configura impostazioni...",
-
     dialogAuthTitle: "Autenticazione richiesta",
     dialogPromptTitle: "Inserimento richiesto",
     dialogConfirmTitle: "Conferma azione",
@@ -6183,7 +6435,6 @@ const it = {
     passwordPlaceholder: "Password",
     dialogPromptPlaceholder: "La tua risposta...",
     dialogSuppressRepeat: "Impedisci a questa pagina di creare altre finestre di dialogo",
-
     downloadScreenshotType: "Schermata ({type})",
     downloadScreenshot: "Schermata",
     downloadVerifiedTitle: "Download verificato",
@@ -6230,7 +6481,6 @@ const it = {
     zoomOutTooltip: "Riduci (Ctrl -)",
     zoomInTooltip: "Ingrandisci (Ctrl +)",
     resetZoomCtrl0: "Ripristina zoom (Ctrl 0)",
-
     drmNote_netflix: "Netflix richiede DRM hardware Google Widevine VMP per la riproduzione in 1080p/4K.",
     drmNote_primevideo: "Prime Video richiede certificazione DRM hardware per HD/UHD.",
     drmNote_disneyplus: "Disney+ richiede DRM hardware certificato per lo streaming video protetto.",
@@ -6255,7 +6505,6 @@ const it = {
     drmStreamDetected: "Rilevato stream {name}",
     drmOpenWithBtn: "Apri con...",
     drmDismissTooltip: "Chiudi per questa scheda",
-
     siteFallback: "Sito",
     securityWarningFallback: "Avviso di sicurezza",
     connectionFailedFallback: "Connessione fallita",
@@ -6284,7 +6533,6 @@ const it = {
     addNoteTooltip: "Aggiungi nota",
     noteLabel: "Nota",
     copySelectionTooltip: "Copia selezione",
-
     errCat_securityWarning: "AVVISO DI SICUREZZA",
     errCat_navigationError: "ERRORE DI NAVIGAZIONE",
     errCat_dnsResolution: "RISOLUZIONE DNS",
@@ -6300,7 +6548,6 @@ const it = {
     errCat_redirectLoop: "CICLO DI REINDIRIZZAMENTO",
     errCat_rendererHalted: "MOTORE ARRESTATO",
     errCat_renderProcessGone: "PROCESSO TERMINATO",
-
     errBadge_unencryptedHttp: "HTTP NON CIFRATO",
     errBadge_invalidCert: "CERTIFICATO NON VALIDO",
     errBadge_expiredCert: "CERTIFICATO SCADUTO",
@@ -6333,7 +6580,6 @@ const it = {
     errBadge_tooManyRedirects: "TROPPI REINDIRIZZAMENTI",
     errBadge_crashed: "ARRESTO ANOMALO",
     errBadge_failed: "NON RIUSCITO",
-
     err_HTTP_INSECURE_title: "Connessione non crittografata (HTTP)",
     err_HTTP_INSECURE_msg: "Questo sito non supporta HTTPS. Su reti Wi-Fi pubbliche o locali eventuali malintenzionati potrebbero intercettare password e dati sensibili.",
     err_HTTP_INSECURE_risk: "La mancanza di crittografia TLS consente a terzi di intercettare o alterare i pacchetti di rete.",
@@ -6426,7 +6672,6 @@ const it = {
     errFallback_msg: "Impossibile caricare la pagina richiesta. Verifica la connessione e riprova.",
     errFallback_insecureMsg: "Questo sito non supporta HTTPS. Password, cookie e dati sensibili possono essere intercettati.",
     errFallback_risk: "L'autenticità del sito non può essere provata crittograficamente.",
-
     errNotSecure: "Non sicuro",
     errCode: "Codice {code}",
     errCopyUrlTooltip: "Copia URL negli appunti",
@@ -6465,7 +6710,6 @@ const it = {
     errDiagInsecure: "Non sicuro",
     errDiagTimestamp: "Timestamp",
     errDiagPlatform: "Piattaforma",
-
     timeRecently: "di recente",
     timeJustNow: "proprio ora",
     timeMinutesAgo: "{count}m fa",
@@ -6524,6 +6768,34 @@ const it = {
     tabMapBadgeAudio: "Audio",
     tabMapBadgeSplit: "Divisa",
     tabMapOpenSplitTooltip: "Apri in vista divisa",
+    splitShortLabel: "Dividi",
+    splitSearchPanePlaceholder: "Cerca o URL per il riquadro {pane}...",
+    splitSearchBottomPlaceholder: "Cerca o inserisci URL per il riquadro inferiore...",
+    quadWorkspaceSlot: "QUAD • RIQUADRO {pane}",
+    splitReloadedBoth: "Tutti i riquadri divisi ricaricati",
+    clearSplitSlotTooltip: "Svuota riquadro",
+    splitRatioReset: "Vista divisa: 50 / 50",
+    dragResizeQuadTooltip: "Trascina per ridimensionare la griglia 2×2 • Clicca per le opzioni • Doppio clic per reimpostare",
+    splitHorizontalTooltip: "Affiancati (2 col.)",
+    splitVerticalTooltip: "Impilati (2 righe)",
+    splitQuadTooltip: "Griglia quadrupla (2×2)",
+    splitResetTooltip: "Ripristina 50/50",
+    splitReloadBothTooltip: "Ricarica tutti i riquadri",
+    splitKeepSecondaryTooltip: "Apri riquadro secondario come scheda intera",
+    splitPickTabShort: "Seleziona scheda...",
+    quadGroupLabel: "Divisione quadrupla",
+    splitGroupLabel: "Gruppo diviso",
+    renameSplitGroupTooltip: "Rinomina gruppo diviso",
+    noCopyableUrls: "Nessun URL copiabile nelle schede selezionate",
+    copyUrls: "Copia URL",
+    splitQuadSelected: "Apri in divisione quadrupla 2×2",
+    splitViewSelected: "Apri in vista divisa",
+    suspendSelected: "Sospendi schede selezionate",
+    unmuteSelected: "Riattiva audio schede selezionate",
+    muteSelected: "Disattiva audio schede selezionate",
+    closeSelected: "Chiudi schede selezionate",
+    exitFramelessTooltip: "Esci dalla modalità senza bordi (Ctrl+Alt+F)",
+    exitFrameless: "Esci da senza bordi",
     tabMapWakeTabTooltip: "Riattiva scheda",
     tabMapSleepTabTooltip: "Sospendi scheda",
     tabMapUnmuteTooltip: "Riattiva audio",
@@ -6546,7 +6818,26 @@ const it = {
     tabMapPanBtn: "Sposta",
     tabMapLassoTooltip: "Selezione lazo (S / Shift+Trascina)",
     tabMapLassoBtn: "Lazo",
-    tabMapMinimap: "MINIMAPPA"
+    tabMapMinimap: "MINIMAPPA",
+    cmd_hide: "Nascondi elementi che distraggono sulla pagina",
+    eraserTitle: "Nascondi elementi che distraggono",
+    eraserHint: "Fai clic su un elemento per dissolverlo • ↑/↓ o Alt+Rotella per regolare",
+    eraserUndo: "Annulla",
+    eraserUndoTooltip: "Ripristina l'ultimo elemento nascosto (Ctrl+Z)",
+    eraserShowAll: "Mostra tutto",
+    eraserShowAllTooltip: "Ripristina tutti gli elementi nascosti per questo sito",
+    eraserDone: "Fine",
+    eraserUndoToast: "Ultimo elemento nascosto ripristinato",
+    eraserRestoredAllToast: "Ripristinati tutti gli elementi nascosti in questa pagina",
+    eraserUnlockedScrollToast: "Elemento nascosto e scorrimento pagina sbloccato",
+    downloadCancelledTitle: "Download annullato",
+    downloadCancelled: "Annullato",
+    downloadFailed: "Non riuscito",
+    smartDarkExcludeMedia: "Escludi immagini e video",
+    smartDarkExcludeMediaDesc: "Preserva foto, video e incorporamenti",
+    whitelistedDomainsLabel: "Siti in whitelist",
+    whitelistEmptyShort: "Nessun sito escluso",
+    manageWhitelistSettings: "Gestisci nelle Impostazioni"
 };
 
 const uk = {
@@ -6581,7 +6872,6 @@ const uk = {
     refresh: "Оновити",
     collapse: "Згорнути",
     expand: "Розгорнути",
-
     defaultAppsLinux: "Програми за замовчуванням",
     defaultAppsMac: "Системні налаштування macOS",
     defaultAppsWin: "Програми за замовчуванням Windows",
@@ -6599,7 +6889,6 @@ const uk = {
     defaultBrowserSetBtn: "Обрати за замовчуванням",
     defaultBrowserDontAsk: "Більше не питати",
     dismissForNow: "Закрити зараз",
-
     omniboxTerminalCommands: "Команди термінала",
     omniboxEnterToRun: "↵ enter для запуску",
     omniboxRunBadge: "↵ Запуск",
@@ -6628,7 +6917,6 @@ const uk = {
     omniboxOpenFolder: "Відкрити папку: {path}",
     omniboxOpenFile: "Відкрити файл: {path}",
     omniboxSearchWith: "Шукати в {engine}: «{query}»",
-
     bangCat_General: "Загальне",
     bangCat_Media: "Медіа",
     bangCat_Development: "Розробка",
@@ -6638,7 +6926,6 @@ const uk = {
     bangCat_AI: "ШІ",
     bangCat_Custom: "Власні",
     bangCat_Engine: "Пошук",
-
     cmd_ls: "Список відкритих вкладок (Центр керування)",
     cmd_clear: "Очистити історію та кеш браузера",
     cmd_top: "Відкрити диспетчер ресурсів та завдань",
@@ -6674,7 +6961,6 @@ const uk = {
     cmd_screenshot: "Зробити знімок сторінки (Ctrl+Shift+S)",
     cmd_snip: "Інтерактивний знімок області (Ctrl+Shift+S)",
     cmd_reader: "Перемкнути режим читання (Ctrl+Alt+R)",
-
     toastCmdTabMap: "Термінал: Мапу вкладок активовано",
     toastCmdClear: "Термінал: Історію та кеш очищено!",
     toastCmdTasks: "Термінал: Диспетчер ресурсів відкрито",
@@ -6707,7 +6993,6 @@ const uk = {
     toastCmdCircuit: "Термінал: HUD ланцюга Tor відкрито",
     toastCopiedValue: "Скопійовано до буфера: {value}",
     toastCopiedClipboard: "Скопійовано до буфера обміну",
-
     torCircuitTooltip: "Ланцюг Tor Onion та особа (Натисніть для перегляду)",
     torConnected: "Tor підключено",
     torConnecting: "Підключення до Tor...",
@@ -6742,7 +7027,6 @@ const uk = {
     qvaultLabel: "Паролі QVault",
     qvaultTooltip: "Паролі QVault (ПКМ щоб сховати)",
     customizeToolbarTooltip: "Налаштувати панель (Усі значки сховані • Клік для керування)",
-
     maxWorkspacesReached: "Досягнуто максимум у 8 робочих просторів",
     defaultNewWorkspaceName: "Простір {index}",
     toastOpenedPinBg: "{title} відкрито у фоновій вкладці",
@@ -6798,7 +7082,6 @@ const uk = {
     noOpenTabs: "Немає відкритих вкладок",
     launchPinHint: "Натисніть нижче, щоб запустити {title}",
     newPinTabBtn: "Нова вкладка {title}",
-
     githubGlance: "Огляд GitHub",
     githubGlanceConnectDesc: "Підключіть GitHub для перегляду PR і завдань наживо.",
     githubLoginBtn: "Увійти до GitHub",
@@ -6827,7 +7110,6 @@ const uk = {
     refreshLiveData: "Оновити дані наживо",
     openOnGithub: "Відкрити на GitHub",
     configureSettings: "Налаштувати параметри...",
-
     dialogAuthTitle: "Потрібна автентифікація",
     dialogPromptTitle: "Запит вводу",
     dialogConfirmTitle: "Підтвердити дію",
@@ -6837,7 +7119,6 @@ const uk = {
     passwordPlaceholder: "Пароль",
     dialogPromptPlaceholder: "Ваша відповідь...",
     dialogSuppressRepeat: "Заборонити цій сторінці створювати додаткові діалоги",
-
     downloadScreenshotType: "Знімок ({type})",
     downloadScreenshot: "Знімок екрана",
     downloadVerifiedTitle: "Перевірене завантаження",
@@ -6884,7 +7165,6 @@ const uk = {
     zoomOutTooltip: "Зменшити (Ctrl -)",
     zoomInTooltip: "Збільшити (Ctrl +)",
     resetZoomCtrl0: "Скинути масштаб (Ctrl 0)",
-
     drmNote_netflix: "Netflix вимагає апаратного DRM Google Widevine VMP для відтворення в 1080p/4K.",
     drmNote_primevideo: "Prime Video вимагає апаратної сертифікації DRM для HD/UHD.",
     drmNote_disneyplus: "Disney+ вимагає сертифікованого апаратного DRM для захищеного відео.",
@@ -6909,7 +7189,6 @@ const uk = {
     drmStreamDetected: "Виявлено потік {name}",
     drmOpenWithBtn: "Відкрити за допомогою...",
     drmDismissTooltip: "Приховати для цієї вкладки",
-
     siteFallback: "Сайт",
     securityWarningFallback: "Попередження безпеки",
     connectionFailedFallback: "Помилка з'єднання",
@@ -6938,7 +7217,6 @@ const uk = {
     addNoteTooltip: "Додати нотатку",
     noteLabel: "Нотатка",
     copySelectionTooltip: "Копіювати виділене",
-
     errCat_securityWarning: "ПОПЕРЕДЖЕННЯ БЕЗПЕКИ",
     errCat_navigationError: "ПОМИЛКА НАВІГАЦІЇ",
     errCat_dnsResolution: "РОЗВ'ЯЗАННЯ DNS",
@@ -6954,7 +7232,6 @@ const uk = {
     errCat_redirectLoop: "ЦИКЛ ПЕРЕАДРЕСАЦІЇ",
     errCat_rendererHalted: "РЕНДЕРЕР ЗУПИНЕНО",
     errCat_renderProcessGone: "ЗБІЙ ПРОЦЕСУ",
-
     errBadge_unencryptedHttp: "НЕШИФРОВАНИЙ HTTP",
     errBadge_invalidCert: "НЕДІЙСНИЙ СЕРТИФІКАТ",
     errBadge_expiredCert: "ПРОСТРОЧЕНИЙ СЕРТИФІКАТ",
@@ -6987,7 +7264,6 @@ const uk = {
     errBadge_tooManyRedirects: "ЗАБАГАТО ПЕРЕАДРЕСАЦІЙ",
     errBadge_crashed: "АВАРІЯ",
     errBadge_failed: "ПОМИЛКА",
-
     err_HTTP_INSECURE_title: "Нешифроване з'єднання (HTTP)",
     err_HTTP_INSECURE_msg: "Цей сайт не підтримує шифрування HTTPS. Зловмисники в публічних Wi-Fi або локальній мережі можуть перехопити паролі та особисті дані.",
     err_HTTP_INSECURE_risk: "Відсутність TLS-шифрування дозволяє третім особам перехоплювати або змінювати пакети.",
@@ -7080,7 +7356,6 @@ const uk = {
     errFallback_msg: "Не вдалося завантажити сторінку. Перевірте підключення та спробуйте ще раз.",
     errFallback_insecureMsg: "Цей сайт не підтримує шифрування HTTPS. Паролі та конфіденційні дані можуть бути перехоплені.",
     errFallback_risk: "Справжність сайту неможливо криптографічно підтвердити.",
-
     errNotSecure: "Не захищено",
     errCode: "Код {code}",
     errCopyUrlTooltip: "Копіювати URL до буфера",
@@ -7119,7 +7394,6 @@ const uk = {
     errDiagInsecure: "Небезпечно",
     errDiagTimestamp: "Час",
     errDiagPlatform: "Платформа",
-
     timeRecently: "нещодавно",
     timeJustNow: "щойно",
     timeMinutesAgo: "{count}хв тому",
@@ -7178,6 +7452,34 @@ const uk = {
     tabMapBadgeAudio: "Звук",
     tabMapBadgeSplit: "Екран",
     tabMapOpenSplitTooltip: "Відкрити в розділеному екрані",
+    splitShortLabel: "Поділ",
+    splitSearchPanePlaceholder: "Пошук або URL для панелі {pane}...",
+    splitSearchBottomPlaceholder: "Пошук або URL для нижньої панелі...",
+    quadWorkspaceSlot: "КВАДРО • ПАНЕЛЬ {pane}",
+    splitReloadedBoth: "Усі розділені панелі перезавантажено",
+    clearSplitSlotTooltip: "Очистити панель",
+    splitRatioReset: "Розділений екран: 50 / 50",
+    dragResizeQuadTooltip: "Перетягніть, щоб змінити сітку 2×2 • Натисніть для опцій • Подвійний клік для скидання",
+    splitHorizontalTooltip: "Поруч (2 стовпці)",
+    splitVerticalTooltip: "Один над одним (2 рядки)",
+    splitQuadTooltip: "Сітка 2×2",
+    splitResetTooltip: "Скинути 50/50",
+    splitReloadBothTooltip: "Перезавантажити всі панелі",
+    splitKeepSecondaryTooltip: "Відкрити другу панель як повну вкладку",
+    splitPickTabShort: "Вибрати вкладку...",
+    quadGroupLabel: "Квадро-поділ",
+    splitGroupLabel: "Група поділу",
+    renameSplitGroupTooltip: "Перейменувати групу поділу",
+    noCopyableUrls: "Немає URL-адрес для копіювання у вибраних вкладках",
+    copyUrls: "Копіювати URL",
+    splitQuadSelected: "Відкрити в сітці 2×2",
+    splitViewSelected: "Відкрити в розділеному вигляді",
+    suspendSelected: "Призупинити вибрані вкладки",
+    unmuteSelected: "Увімкнути звук у вибраних вкладках",
+    muteSelected: "Вимкнути звук у вибраних вкладках",
+    closeSelected: "Закрити вибрані вкладки",
+    exitFramelessTooltip: "Вийти з безрамкового режиму (Ctrl+Alt+F)",
+    exitFrameless: "Вийти з безрамкового",
     tabMapWakeTabTooltip: "Розбудити вкладку",
     tabMapSleepTabTooltip: "Приспати вкладку",
     tabMapUnmuteTooltip: "Увімкнути звук",
@@ -7200,7 +7502,26 @@ const uk = {
     tabMapPanBtn: "Огляд",
     tabMapLassoTooltip: "Виділення ласо (S / Shift+Перетягнути)",
     tabMapLassoBtn: "Ласо",
-    tabMapMinimap: "МІНІМАПА"
+    tabMapMinimap: "МІНІМАПА",
+    cmd_hide: "Сховати відволікаючі елементи на сторінці",
+    eraserTitle: "Сховати відволікаючі елементи",
+    eraserHint: "Натисніть елемент для розпилення • ↑/↓ або Alt+Колесо для зміни межі",
+    eraserUndo: "Скасувати",
+    eraserUndoTooltip: "Повернути останній схований елемент (Ctrl+Z)",
+    eraserShowAll: "Показати всі",
+    eraserShowAllTooltip: "Відновити всі сховані елементи для цього сайту",
+    eraserDone: "Готово",
+    eraserUndoToast: "Останній схований елемент відновлено",
+    eraserRestoredAllToast: "Відновлено всі сховані елементи на цій сторінці",
+    eraserUnlockedScrollToast: "Елемент сховано та прокручування сторінки розблоковано",
+    downloadCancelledTitle: "Завантаження скасовано",
+    downloadCancelled: "Скасовано",
+    downloadFailed: "Помилка",
+    smartDarkExcludeMedia: "Виключити зображення та відео",
+    smartDarkExcludeMediaDesc: "Зберігати фото, відео та вбудування",
+    whitelistedDomainsLabel: "Сайти у білому списку",
+    whitelistEmptyShort: "Немає виключених сайтів",
+    manageWhitelistSettings: "Керувати в налаштуваннях"
 };
 
 const ko = {
@@ -7235,7 +7556,6 @@ const ko = {
     refresh: "새로고침",
     collapse: "접기",
     expand: "펼치기",
-
     defaultAppsLinux: "기본 애플리케이션",
     defaultAppsMac: "macOS 시스템 설정",
     defaultAppsWin: "Windows 기본 앱",
@@ -7253,7 +7573,6 @@ const ko = {
     defaultBrowserSetBtn: "기본값으로 설정",
     defaultBrowserDontAsk: "다시 묻지 않기",
     dismissForNow: "지금은 닫기",
-
     omniboxTerminalCommands: "터미널 명령어",
     omniboxEnterToRun: "↵ Enter로 실행",
     omniboxRunBadge: "↵ 실행",
@@ -7282,7 +7601,6 @@ const ko = {
     omniboxOpenFolder: "폴더 열기: {path}",
     omniboxOpenFile: "파일 열기: {path}",
     omniboxSearchWith: "{engine}에서 검색: \"{query}\"",
-
     bangCat_General: "일반",
     bangCat_Media: "미디어",
     bangCat_Development: "개발",
@@ -7292,7 +7610,6 @@ const ko = {
     bangCat_AI: "AI",
     bangCat_Custom: "사용자 지정",
     bangCat_Engine: "엔진",
-
     cmd_ls: "열린 탭 목록 보기 (미션 컨트롤)",
     cmd_clear: "방문 기록 및 브라우저 캐시 삭제",
     cmd_top: "리소스 및 작업 관리자 열기",
@@ -7328,7 +7645,6 @@ const ko = {
     cmd_screenshot: "웹페이지 스크린샷 캡처 (Ctrl+Shift+S)",
     cmd_snip: "영역 지정 캡처 (Ctrl+Shift+S)",
     cmd_reader: "방해 없는 읽기 모드 전환 (Ctrl+Alt+R)",
-
     toastCmdTabMap: "터미널: 탭 맵이 활성화되었습니다",
     toastCmdClear: "터미널: 방문 기록 및 캐시가 삭제되었습니다!",
     toastCmdTasks: "터미널: 리소스 및 작업 관리자를 열었습니다",
@@ -7361,7 +7677,6 @@ const ko = {
     toastCmdCircuit: "터미널: Tor 회로 HUD를 열었습니다",
     toastCopiedValue: "클립보드에 복사됨: {value}",
     toastCopiedClipboard: "클립보드에 복사되었습니다",
-
     torCircuitTooltip: "Tor 어니언 회로 및 ID (클릭하여 보기)",
     torConnected: "Tor 연결됨",
     torConnecting: "Tor 연결 중...",
@@ -7396,7 +7711,6 @@ const ko = {
     qvaultLabel: "QVault 비밀번호",
     qvaultTooltip: "QVault 비밀번호 (오른쪽 클릭: 숨기기)",
     customizeToolbarTooltip: "도구 모음 맞춤 설정 (모든 아이콘 숨김 • 클릭하여 관리)",
-
     maxWorkspacesReached: "워크스페이스는 최대 8개까지 만들 수 있습니다",
     defaultNewWorkspaceName: "워크스페이스 {index}",
     toastOpenedPinBg: "백그라운드 탭에서 {title} 열림",
@@ -7452,7 +7766,6 @@ const ko = {
     noOpenTabs: "열린 탭 없음",
     launchPinHint: "아래를 클릭해 {title} 실행",
     newPinTabBtn: "새 {title} 탭",
-
     githubGlance: "GitHub 미리보기",
     githubGlanceConnectDesc: "GitHub를 연결해 실시간 PR 및 이슈를 확인하세요.",
     githubLoginBtn: "GitHub 로그인",
@@ -7481,7 +7794,6 @@ const ko = {
     refreshLiveData: "실시간 데이터 새로고침",
     openOnGithub: "GitHub에서 열기",
     configureSettings: "설정 구성...",
-
     dialogAuthTitle: "인증 필요",
     dialogPromptTitle: "입력 요청",
     dialogConfirmTitle: "작업 확인",
@@ -7491,7 +7803,6 @@ const ko = {
     passwordPlaceholder: "비밀번호",
     dialogPromptPlaceholder: "응답 입력...",
     dialogSuppressRepeat: "이 페이지에서 추가 대화상자를 생성하지 못하도록 차단",
-
     downloadScreenshotType: "스크린샷 ({type})",
     downloadScreenshot: "스크린샷",
     downloadVerifiedTitle: "검증된 다운로드",
@@ -7538,7 +7849,6 @@ const ko = {
     zoomOutTooltip: "축소 (Ctrl -)",
     zoomInTooltip: "확대 (Ctrl +)",
     resetZoomCtrl0: "확대/축소 초기화 (Ctrl 0)",
-
     drmNote_netflix: "Netflix 1080p/4K 재생에는 Google Widevine VMP 하드웨어 DRM이 필요합니다.",
     drmNote_primevideo: "Prime Video HD/UHD 재생에는 하드웨어 DRM 인증이 필요합니다.",
     drmNote_disneyplus: "Disney+ 보호된 동영상 스트리밍에는 인증된 하드웨어 DRM이 필요합니다.",
@@ -7563,7 +7873,6 @@ const ko = {
     drmStreamDetected: "{name} 스트림 감지됨",
     drmOpenWithBtn: "연결 프로그램...",
     drmDismissTooltip: "이 탭에서 닫기",
-
     siteFallback: "사이트",
     securityWarningFallback: "보안 경고",
     connectionFailedFallback: "연결 실패",
@@ -7592,7 +7901,6 @@ const ko = {
     addNoteTooltip: "메모 추가",
     noteLabel: "메모",
     copySelectionTooltip: "선택 영역 복사",
-
     errCat_securityWarning: "보안 경고",
     errCat_navigationError: "탐색 오류",
     errCat_dnsResolution: "DNS 확인",
@@ -7608,7 +7916,6 @@ const ko = {
     errCat_redirectLoop: "리디렉션 루프",
     errCat_rendererHalted: "렌더러 중지됨",
     errCat_renderProcessGone: "렌더 프로세스 종료",
-
     errBadge_unencryptedHttp: "암호화되지 않은 HTTP",
     errBadge_invalidCert: "잘못된 인증서",
     errBadge_expiredCert: "만료된 인증서",
@@ -7641,7 +7948,6 @@ const ko = {
     errBadge_tooManyRedirects: "과도한 리디렉션",
     errBadge_crashed: "충돌 발생",
     errBadge_failed: "실패",
-
     err_HTTP_INSECURE_title: "암호화되지 않은 연결 (HTTP)",
     err_HTTP_INSECURE_msg: "이 웹사이트는 HTTPS 암호화를 지원하지 않습니다. 공용 Wi-Fi나 로컬 네트워크의 공격자가 비밀번호와 개인 정보를 가로챌 수 있습니다.",
     err_HTTP_INSECURE_risk: "TLS 암호화가 없어 네트워크상의 제3자가 패킷을 감청하거나 변조할 수 있습니다.",
@@ -7734,7 +8040,6 @@ const ko = {
     errFallback_msg: "요청한 웹페이지를 불러올 수 없습니다. 연결을 확인하고 다시 시도하세요.",
     errFallback_insecureMsg: "이 웹사이트는 HTTPS 암호화를 지원하지 않습니다. 비밀번호, 쿠키 및 민감한 정보가 가로채일 수 있습니다.",
     errFallback_risk: "웹사이트의 진위를 암호학적으로 증명할 수 없습니다.",
-
     errNotSecure: "안전하지 않음",
     errCode: "코드 {code}",
     errCopyUrlTooltip: "클립보드에 URL 복사",
@@ -7773,7 +8078,6 @@ const ko = {
     errDiagInsecure: "안전하지 않음",
     errDiagTimestamp: "타임스탬프",
     errDiagPlatform: "플랫폼",
-
     timeRecently: "최근",
     timeJustNow: "방금",
     timeMinutesAgo: "{count}분 전",
@@ -7832,6 +8136,34 @@ const ko = {
     tabMapBadgeAudio: "오디오",
     tabMapBadgeSplit: "분할",
     tabMapOpenSplitTooltip: "분할 화면에서 열기",
+    splitShortLabel: "분할",
+    splitSearchPanePlaceholder: "창 {pane} 검색 또는 URL 입력...",
+    splitSearchBottomPlaceholder: "하단 창 검색 또는 URL 입력...",
+    quadWorkspaceSlot: "4분할 • 창 {pane}",
+    splitReloadedBoth: "모든 분할 창을 새로고침했습니다",
+    clearSplitSlotTooltip: "창 비우기",
+    splitRatioReset: "분할 보기: 50 / 50",
+    dragResizeQuadTooltip: "드래그하여 2×2 격자 크기 조절 • 클릭하여 옵션 보기 • 더블 클릭하여 초기화",
+    splitHorizontalTooltip: "나란히 보기 (2열)",
+    splitVerticalTooltip: "상하 분할 (2행)",
+    splitQuadTooltip: "4분할 격자 (2×2)",
+    splitResetTooltip: "50/50 초기화",
+    splitReloadBothTooltip: "모든 창 새로고침",
+    splitKeepSecondaryTooltip: "보조 창을 전체 탭으로 보기",
+    splitPickTabShort: "탭 선택...",
+    quadGroupLabel: "4분할 그룹",
+    splitGroupLabel: "분할 그룹",
+    renameSplitGroupTooltip: "분할 그룹 이름 변경",
+    noCopyableUrls: "선택한 탭에 복사할 URL이 없습니다",
+    copyUrls: "URL 복사",
+    splitQuadSelected: "2×2 4분할로 열기",
+    splitViewSelected: "분할 보기로 열기",
+    suspendSelected: "선택한 탭 절전",
+    unmuteSelected: "선택한 탭 음소거 해제",
+    muteSelected: "선택한 탭 음소거",
+    closeSelected: "선택한 탭 닫기",
+    exitFramelessTooltip: "프레임리스 모드 종료 (Ctrl+Alt+F)",
+    exitFrameless: "프레임리스 종료",
     tabMapWakeTabTooltip: "탭 깨우기",
     tabMapSleepTabTooltip: "탭 절전",
     tabMapUnmuteTooltip: "음소거 해제",
@@ -7854,171 +8186,28 @@ const ko = {
     tabMapPanBtn: "이동",
     tabMapLassoTooltip: "올가미 선택 도구 (S / Shift+드래그)",
     tabMapLassoBtn: "올가미",
-    tabMapMinimap: "미니맵"
+    tabMapMinimap: "미니맵",
+    cmd_hide: "페이지에서 방해되는 항목 가리기",
+    eraserTitle: "방해되는 항목 가리기",
+    eraserHint: "요소를 클릭하여 소멸 • ↑/↓ 또는 Alt+스크롤로 범위 조정",
+    eraserUndo: "실행 취소",
+    eraserUndoTooltip: "마지막으로 가린 항목 복원 (Ctrl+Z)",
+    eraserShowAll: "모두 표시",
+    eraserShowAllTooltip: "이 사이트의 가려진 항목 모두 복원",
+    eraserDone: "완료",
+    eraserUndoToast: "마지막으로 가린 항목을 복원했습니다",
+    eraserRestoredAllToast: "이 페이지의 가려진 항목을 모두 복원했습니다",
+    eraserUnlockedScrollToast: "요소를 가리고 페이지 스크롤 잠금을 해제했습니다",
+    downloadCancelledTitle: "다운로드 취소됨",
+    downloadCancelled: "취소됨",
+    downloadFailed: "실패",
+    smartDarkExcludeMedia: "이미지 및 동영상 제외",
+    smartDarkExcludeMediaDesc: "사진, 동영상 및 임베드 보존",
+    whitelistedDomainsLabel: "허용 목록 사이트",
+    whitelistEmptyShort: "제외된 사이트 없음",
+    manageWhitelistSettings: "설정에서 관리"
 };
 
-const ERASER_CHROME_I18N = {
-    en: {
-        cmd_hide: "Hide Distracting Items on page",
-        eraserTitle: "Hide Distracting Items",
-        eraserHint: "Click element to dissolve • ↑/↓ or Alt+Scroll to resize",
-        eraserUndo: "Undo",
-        eraserUndoTooltip: "Undo last hidden item (Ctrl+Z)",
-        eraserShowAll: "Show All",
-        eraserShowAllTooltip: "Restore all hidden items for this site",
-        eraserDone: "Done",
-        eraserUndoToast: "Restored last hidden item",
-        eraserRestoredAllToast: "Restored all hidden items on this page",
-        eraserUnlockedScrollToast: "Element hidden & page scrolling unlocked"
-    },
-    pl: {
-        cmd_hide: "Ukryj elementy rozpraszające na stronie",
-        eraserTitle: "Ukryj elementy rozpraszające",
-        eraserHint: "Kliknij element, aby go rozproszyć • ↑/↓ lub Alt+Scroll zmienia zakres",
-        eraserUndo: "Cofnij",
-        eraserUndoTooltip: "Cofnij ostatnio ukryty element (Ctrl+Z)",
-        eraserShowAll: "Pokaż wszystkie",
-        eraserShowAllTooltip: "Przywróć wszystkie ukryte elementy dla tej witryny",
-        eraserDone: "Gotowe",
-        eraserUndoToast: "Przywrócono ostatnio ukryty element",
-        eraserRestoredAllToast: "Przywrócono wszystkie ukryte elementy na tej stronie",
-        eraserUnlockedScrollToast: "Element ukryty i przewijanie strony odblokowane"
-    },
-    fr: {
-        cmd_hide: "Masquer les éléments gênants sur la page",
-        eraserTitle: "Masquer les éléments gênants",
-        eraserHint: "Cliquez sur un élément pour le dissoudre • ↑/↓ ou Alt+Molette pour ajuster",
-        eraserUndo: "Annuler",
-        eraserUndoTooltip: "Restaurer le dernier élément masqué (Ctrl+Z)",
-        eraserShowAll: "Tout afficher",
-        eraserShowAllTooltip: "Restaurer tous les éléments masqués sur ce site",
-        eraserDone: "Terminé",
-        eraserUndoToast: "Dernier élément masqué restauré",
-        eraserRestoredAllToast: "Tous les éléments masqués de cette page ont été restaurés",
-        eraserUnlockedScrollToast: "Élément masqué et défilement de la page déverrouillé"
-    },
-    de: {
-        cmd_hide: "Störende Objekte auf der Seite ausblenden",
-        eraserTitle: "Störende Objekte ausblenden",
-        eraserHint: "Element zum Auflösen anklicken • ↑/↓ oder Alt+Scrollen zum Anpassen",
-        eraserUndo: "Rückgängig",
-        eraserUndoTooltip: "Zuletzt ausgeblendetes Objekt wiederherstellen (Strg+Z)",
-        eraserShowAll: "Alle einblenden",
-        eraserShowAllTooltip: "Alle ausgeblendeten Objekte für diese Website wiederherstellen",
-        eraserDone: "Fertig",
-        eraserUndoToast: "Zuletzt ausgeblendetes Objekt wiederhergestellt",
-        eraserRestoredAllToast: "Alle ausgeblendeten Objekte auf dieser Seite wiederhergestellt",
-        eraserUnlockedScrollToast: "Element ausgeblendet & Seiten-Scrollen entsperrt"
-    },
-    es: {
-        cmd_hide: "Ocultar elementos distractores en la página",
-        eraserTitle: "Ocultar elementos distractores",
-        eraserHint: "Haz clic en un elemento para disolverlo • ↑/↓ o Alt+Rueda para ajustar",
-        eraserUndo: "Deshacer",
-        eraserUndoTooltip: "Restaurar el último elemento oculto (Ctrl+Z)",
-        eraserShowAll: "Mostrar todo",
-        eraserShowAllTooltip: "Restaurar todos los elementos ocultos en este sitio",
-        eraserDone: "Listo",
-        eraserUndoToast: "Último elemento oculto restaurado",
-        eraserRestoredAllToast: "Se restauraron todos los elementos ocultos en esta página",
-        eraserUnlockedScrollToast: "Elemento oculto y desplazamiento de página desbloqueado"
-    },
-    pt: {
-        cmd_hide: "Ocultar itens de distração na página",
-        eraserTitle: "Ocultar itens de distração",
-        eraserHint: "Clique em um elemento para dissolver • ↑/↓ ou Alt+Scroll para ajustar",
-        eraserUndo: "Desfazer",
-        eraserUndoTooltip: "Restaurar o último item oculto (Ctrl+Z)",
-        eraserShowAll: "Mostrar tudo",
-        eraserShowAllTooltip: "Restaurar todos os itens ocultos neste site",
-        eraserDone: "Concluído",
-        eraserUndoToast: "Último item oculto restaurado",
-        eraserRestoredAllToast: "Todos os itens ocultos nesta página foram restaurados",
-        eraserUnlockedScrollToast: "Elemento oculto e rolagem da página desbloqueada"
-    },
-    zh: {
-        cmd_hide: "隐藏页面上的干扰内容",
-        eraserTitle: "隐藏干扰项目",
-        eraserHint: "点击元素将其消散 • ↑/↓ 或 Alt+滚轮调整范围",
-        eraserUndo: "撤销",
-        eraserUndoTooltip: "恢复上一个隐藏的项目 (Ctrl+Z)",
-        eraserShowAll: "全部显示",
-        eraserShowAllTooltip: "恢复此网站上所有隐藏的项目",
-        eraserDone: "完成",
-        eraserUndoToast: "已恢复上一个隐藏项目",
-        eraserRestoredAllToast: "已恢复此页面上所有隐藏的项目",
-        eraserUnlockedScrollToast: "已隐藏元素并解锁页面滚动"
-    },
-    ja: {
-        cmd_hide: "ページ上の気を散らす項目を非表示にする",
-        eraserTitle: "気を散らす項目を非表示",
-        eraserHint: "要素をクリックして消去 • ↑/↓ または Alt+スクロールで範囲調整",
-        eraserUndo: "元に戻す",
-        eraserUndoTooltip: "直前に非表示にした項目を戻す (Ctrl+Z)",
-        eraserShowAll: "すべて表示",
-        eraserShowAllTooltip: "このサイトの非表示項目をすべて復元",
-        eraserDone: "完了",
-        eraserUndoToast: "直前の非表示項目を復元しました",
-        eraserRestoredAllToast: "このページの非表示項目をすべて復元しました",
-        eraserUnlockedScrollToast: "要素を非表示にしページのスクロール制限を解除しました"
-    },
-    ru: {
-        cmd_hide: "Скрыть отвлекающие объекты на странице",
-        eraserTitle: "Скрыть отвлекающие объекты",
-        eraserHint: "Нажмите на элемент для распыления • ↑/↓ или Alt+Колесо для выбора",
-        eraserUndo: "Отменить",
-        eraserUndoTooltip: "Вернуть последний скрытый элемент (Ctrl+Z)",
-        eraserShowAll: "Показать все",
-        eraserShowAllTooltip: "Восстановить все скрытые элементы для этого сайта",
-        eraserDone: "Готово",
-        eraserUndoToast: "Последний скрытый элемент восстановлен",
-        eraserRestoredAllToast: "Все скрытые элементы на этой странице восстановлены",
-        eraserUnlockedScrollToast: "Элемент скрыт, прокрутка страницы разблокирована"
-    },
-    it: {
-        cmd_hide: "Nascondi elementi che distraggono sulla pagina",
-        eraserTitle: "Nascondi elementi che distraggono",
-        eraserHint: "Fai clic su un elemento per dissolverlo • ↑/↓ o Alt+Rotella per regolare",
-        eraserUndo: "Annulla",
-        eraserUndoTooltip: "Ripristina l'ultimo elemento nascosto (Ctrl+Z)",
-        eraserShowAll: "Mostra tutto",
-        eraserShowAllTooltip: "Ripristina tutti gli elementi nascosti per questo sito",
-        eraserDone: "Fine",
-        eraserUndoToast: "Ultimo elemento nascosto ripristinato",
-        eraserRestoredAllToast: "Ripristinati tutti gli elementi nascosti in questa pagina",
-        eraserUnlockedScrollToast: "Elemento nascosto e scorrimento pagina sbloccato"
-    },
-    uk: {
-        cmd_hide: "Сховати відволікаючі елементи на сторінці",
-        eraserTitle: "Сховати відволікаючі елементи",
-        eraserHint: "Натисніть елемент для розпилення • ↑/↓ або Alt+Колесо для зміни межі",
-        eraserUndo: "Скасувати",
-        eraserUndoTooltip: "Повернути останній схований елемент (Ctrl+Z)",
-        eraserShowAll: "Показати всі",
-        eraserShowAllTooltip: "Відновити всі сховані елементи для цього сайту",
-        eraserDone: "Готово",
-        eraserUndoToast: "Останній схований елемент відновлено",
-        eraserRestoredAllToast: "Відновлено всі сховані елементи на цій сторінці",
-        eraserUnlockedScrollToast: "Елемент сховано та прокручування сторінки розблоковано"
-    },
-    ko: {
-        cmd_hide: "페이지에서 방해되는 항목 가리기",
-        eraserTitle: "방해되는 항목 가리기",
-        eraserHint: "요소를 클릭하여 소멸 • ↑/↓ 또는 Alt+스크롤로 범위 조정",
-        eraserUndo: "실행 취소",
-        eraserUndoTooltip: "마지막으로 가린 항목 복원 (Ctrl+Z)",
-        eraserShowAll: "모두 표시",
-        eraserShowAllTooltip: "이 사이트의 가려진 항목 모두 복원",
-        eraserDone: "완료",
-        eraserUndoToast: "마지막으로 가린 항목을 복원했습니다",
-        eraserRestoredAllToast: "이 페이지의 가려진 항목을 모두 복원했습니다",
-        eraserUnlockedScrollToast: "요소를 가리고 페이지 스크롤 잠금을 해제했습니다"
-    }
+export default {
+    en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko
 };
-
-const chromePack = { en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko };
-Object.entries(ERASER_CHROME_I18N).forEach(([code, dict]) => {
-    if (chromePack[code]) Object.assign(chromePack[code], dict);
-});
-
-export default chromePack;

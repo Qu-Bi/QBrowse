@@ -11,8 +11,8 @@ pub use linux_update::{
 };
 pub use telemetry::{compare_semver, get_process_telemetry, parse_latest_yml, ProcessTelemetry};
 pub use windows_sys::{
-    check_default_browser, is_reduced_motion_enabled, register_default_browser_hkcu,
-    set_window_rounded_corners, DefaultBrowserStatus,
+    check_default_browser, is_reduced_motion_enabled, normalize_corner_preference,
+    register_default_browser_hkcu, set_window_rounded_corners, DefaultBrowserStatus,
 };
 
 pub fn ping() -> &'static str {
@@ -113,5 +113,11 @@ sha512: abc123
         let _ = is_reduced_motion_enabled();
         let status = check_default_browser();
         assert!(!status.platform.is_empty());
+
+        assert_eq!(normalize_corner_preference(0), 0);
+        assert_eq!(normalize_corner_preference(1), 1);
+        assert_eq!(normalize_corner_preference(2), 2);
+        assert_eq!(normalize_corner_preference(3), 3);
+        assert_eq!(normalize_corner_preference(99), 0);
     }
 }

@@ -9,8 +9,7 @@
   },
   "private": false,
   "license": "MIT",
-  "version": "1.5.0",
-  "qbrowseEdition": "rust",
+  "version": "1.5.1",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -26,7 +25,8 @@
     "build:win": "npm run build && electron-builder build --win --x64 --publish never",
     "build:linux": "npm run build && electron-builder build --linux --x64 --publish never",
     "build:linux:arm64": "npm run build && electron-builder build --linux --arm64 --publish never",
-    "build:all": "npm run build && electron-builder build -w -l --x64 --publish never"
+    "build:all": "npm run build && electron-builder build -w -l --x64 --publish never",
+    "build:installer": "node scripts/build-installer.cjs"
   },
   "dependencies": {
     "cross-fetch": "^4.1.0",
@@ -98,8 +98,7 @@
       "provider": "github",
       "owner": "Qu-Bi",
       "repo": "QBrowse",
-      "releaseType": "release",
-      "channel": "rust"
+      "releaseType": "release"
     },
     "protocols": [
       {
@@ -120,7 +119,7 @@
     },
     "win": {
       "icon": "icon.png",
-      "artifactName": "${productName}-Rust-${version}-x64.${ext}",
+      "artifactName": "${productName}-Setup-${version}-x64.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -132,14 +131,14 @@
       "legalTrademarks": "QBrowse"
     },
     "nsis": {
-      "artifactName": "${productName}-Rust-${version}-x64.${ext}",
+      "artifactName": "${productName}-Setup-${version}-x64.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "QBrowse",
       "runAfterFinish": true,
-      "differentialPackage": false
+      "differentialPackage": true
     },
     "asar": true,
     "asarUnpack": [
@@ -156,7 +155,7 @@
         "pacman",
         "tar.gz"
       ],
-      "artifactName": "${productName}-Rust-${version}-${arch}.${ext}",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "category": "Network;WebBrowser;",
       "icon": "icon.png",
       "maintainer": "QuBI <qu@qubirpi3b.tk>",
@@ -194,21 +193,21 @@
       }
     },
     "appImage": {
-      "artifactName": "${productName}-Rust-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "deb": {
-      "artifactName": "${name}_rust_${version}_${arch}.${ext}",
+      "artifactName": "${name}_${version}_${arch}.${ext}",
       "priority": "optional",
       "packageCategory": "web",
       "compression": "xz"
     },
     "rpm": {
-      "artifactName": "${name}-rust-${version}.${arch}.${ext}",
+      "artifactName": "${name}-${version}.${arch}.${ext}",
       "packageCategory": "Applications/Internet",
       "compression": "xzmt"
     },
     "pacman": {
-      "artifactName": "${name}-rust-${version}-${arch}.${ext}",
+      "artifactName": "${name}-${version}-${arch}.${ext}",
       "compression": "xz"
     }
   }

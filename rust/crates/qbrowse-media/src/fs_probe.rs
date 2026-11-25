@@ -324,6 +324,18 @@ pub fn autocomplete_path(prefix: &str, limit: usize) -> Vec<PathSuggestion> {
     matches
 }
 
+/// Strip Windows extended-length path prefixes (`\\?\UNC\` -> `\\`, `\\?\` -> ``).
+pub fn strip_windows_extended_prefix(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+        PathBuf::from(stripped)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 /// Probe a local file. Only reads `text_content` for text/code/md/csv files `<= 2 MB`.
 /// Never Base64-encodes binary PDFs/video/audio/images.
 pub fn probe_local_file(file_path: &str) -> Result<LocalFileProbe> {
@@ -354,7 +366,9 @@ pub fn probe_local_file(file_path: &str) -> Result<LocalFileProbe> {
         None
     };
 
-    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let canonical = fs::canonicalize(path)
+        .map(|p| strip_windows_extended_prefix(&p))
+        .unwrap_or_else(|_| strip_windows_extended_prefix(path));
     let path_str = canonical.to_string_lossy().to_string();
     let stream_url = format!("qbrowse-local://file?path={}", encode_uri_component(&path_str));
 
@@ -454,7 +468,7 @@ pub fn read_file_range(
         }
     }
 
-    let to_read = (total_size as usize).min(cap);
+    let to_read = total_size as usize;
     let mut buf = vec![0u8; to_read];
     file.read_exact(&mut buf)?;
     Ok(FileRangeResponse {

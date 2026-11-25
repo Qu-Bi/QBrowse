@@ -14,11 +14,14 @@ mod platform {
     use anyhow::Result;
     use windows::{
         core::HSTRING,
+        Foundation::IAsyncOperation,
         Security::Credentials::UI::{
             UserConsentVerifier, UserConsentVerifierAvailability, UserConsentVerificationResult,
         },
         Security::Cryptography::DataProtection::DataProtectionProvider,
         Storage::Streams::{DataReader, DataWriter, IBuffer},
+        Win32::Foundation::HWND,
+        Win32::System::WinRT::IUserConsentVerifierInterop,
     };
 
     pub async fn check_availability() -> bool {
@@ -28,7 +31,7 @@ mod platform {
         matches!(op.get(), Ok(UserConsentVerifierAvailability::Available))
     }
 
-    pub async fn request_verification(message: &str) -> WindowsHelloResult {
+    pub async fn request_verification(message: &str, hwnd: Option<isize>) -> WindowsHelloResult {
         let available = check_availability().await;
         if !available {
             return WindowsHelloResult {
@@ -39,7 +42,22 @@ mod platform {
         }
 
         let msg = HSTRING::from(message);
-        match UserConsentVerifier::RequestVerificationAsync(&msg) {
+        let op_res = if let Some(h) = hwnd.filter(|&v| v != 0) {
+            if let Ok(interop) = windows::core::factory::<UserConsentVerifier, IUserConsentVerifierInterop>() {
+                unsafe {
+                    interop.RequestVerificationForWindowAsync::<_, IAsyncOperation<UserConsentVerificationResult>>(
+                        HWND(h as *mut core::ffi::c_void),
+                        &msg,
+                    )
+                }
+            } else {
+                UserConsentVerifier::RequestVerificationAsync(&msg)
+            }
+        } else {
+            UserConsentVerifier::RequestVerificationAsync(&msg)
+        };
+
+        match op_res {
             Ok(op) => match op.get() {
                 Ok(UserConsentVerificationResult::Verified) => WindowsHelloResult {
                     available: true,
@@ -104,7 +122,7 @@ mod platform {
         false
     }
 
-    pub async fn request_verification(_message: &str) -> WindowsHelloResult {
+    pub async fn request_verification(_message: &str, _hwnd: Option<isize>) -> WindowsHelloResult {
         WindowsHelloResult {
             available: false,
             verified: false,
@@ -126,10 +144,10 @@ pub async fn check_windows_hello_available() -> bool {
     platform::check_availability().await
 }
 
-/// Prompt the user for Windows Hello verification.
+/// Prompt the user for Windows Hello verification, optionally anchored to an HWND.
 /// Returns `{ available: false, verified: false }` gracefully on non-Windows.
-pub async fn verify_windows_hello(message: &str) -> WindowsHelloResult {
-    platform::request_verification(message).await
+pub async fn verify_windows_hello(message: &str, hwnd: Option<isize>) -> WindowsHelloResult {
+    platform::request_verification(message, hwnd).await
 }
 
 /// Protect secret bytes using Windows DPAPI `DataProtectionProvider("LOCAL=user")`.

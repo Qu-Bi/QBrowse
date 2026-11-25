@@ -337,6 +337,52 @@ function selectLinuxReleaseAsset(assets = [], installType = 'appimage', arch = p
     };
 }
 
+function selectWindowsReleaseAsset(assets = [], ymlData = null) {
+    const exeAssets = (Array.isArray(assets) ? assets : []).filter((a) => {
+        if (!a || typeof a.name !== 'string' || !a.browser_download_url) return false;
+        const n = a.name.toLowerCase();
+        return n.endsWith('.exe')
+            && !n.endsWith('.blockmap')
+            && !n.includes('web-setup')
+            && !n.includes('online-setup')
+            && !n.includes('bootstrapper')
+            && !n.includes('uninstall');
+    });
+    if (exeAssets.length === 0) return null;
+
+    let preferred = null;
+    if (ymlData && ymlData.path) {
+        const normTarget = ymlData.path.replace(/[-.\s]+/g, '').toLowerCase();
+        preferred = exeAssets.find((a) =>
+            a.name === ymlData.path ||
+            a.name.replace(/[-.\s]+/g, '').toLowerCase() === normTarget
+        ) || null;
+    }
+    if (!preferred) {
+        preferred = exeAssets.find((a) => /setup/i.test(a.name)) || exeAssets[0] || null;
+    }
+    if (!preferred) return null;
+
+    let expectedSha512 = ymlData?.sha512 || null;
+    if (ymlData?.files?.length) {
+        const normPreferred = preferred.name.replace(/[-.\s]+/g, '').toLowerCase();
+        const matchedFile = ymlData.files.find((f) =>
+            f && f.url && (
+                f.url === preferred.name ||
+                f.url.replace(/[-.\s]+/g, '').toLowerCase() === normPreferred
+            )
+        );
+        if (matchedFile?.sha512) expectedSha512 = matchedFile.sha512;
+    }
+
+    return {
+        name: preferred.name,
+        url: preferred.browser_download_url,
+        size: preferred.size || 0,
+        sha512: expectedSha512
+    };
+}
+
 function shellQuotePosix(str) {
     // POSIX-safe single-quoting: replace ' with '\''
     const s = String(str || '').replace(/[\r\n\0]/g, '');
@@ -438,6 +484,7 @@ module.exports = {
     sanitizeUpdateFileName,
     detectLinuxInstallType,
     selectLinuxReleaseAsset,
+    selectWindowsReleaseAsset,
     shellQuotePosix,
     buildLinuxInstallCommand,
     replaceAppImageAtomically,

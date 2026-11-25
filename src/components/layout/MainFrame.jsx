@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-    Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2, 
-    ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen, 
-    Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff, 
+import {
+    Command, Search, ChevronUp, ChevronDown, X, Moon, Sun, Trash2,
+    ShieldAlert, Download, Cpu, Pause, XCircle, FolderOpen,
+    Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff,
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
     Columns, LayoutGrid, SplitSquareHorizontal, SplitSquareVertical, Layers, Sparkles, CornerDownLeft, Plus
@@ -29,12 +29,12 @@ function getToastIcon(message, isBright = false) {
     const iconClass = isBright ? "text-zinc-700 flex-shrink-0" : "text-white/80 flex-shrink-0";
     if (!message) return <Info size={13} className={iconClass} />;
     const str = String(message).toLowerCase();
-    
+
     // Alert / Error / Warning
     if (
-        str.includes('error') || 
-        str.includes('fail') || 
-        str.includes('cannot') || 
+        str.includes('error') ||
+        str.includes('fail') ||
+        str.includes('cannot') ||
         str.includes('not supported') ||
         str.includes('disabled') ||
         str.includes('disconnect') ||
@@ -51,12 +51,12 @@ function getToastIcon(message, isBright = false) {
     ) {
         return <AlertCircle size={13} className={isBright ? "text-red-500 flex-shrink-0" : "text-red-400 flex-shrink-0"} />;
     }
-    
+
     // Performance / Mode / Settings / Toggles
     if (
-        str.includes('performance') || 
-        str.includes('split view') || 
-        str.includes('mode:') || 
+        str.includes('performance') ||
+        str.includes('split view') ||
+        str.includes('mode:') ||
         str.includes('tier') ||
         str.includes('flags') ||
         str.includes('reader') ||
@@ -69,16 +69,16 @@ function getToastIcon(message, isBright = false) {
     ) {
         return <Sliders size={13} className={iconClass} />;
     }
-    
+
     // Success / Copied / Saved / Connected / Restored / Enabled
     if (
-        str.includes('saved') || 
-        str.includes('copied') || 
-        str.includes('success') || 
-        str.includes('connected') || 
-        str.includes('restored') || 
-        str.includes('enabled') || 
-        str.includes('pinned') || 
+        str.includes('saved') ||
+        str.includes('copied') ||
+        str.includes('success') ||
+        str.includes('connected') ||
+        str.includes('restored') ||
+        str.includes('enabled') ||
+        str.includes('pinned') ||
         str.includes('unpinned') ||
         str.includes('freed') ||
         str.includes('cleared') ||
@@ -97,7 +97,7 @@ function getToastIcon(message, isBright = false) {
     ) {
         return <Check size={13} className={isBright ? "text-emerald-600 flex-shrink-0" : "text-emerald-400 flex-shrink-0"} />;
     }
-    
+
     // Default Info
     return <Info size={13} className={iconClass} />;
 }
@@ -125,11 +125,7 @@ const TorCircuitPopover = React.lazy(() => import('../popovers/TorCircuitPopover
 const ReaderModeOverlay = React.lazy(() => import('../features/ReaderModeOverlay'));
 
 function LazyPopoverGate({ when, children }) {
-    const [mounted, setMounted] = useState(Boolean(when));
-    useEffect(() => {
-        if (when && !mounted) setMounted(true);
-    }, [when, mounted]);
-    if (!mounted) return null;
+    if (!when) return null;
     return <React.Suspense fallback={null}>{children}</React.Suspense>;
 }
 
@@ -169,16 +165,15 @@ const DownloadPopup = () => {
     };
 
     return (
-        <div 
-            id="download-toast-popup" 
+        <div
+            id="download-toast-popup"
             onClick={e => e.stopPropagation()}
             style={getLiquidGlassInlineStyle(isBright)}
             className={`absolute top-4 right-5 w-72 rounded-2xl p-1.5 select-none outline-none origin-top-right z-[70000] ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'}`}
         >
             {/* Header: Section Header matching right-click menu */}
-            <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${
-                isBright ? 'text-zinc-600 border-black/[0.08]' : 'text-white/60 border-white/[0.08]'
-            }`}>
+            <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${isBright ? 'text-zinc-600 border-black/[0.08]' : 'text-white/60 border-white/[0.08]'
+                }`}>
                 <div className="flex items-center gap-2 truncate">
                     {popupData.isScreenshot ? (
                         <Camera size={13} className="text-accent flex-shrink-0" />
@@ -190,14 +185,14 @@ const DownloadPopup = () => {
                         <Download size={13} className="text-accent flex-shrink-0" />
                     )}
                     <span className="truncate">
-                        {popupData.isScreenshot 
+                        {popupData.isScreenshot
                             ? (popupData.screenshotType
                                 ? t('chrome.downloadScreenshotType', { type: popupData.screenshotType }, `Screenshot (${popupData.screenshotType})`)
-                                : t('chrome.downloadScreenshot', null, 'Screenshot')) 
-                            : (popupData.state === 'completed' 
+                                : t('chrome.downloadScreenshot', null, 'Screenshot'))
+                            : (popupData.state === 'completed'
                                 ? (popupData.verified
                                     ? t('chrome.downloadVerifiedTitle', null, 'Verified Download')
-                                    : t('chrome.downloadCompleteTitle', null, 'Download Complete')) 
+                                    : t('chrome.downloadCompleteTitle', null, 'Download Complete'))
                                 : popupData.state === 'cancelled'
                                     ? t('chrome.downloadCancelledTitle', null, 'Download Cancelled')
                                     : popupData.state === 'failed' || popupData.state === 'interrupted'
@@ -205,11 +200,10 @@ const DownloadPopup = () => {
                                         : t('chrome.downloadingTitle', null, 'Downloading...'))}
                     </span>
                 </div>
-                <button 
-                    onClick={handleClose} 
-                    className={`p-1 rounded-lg transition cursor-pointer ${
-                        isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
-                    }`}
+                <button
+                    onClick={handleClose}
+                    className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'
+                        }`}
                 >
                     <X size={12} />
                 </button>
@@ -222,7 +216,7 @@ const DownloadPopup = () => {
                 </div>
                 <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${isBright ? 'text-zinc-600' : 'text-white/55'}`}>
                     <span>
-                        {popupData.state === 'progressing' 
+                        {popupData.state === 'progressing'
                             ? `${((popupData.receivedBytes || 0) / 1024 / 1024).toFixed(1)} / ${((popupData.totalBytes || 1) / 1024 / 1024).toFixed(1)} MB`
                             : popupData.state === 'cancelled'
                                 ? <span className={isBright ? 'text-rose-600 font-semibold' : 'text-rose-400 font-semibold'}>{t('chrome.downloadCancelled', null, 'Cancelled')}</span>
@@ -265,62 +259,57 @@ const DownloadPopup = () => {
 
             {/* Action Buttons styled like right click menu items */}
             {popupData.state === 'completed' && (
-                <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${
-                    isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'
-                }`}>
-                    <button 
-                        onClick={() => window.electronAPI?.openFile?.(popupData.savePath)} 
-                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
-                            isBright
+                <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${isBright ? 'border-black/[0.08]' : 'border-white/[0.08]'
+                    }`}>
+                    <button
+                        onClick={() => window.electronAPI?.openFile?.(popupData.savePath)}
+                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${isBright
                                 ? 'text-zinc-800 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
                                 : 'text-white/85 hover:text-white hover:bg-white/10 active:bg-white/15'
-                        }`}
+                            }`}
                     >
                         <ExternalLink size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
                         <span>{t('chrome.open', null, 'Open')}</span>
                     </button>
-                    <button 
-                        onClick={() => window.electronAPI?.showItemInFolder?.(popupData.savePath)} 
-                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
-                            isBright
+                    <button
+                        onClick={() => window.electronAPI?.showItemInFolder?.(popupData.savePath)}
+                        className={`flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${isBright
                                 ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
                                 : 'text-white/75 hover:text-white hover:bg-white/10 active:bg-white/15'
-                        }`}
+                            }`}
                     >
                         <FolderOpen size={13} className={isBright ? 'text-zinc-600' : 'text-white/60'} />
                         <span>{t('chrome.folder', null, 'Folder')}</span>
                     </button>
                     {popupData.checksum && (
-                        <button 
+                        <button
                             onClick={() => {
                                 navigator.clipboard.writeText(popupData.checksum);
                                 useUIStore.getState().showToast(t('chrome.toastChecksumCopied', null, 'SHA-256 checksum copied to clipboard'));
-                            }} 
+                            }}
                             title={`SHA-256: ${popupData.checksum}`}
-                            className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${
-                                isBright
+                            className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer outline-none ${isBright
                                     ? 'text-emerald-700 hover:text-emerald-950 hover:bg-emerald-500/10 active:bg-emerald-500/20'
                                     : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 active:bg-emerald-500/20'
-                            }`}
+                                }`}
                         >
                             <ShieldCheck size={13} className={isBright ? 'text-emerald-600' : 'text-emerald-400'} />
                             <span>{t('chrome.hash', null, 'Hash')}</span>
                         </button>
                     )}
                     {popupData.isScreenshot && popupData.savePath && (
-                        <button 
+                        <button
                             onClick={async () => {
                                 if (window.electronAPI?.copyImageToClipboard) {
                                     await window.electronAPI.copyImageToClipboard(popupData.savePath);
                                     useUIStore.getState().showToast(t('chrome.toastScreenshotCopied', null, 'Screenshot copied to clipboard'));
                                 }
-                            }} 
+                            }}
                             title={t('chrome.copyImageTooltip', null, 'Copy Image to Clipboard')}
-                            className={`p-1.5 rounded-xl transition cursor-pointer outline-none ${
-                                isBright
+                            className={`p-1.5 rounded-xl transition cursor-pointer outline-none ${isBright
                                     ? 'text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06] active:bg-black/10'
                                     : 'text-white/75 hover:text-white hover:bg-white/10 active:bg-white/15'
-                            }`}
+                                }`}
                         >
                             <Copy size={13} />
                         </button>
@@ -340,6 +329,7 @@ export default function MainFrame() {
     const theme = useUIStore(state => state.theme);
     const setTheme = useUIStore(state => state.setTheme);
     const isForceDark = useUIStore(state => state.isForceDark);
+    const smartDarkStatusByTab = useUIStore(state => state.smartDarkStatusByTab);
     const darkExcludeMedia = useUIStore(state => state.darkExcludeMedia);
     const setDarkExcludeMedia = useUIStore(state => state.setDarkExcludeMedia);
     const darkExclusions = useUIStore(state => state.darkExclusions);
@@ -372,7 +362,7 @@ export default function MainFrame() {
         const activeTab = useTabStore.getState().getActiveTab();
         const wv = activeTab ? document.querySelector(`webview#webview-${activeTab.id}`) : document.querySelector('webview');
         if (wv && typeof wv.send === 'function') {
-            try { wv.send('webview-visual-zoom', 'reset'); } catch (_) {}
+            try { wv.send('webview-visual-zoom', 'reset'); } catch (_) { }
         }
     }, []);
     const isSplitView = useUIStore(state => state.isSplitView);
@@ -457,16 +447,16 @@ export default function MainFrame() {
     const isSpaceEmpty = (spaceId) => {
         const tabs = getTabsForSpace ? getTabsForSpace(spaceId) : (
             spaceId === 'personal' ? privateTabs :
-            spaceId === 'work' ? workTabs :
-            spaceId === 'ghost' ? ghostTabs :
-            spaceId === 'tor' ? torTabs : []
+                spaceId === 'work' ? workTabs :
+                    spaceId === 'ghost' ? ghostTabs :
+                        spaceId === 'tor' ? torTabs : []
         );
         const effTab = getEffectiveLeftTab(tabs || []);
         return !effTab || effTab.url === '' || effTab.url === 'about:blank';
     };
 
     const visibleSpaces = [...customSpaces, { id: 'ghost' }, { id: 'tor' }];
-    
+
     const isAdblockActive = useUIStore(state => state.isAdblockActive);
     const setIsAdblockActive = useUIStore(state => state.setIsAdblockActive);
     const adblockStats = useUIStore(state => state.adblockStats);
@@ -501,24 +491,21 @@ export default function MainFrame() {
 
         return (
             <div className={`absolute inset-0 flex flex-col items-center justify-center overflow-visible z-10 w-full h-full ${isReducedMotion ? 'transition-none' : 'animate-pop-in'}`}>
-                <div 
+                <div
                     className={`relative z-10 flex flex-col items-center origin-center w-full mt-[-10vh] ${isReducedMotion ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                     style={{ transform: `translateY(${isZenDropdownOpen ? '-10vh' : '0px'}) scale(${zoomLevel / 100})` }}
                 >
-                    <div className={`flex flex-col items-center px-4 w-full text-center ${isReducedMotion ? 'transition-none' : 'transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'} ${
-                        isZenDropdownOpen ? 'mb-6 md:mb-8' : 'mb-10 md:mb-14'
-                    }`}>
-                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${
-                            isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')
-                        }`}>{dateString}</span>
+                    <div className={`flex flex-col items-center px-4 w-full text-center ${isReducedMotion ? 'transition-none' : 'transition-[margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'} ${isZenDropdownOpen ? 'mb-6 md:mb-8' : 'mb-10 md:mb-14'
+                        }`}>
+                        <span className={`text-sm font-bold uppercase tracking-[0.4em] mb-4 drop-shadow-sm transition-colors duration-500 ${isSpaceTor ? 'text-purple-300/60' : (isDark ? 'text-white/50' : 'text-zinc-700 font-bold')
+                            }`}>{dateString}</span>
                         <h1
-                            className={`qbrowse-hero-clock text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${
-                                isSpaceTor
+                            className={`qbrowse-hero-clock text-[5rem] md:text-[8rem] leading-none font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b ${isSpaceTor
                                     ? 'from-purple-200 via-purple-300/85 to-purple-500/20'
                                     : (isDark
                                         ? 'from-white via-white/90 to-white/20'
                                         : 'from-zinc-900 via-zinc-800 to-zinc-700')
-                            } select-none transition-colors duration-500 px-4`}
+                                } select-none transition-colors duration-500 px-4`}
                             style={{
                                 fontFamily: 'var(--clock-font-family)',
                                 filter: isSpaceTor
@@ -532,10 +519,10 @@ export default function MainFrame() {
                         </h1>
                     </div>
 
-                    <HomepageOmnibox 
-                        isTor={isSpaceTor} 
-                        isDark={isDark} 
-                        isBright={isSpaceBright} 
+                    <HomepageOmnibox
+                        isTor={isSpaceTor}
+                        isDark={isDark}
+                        isBright={isSpaceBright}
                         isActiveSpace={isActiveSpace}
                         onDropdownOpenChange={(isOpen) => {
                             setZenDropdownOpenBySpace(prev => {
@@ -566,6 +553,37 @@ export default function MainFrame() {
     const mainContainerRef = useRef(null);
     const viewportFrameRef = useRef(null);
     const spacesLayerRef = useRef(null);
+    const [toastCenterX, setToastCenterX] = useState(() => (typeof window !== 'undefined' ? window.innerWidth / 2 : 0));
+
+    useEffect(() => {
+        const updateToastCenter = () => {
+            const el = viewportFrameRef.current;
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 0) {
+                    setToastCenterX(rect.left + rect.width / 2);
+                    return;
+                }
+            }
+            if (typeof window !== 'undefined') {
+                setToastCenterX(window.innerWidth / 2);
+            }
+        };
+
+        updateToastCenter();
+        window.addEventListener('resize', updateToastCenter);
+
+        let ro = null;
+        if (typeof ResizeObserver !== 'undefined' && viewportFrameRef.current) {
+            ro = new ResizeObserver(updateToastCenter);
+            ro.observe(viewportFrameRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('resize', updateToastCenter);
+            if (ro) ro.disconnect();
+        };
+    }, [toast, isToastClosing, sidebarPosition]);
     const currentRatioXRef = useRef(splitRatio);
     const currentRatioYRef = useRef(splitRatioY);
 
@@ -786,7 +804,7 @@ export default function MainFrame() {
             if (!id) return;
             const wv = (window.qbrowseWebviews && window.qbrowseWebviews[id]) || document.querySelector(`webview#webview-${id}`);
             if (wv && typeof wv.reload === 'function') {
-                try { wv.reload(); } catch (_) {}
+                try { wv.reload(); } catch (_) { }
             }
         };
         splitSlots.slice(0, splitSlotCount).forEach(tabObj => reloadById(tabObj?.id));
@@ -830,11 +848,11 @@ export default function MainFrame() {
     };
 
     return (
-        <main 
+        <main
             id="qbrowse-main-frame"
             className="flex-1 min-w-0 relative z-20 flex flex-col"
         >
-            
+
             {topBarPosition === 'top' && <TopBar />}
 
 
@@ -843,9 +861,9 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'darkmode' || (isPopoverClosing && activePopover === 'darkmode')) && (
-                <div 
+                <div
                     id="popover-darkmode-container"
-                    onClick={e => e.stopPropagation()} 
+                    onClick={e => e.stopPropagation()}
                     style={{ ...darkmodeAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
                     className={`absolute z-[60] w-80 rounded-2xl overflow-hidden flex flex-col transition-all ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
@@ -854,32 +872,29 @@ export default function MainFrame() {
                         <span className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 block ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>
                             {t('chrome.darkPopoverAppearance', null, 'Browser Appearance')}
                         </span>
-                        <div 
+                        <div
                             onMouseLeave={() => setHoveredThemePreview(null)}
-                            className={`relative flex p-1 rounded-full border shadow-xs backdrop-blur-2xl select-none ${
-                            isBright 
-                                ? 'bg-black/[0.03] border-black/[0.05]' 
-                                : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-                        }`}>
+                            className={`relative flex p-1 rounded-full border shadow-xs backdrop-blur-2xl select-none ${isBright
+                                    ? 'bg-black/[0.03] border-black/[0.05]'
+                                    : 'bg-[#0c0d14]/78 border-white/[0.06] shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                                }`}>
                             {/* Hover Preview Pill */}
                             {hoveredThemePreview && hoveredThemePreview !== theme && (
                                 <div
-                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${
-                                        isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
-                                    }`}
+                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-200 pointer-events-none ${isBright ? 'bg-black/[0.04]' : 'bg-white/[0.05]'
+                                        }`}
                                     style={{
                                         transform: hoveredThemePreview === 'light' ? 'translateX(100%)' : 'translateX(0)',
                                     }}
                                 />
                             )}
                             {/* Sliding Pill Indicator */}
-                            <div 
-                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                    isBright
+                            <div
+                                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isBright
                                         ? 'bg-white border border-black/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                                         : 'border'
-                                }`}
-                                style={{ 
+                                    }`}
+                                style={{
                                     transform: theme === 'light' ? 'translateX(100%)' : 'translateX(0)',
                                     ...(!isBright ? {
                                         borderColor: 'var(--accent-30, rgba(212, 188, 148, 0.4))',
@@ -892,11 +907,10 @@ export default function MainFrame() {
                                 type="button"
                                 onMouseEnter={() => setHoveredThemePreview('dark')}
                                 onClick={() => setTheme('dark')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
-                                    theme === 'dark'
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${theme === 'dark'
                                         ? (isBright ? 'text-zinc-950 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
-                                }`}
+                                    }`}
                             >
                                 <Moon size={14} className={theme === 'dark' ? 'fill-current' : ''} />
                                 <span>{t('chrome.themeDark', null, 'Dark')}</span>
@@ -905,11 +919,10 @@ export default function MainFrame() {
                                 type="button"
                                 onMouseEnter={() => setHoveredThemePreview('light')}
                                 onClick={() => setTheme('light')}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${
-                                    theme === 'light'
+                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-full transition-all duration-300 active:scale-95 cursor-pointer ${theme === 'light'
                                         ? (isBright ? 'text-zinc-900 font-bold' : 'text-accent font-bold')
                                         : (isBright ? 'text-zinc-600 hover:text-black' : 'text-white/60 hover:text-white')
-                                }`}
+                                    }`}
                             >
                                 <Sun size={14} className={theme === 'light' ? 'text-amber-600 fill-amber-500/20' : ''} />
                                 <span>{t('chrome.themeBright', null, 'Bright')}</span>
@@ -924,12 +937,11 @@ export default function MainFrame() {
                                 <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>{t('chrome.webSmartDark', null, 'Web Smart Dark')}</span>
                                 <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.webSmartDarkDesc', null, 'Invert light webpages only')}</span>
                             </div>
-                            <button 
+                            <button
                                 type="button"
-                                onClick={() => setIsForceDark(!isForceDark)} 
-                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${
-                                    isForceDark ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
-                                }`}
+                                onClick={() => setIsForceDark(!isForceDark)}
+                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${isForceDark ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
+                                    }`}
                             >
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm ${isForceDark ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
@@ -940,12 +952,11 @@ export default function MainFrame() {
                                 <span className={`text-xs font-semibold ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>{t('chrome.smartDarkExcludeMedia', null, 'Exclude Images & Videos')}</span>
                                 <span className={`text-[10px] ${isBright ? 'text-zinc-600' : 'text-white/50'}`}>{t('chrome.smartDarkExcludeMediaDesc', null, 'Preserve photos, videos & embeds')}</span>
                             </div>
-                            <button 
+                            <button
                                 type="button"
-                                onClick={() => setDarkExcludeMedia(!darkExcludeMedia)} 
-                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${
-                                    darkExcludeMedia ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
-                                }`}
+                                onClick={() => setDarkExcludeMedia(!darkExcludeMedia)}
+                                className={`w-9 h-5 rounded-full flex items-center p-0.5 transition-colors duration-200 cursor-pointer ${darkExcludeMedia ? 'bg-accent shadow-[0_0_8px_var(--accent)]' : (isBright ? 'bg-zinc-300' : 'bg-white/20')
+                                    }`}
                             >
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm ${darkExcludeMedia ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
@@ -980,52 +991,87 @@ export default function MainFrame() {
                             return (
                                 <div className="flex flex-col gap-2.5">
                                     {/* 1-Click Current Site Toggle */}
-                                    {darkMatch.hostname && (
-                                        <div className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border ${
-                                            darkMatch.excluded
-                                                ? (isBright ? 'bg-amber-500/[0.07] border-amber-500/20' : 'bg-amber-500/[0.08] border-amber-400/20')
-                                                : (isBright ? 'bg-black/[0.025] border-black/[0.07]' : 'bg-white/[0.03] border-white/[0.07]')
-                                        }`}>
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <Globe size={12} className={darkMatch.excluded ? 'text-amber-500 flex-shrink-0' : (isBright ? 'text-zinc-500 flex-shrink-0' : 'text-white/45 flex-shrink-0')} />
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className={`text-[11px] font-mono font-semibold truncate ${isBright ? 'text-zinc-900' : 'text-white/90'}`}>
-                                                        {darkMatch.hostname}
-                                                    </span>
-                                                    <span className={`text-[9.5px] truncate ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>
-                                                        {isInheritedMatch
-                                                            ? t('pop.site.darkExcludedVia', { rule: darkMatch.matchedRule }, `Excluded via ${darkMatch.matchedRule}`)
-                                                            : darkMatch.excluded
-                                                                ? t('pop.site.darkWhitelisted', null, 'Whitelisted (Native theme)')
-                                                                : isForceDark
-                                                                    ? t('pop.site.darkActiveOnSite', null, 'Active on this site')
-                                                                    : t('pop.site.darkGlobalOff', null, 'Force Dark is off')}
-                                                    </span>
+                                    {darkMatch.hostname && (() => {
+                                        const siteFaviconUrl = getSafeFaviconUrl(currentWebTab?.url, settings, 32);
+                                        const tabDarkStatus = smartDarkStatusByTab?.[currentWebTab?.id];
+                                        const isNativeDarkDetected = Boolean(isForceDark && !darkMatch.excluded && tabDarkStatus?.isNativelyDark);
+                                        const statusDotClass = darkMatch.excluded
+                                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]'
+                                            : isNativeDarkDetected
+                                                ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.6)]'
+                                                : isForceDark
+                                                    ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]'
+                                                    : (isBright ? 'bg-zinc-400' : 'bg-white/35');
+                                        const statusLabel = isInheritedMatch
+                                            ? t('pop.site.darkExcludedVia', { rule: darkMatch.matchedRule }, `Excluded via ${darkMatch.matchedRule}`)
+                                            : darkMatch.excluded
+                                                ? t('pop.site.darkWhitelisted', null, 'Native theme')
+                                                : isNativeDarkDetected
+                                                    ? t('pop.site.darkNativeDetected', null, 'Native dark detected')
+                                                    : isForceDark
+                                                        ? t('pop.site.darkActiveOnSite', null, 'Smart Dark active')
+                                                        : t('pop.site.darkGlobalOff', null, 'Force Dark is off');
+                                        return (
+                                            <div className={`flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-2xl border transition-colors ${isBright
+                                                    ? 'bg-white/80 border-black/[0.08] shadow-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
+                                                    : 'bg-white/[0.04] border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+                                                }`}>
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <div className={`relative w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 border ${isBright
+                                                            ? 'bg-black/[0.04] border-black/[0.08]'
+                                                            : 'bg-white/[0.06] border-white/[0.10]'
+                                                        }`}>
+                                                        {siteFaviconUrl ? (
+                                                            <img
+                                                                src={siteFaviconUrl}
+                                                                alt=""
+                                                                className="w-4 h-4 rounded-sm object-contain"
+                                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            <Globe size={13} className={isBright ? 'text-zinc-600' : 'text-white/65'} />
+                                                        )}
+                                                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ${isBright ? 'ring-white' : 'ring-[#12141c]'} ${statusDotClass}`} />
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className={`text-[11.5px] font-semibold tracking-tight truncate ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>
+                                                            {darkMatch.hostname}
+                                                        </span>
+                                                        <span className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                                            {statusLabel}
+                                                        </span>
+                                                    </div>
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const res = toggleDarkExclusionForUrl(currentWebTab?.url);
+                                                        if (!res.ok) return;
+                                                        if (res.action === 'added') {
+                                                            showToast(t('pop.site.darkExcludedToast', { domain: res.rule }, `Excluded ${res.rule} from Force Dark Mode`));
+                                                        } else {
+                                                            showToast(t('pop.site.darkIncludedToast', { domain: res.rule }, `Removed ${res.rule} from Force Dark whitelist`));
+                                                        }
+                                                    }}
+                                                    className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-semibold border transition-all cursor-pointer active:scale-95 ${darkMatch.excluded
+                                                            ? (isBright
+                                                                ? 'bg-emerald-500/12 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/20'
+                                                                : 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/25')
+                                                            : (isBright
+                                                                ? 'bg-white/90 border-black/[0.10] text-zinc-700 hover:bg-white hover:text-zinc-950 shadow-2xs'
+                                                                : 'bg-white/[0.08] border-white/[0.12] text-white/85 hover:bg-white/[0.14] hover:text-white')
+                                                        }`}
+                                                >
+                                                    {darkMatch.excluded ? <Moon size={11} /> : <Sun size={11} />}
+                                                    <span>
+                                                        {darkMatch.excluded
+                                                            ? t('pop.site.darkAllowBtn', null, 'Re-enable')
+                                                            : t('pop.site.darkExcludeBtn', null, 'Exclude')}
+                                                    </span>
+                                                </button>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const res = toggleDarkExclusionForUrl(currentWebTab?.url);
-                                                    if (!res.ok) return;
-                                                    if (res.action === 'added') {
-                                                        showToast(t('pop.site.darkExcludedToast', { domain: res.rule }, `Excluded ${res.rule} from Force Dark Mode`));
-                                                    } else {
-                                                        showToast(t('pop.site.darkIncludedToast', { domain: res.rule }, `Removed ${res.rule} from Force Dark whitelist`));
-                                                    }
-                                                }}
-                                                className={`flex-shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold border transition cursor-pointer active:scale-95 ${
-                                                    darkMatch.excluded
-                                                        ? (isBright ? 'bg-white border-amber-500/30 text-amber-800 hover:bg-amber-500/10' : 'bg-amber-500/15 border-amber-400/30 text-amber-300 hover:bg-amber-500/25')
-                                                        : (isBright ? 'bg-white border-black/10 text-zinc-700 hover:bg-black/5' : 'bg-white/[0.06] border-white/10 text-white/85 hover:bg-white/[0.12]')
-                                                }`}
-                                            >
-                                                {darkMatch.excluded
-                                                    ? t('pop.site.darkAllowBtn', null, 'Re-enable')
-                                                    : t('pop.site.darkExcludeBtn', null, 'Exclude')}
-                                            </button>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
 
                                     {/* Whitelist Header & Quick Add */}
                                     <div className="flex items-center justify-between">
@@ -1043,11 +1089,10 @@ export default function MainFrame() {
                                             value={darkPopoverInput}
                                             onChange={(e) => setDarkPopoverInput(e.target.value)}
                                             placeholder="domain.com or *.site.com"
-                                            className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-xl text-[11px] font-mono outline-none transition-colors border ${
-                                                isBright
+                                            className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-xl text-[11px] font-mono outline-none transition-colors border ${isBright
                                                     ? 'bg-black/[0.03] border-black/10 text-zinc-900 placeholder-zinc-400 focus:border-accent focus:bg-white/90'
                                                     : 'bg-white/[0.04] border-white/[0.08] text-white/90 placeholder-white/35 focus:border-accent/60'
-                                            }`}
+                                                }`}
                                         />
                                         <button
                                             type="submit"
@@ -1068,11 +1113,10 @@ export default function MainFrame() {
                                             exclusionsList.map((domain) => (
                                                 <span
                                                     key={domain}
-                                                    className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-[10px] font-mono border ${
-                                                        isBright
+                                                    className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-[10px] font-mono border ${isBright
                                                             ? 'bg-white/80 border-black/10 text-zinc-800'
                                                             : 'bg-white/[0.05] border-white/10 text-white/85'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     <span className="max-w-[140px] truncate">{domain}</span>
                                                     <button
@@ -1120,19 +1164,18 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'adblock' || (isPopoverClosing && activePopover === 'adblock')) && (
-                <div 
+                <div
                     id="popover-adblock-container"
-                    onClick={e => e.stopPropagation()} 
+                    onClick={e => e.stopPropagation()}
                     style={{ ...adblockAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
                     className={`absolute z-[60] w-72 rounded-2xl overflow-hidden flex flex-col ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
-                    <div className={`p-5 flex flex-col items-center justify-center border-b transition-colors duration-500 ${
-                        isBright
+                    <div className={`p-5 flex flex-col items-center justify-center border-b transition-colors duration-500 ${isBright
                             ? (isAdblockActive ? 'bg-emerald-500/10 border-black/[0.06]' : 'bg-black/[0.02] border-black/[0.06]')
                             : (isAdblockActive ? 'bg-green-500/10 border-white/[0.06]' : 'bg-white/[0.02] border-white/[0.06]')
-                    }`}>
+                        }`}>
                         <ShieldAlert size={40} className={`mb-2 drop-shadow-md transition-colors ${isAdblockActive ? (isBright ? 'text-emerald-600' : 'text-green-400') : (isBright ? 'text-zinc-400' : 'text-white/25')}`} strokeWidth={1.5} />
-                        <span 
+                        <span
                             title={isAdblockActive
                                 ? t('chrome.adblockCountTooltip', { count: Number(adblockStats.count || 0).toLocaleString(intlLocale) }, `${Number(adblockStats.count || 0).toLocaleString(intlLocale)} blocked trackers`)
                                 : t('chrome.adblockInactive', null, 'Adblock inactive')}
@@ -1149,9 +1192,8 @@ export default function MainFrame() {
                                 <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isAdblockActive ? 'translate-x-4' : 'translate-x-0'}`}></div>
                             </button>
                         </div>
-                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 ${getLiquidGlassCardClasses(isBright)} ${
-                            isBright ? 'text-zinc-800' : 'text-white/85'
-                        } ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
+                        <div className={`flex flex-col gap-1.5 text-[10px] font-mono transition-opacity duration-300 rounded-xl p-2.5 ${getLiquidGlassCardClasses(isBright)} ${isBright ? 'text-zinc-800' : 'text-white/85'
+                            } ${isAdblockActive ? 'opacity-100' : 'opacity-30'}`}>
                             {adblockStats.domains.length === 0 && <div className={`text-center py-2 ${isBright ? 'text-zinc-500' : 'text-white/45'}`}>{t('chrome.noTrackersBlocked', null, 'No trackers blocked yet')}</div>}
                             {adblockStats.domains.map((domain, i) => (
                                 <div key={i} className="flex justify-between"><span className="truncate mr-2">{domain}</span><span className={`flex-shrink-0 font-semibold ${isBright ? 'text-red-600' : 'text-red-400'}`}>{t('chrome.blocked', null, 'Blocked')}</span></div>
@@ -1166,9 +1208,9 @@ export default function MainFrame() {
             )}
 
             {(activePopover === 'downloads' || (isPopoverClosing && activePopover === 'downloads')) && (
-                <div 
+                <div
                     id="popover-downloads-container"
-                    onClick={e => e.stopPropagation()} 
+                    onClick={e => e.stopPropagation()}
                     style={{ ...downloadsAnchor.style, ...getLiquidGlassInlineStyle(isBright) }}
                     className={`absolute z-[60] w-80 rounded-2xl overflow-hidden flex flex-col ${getLiquidGlassSurfaceClasses(isBright)} ${isPopoverClosing ? 'animate-pop-out' : 'animate-pop-in'}`}
                 >
@@ -1267,11 +1309,11 @@ export default function MainFrame() {
                     };
 
                 return (
-                    <div 
-                        ref={mainContainerRef} 
+                    <div
+                        ref={mainContainerRef}
                         className={`flex-1 min-w-0 relative transition-[color] duration-250 ease-out flex ${isBright ? 'text-zinc-900' : 'text-white'} pt-0`}
                     >
-                        <div 
+                        <div
                             id="qbrowse-viewport-frame"
                             ref={viewportFrameRef}
                             onScroll={(e) => {
@@ -1286,531 +1328,508 @@ export default function MainFrame() {
                                     ? 'border-radius 300ms ease, box-shadow 300ms ease, border-color 300ms ease'
                                     : 'border-radius 300ms ease, box-shadow 300ms ease, border-color 300ms ease, --split-x 500ms cubic-bezier(0.22,1,0.36,1), --split-y 500ms cubic-bezier(0.22,1,0.36,1)'
                             }}
-                            className={`relative w-full h-full overflow-hidden ${
-                                isChromeHidden 
-                                    ? 'is-fullscreen-frame rounded-none border-transparent shadow-none !border-0 !shadow-none' 
+                            className={`relative w-full h-full overflow-hidden ${isChromeHidden
+                                    ? 'is-fullscreen-frame rounded-none border-transparent shadow-none !border-0 !shadow-none'
                                     : frameCurvature === 'square'
-                                    ? `rounded-none !rounded-none ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
-                                    : frameCurvature === 'cohesive'
-                                    ? `rounded-2xl ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
-                                    : uiScale === 'compact'
-                                    ? `rounded-[1.25rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
-                                    : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
-                            }`}
+                                        ? `rounded-none !rounded-none ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                                        : frameCurvature === 'cohesive'
+                                            ? `rounded-2xl ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                                            : uiScale === 'compact'
+                                                ? `rounded-[1.25rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                                                : `rounded-[2rem] ${isBright ? 'liquid-glass-bright' : 'liquid-glass-dark'}`
+                                }`}
                         >
-                    <DownloadPopup />
-                    <PermissionPromptPopup />
-                    <FindInPageBar />
-                    <ScreenshotBar />
-                    <ElementEraserHUD />
-                    <ReadAloudPlayer />
-                    <SnippingOverlay />
-                    <LazyPopoverGate when={isReaderOpen || isReaderClosing}>
-                        <ReaderModeOverlay />
-                    </LazyPopoverGate>
-                    <BrowserDialogOverlay />
+                            <DownloadPopup />
+                            <PermissionPromptPopup />
+                            <FindInPageBar />
+                            <ScreenshotBar />
+                            <ElementEraserHUD />
+                            <ReadAloudPlayer />
+                            <SnippingOverlay />
+                            <LazyPopoverGate when={isReaderOpen || isReaderClosing}>
+                                <ReaderModeOverlay />
+                            </LazyPopoverGate>
+                            <BrowserDialogOverlay />
 
-                    {/* UNIFIED FULL-VIEWPORT SPACES & WEBVIEW LAYER (ZERO RELOADS) */}
-                    <div 
-                        ref={spacesLayerRef}
-                        onClick={() => { if (isSplitView) setFocusedPane('left'); }}
-                        onScroll={(e) => {
-                            if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0;
-                            if (e.currentTarget.scrollTop !== 0) e.currentTarget.scrollTop = 0;
-                        }}
-                        style={{ contain: 'strict', overflow: 'clip' }}
-                        className={`absolute inset-0 w-full h-full ${isDraggingSplit ? 'pointer-events-none select-none' : ''}`}
-                    >
-                        <div 
-                            className={`absolute inset-y-0 left-0 flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
-                            style={{ 
-                                width: `${visibleSpaces.length * 100}%`,
-                                transform: `translateX(-${activeIndex * (100 / visibleSpaces.length)}%)` 
-                            }}
-                        >
-                            {[...visibleSpaces].sort((a, b) => String(a.id).localeCompare(String(b.id))).map(sp => {
-                                const isActive = activeSpace === sp.id;
-                                const isEmpty = isSpaceEmpty(sp.id);
-                                const isSpaceTor = sp.id === 'tor';
-                                const isSpaceGhost = sp.id === 'ghost';
-                                const visualOrder = visibleSpaces.findIndex(v => v.id === sp.id);
-                                const zenRect = (isActive && isSplitView) ? slot0Rect : { left: '0%', top: '0%', width: '100%', height: '100%' };
+                            {/* UNIFIED FULL-VIEWPORT SPACES & WEBVIEW LAYER (ZERO RELOADS) */}
+                            <div
+                                ref={spacesLayerRef}
+                                onClick={() => { if (isSplitView) setFocusedPane('left'); }}
+                                onScroll={(e) => {
+                                    if (e.currentTarget.scrollLeft !== 0) e.currentTarget.scrollLeft = 0;
+                                    if (e.currentTarget.scrollTop !== 0) e.currentTarget.scrollTop = 0;
+                                }}
+                                style={{ contain: 'strict', overflow: 'clip' }}
+                                className={`absolute inset-0 w-full h-full ${isDraggingSplit ? 'pointer-events-none select-none' : ''}`}
+                            >
+                                <div
+                                    className={`absolute inset-y-0 left-0 flex ${isReducedMotion || isSwipeEnabled === false ? 'transition-none' : 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                                    style={{
+                                        width: `${visibleSpaces.length * 100}%`,
+                                        transform: `translateX(-${activeIndex * (100 / visibleSpaces.length)}%)`
+                                    }}
+                                >
+                                    {[...visibleSpaces].sort((a, b) => String(a.id).localeCompare(String(b.id))).map(sp => {
+                                        const isActive = activeSpace === sp.id;
+                                        const isEmpty = isSpaceEmpty(sp.id);
+                                        const isSpaceTor = sp.id === 'tor';
+                                        const isSpaceGhost = sp.id === 'ghost';
+                                        const visualOrder = visibleSpaces.findIndex(v => v.id === sp.id);
+                                        const zenRect = (isActive && isSplitView) ? slot0Rect : { left: '0%', top: '0%', width: '100%', height: '100%' };
+
+                                        return (
+                                            <div
+                                                key={sp.id}
+                                                className={`flex-shrink-0 h-full flex flex-col items-center justify-center relative overflow-hidden ${isActive ? 'pointer-events-auto' : 'pointer-events-none select-none'
+                                                    } ${isSpaceGhost || isSpaceTor ? 'text-white' : (!isBright ? 'text-white' : 'text-zinc-900')
+                                                    }`}
+                                                style={{ width: `${100 / visibleSpaces.length}%`, order: visualOrder >= 0 ? visualOrder : 0 }}
+                                                aria-hidden={!isActive}
+                                                {...(!isActive ? { inert: '' } : {})}
+                                            >
+                                                {isEmpty && (
+                                                    <div
+                                                        key="dash"
+                                                        className={`absolute z-10 ${isActive ? 'pointer-events-auto' : 'pointer-events-none'}`}
+                                                        style={{
+                                                            left: zenRect.left,
+                                                            top: zenRect.top,
+                                                            width: zenRect.width,
+                                                            height: zenRect.height,
+                                                            transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
+                                                                ? 'none'
+                                                                : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1)'
+                                                        }}
+                                                    >
+                                                        {renderZenDashboard(sp.id)}
+                                                    </div>
+                                                )}
+                                                <div
+                                                    key="bg"
+                                                    className={`absolute inset-0 pointer-events-none z-0 ${isSpaceTor
+                                                            ? 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] opacity-30 invert'
+                                                            : (isSpaceGhost
+                                                                ? 'bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] opacity-20 invert'
+                                                                : `bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] ${!isBright ? 'opacity-20 invert' : ''}`)
+                                                        }`}
+                                                    style={{ backgroundSize: '24px 24px', opacity: isEmpty ? (isSpaceTor ? 0.3 : 1) : 0.2 }}
+                                                />
+                                                <div
+                                                    key="wv"
+                                                    className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                                                >
+                                                    <WebViewContainer space={sp.id} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* SECONDARY SPLIT PANE OVERLAYS (HEADER BARS & LAUNCHERS) */}
+                            {secondarySlotIndices.map((slotIdx) => {
+                                const slotTab = effectiveSlots[slotIdx] || null;
+                                const rectCss = getSlotRectCss({
+                                    isSplitView: renderSplitActive,
+                                    splitOrientation: effectiveSplitOrientation,
+                                    isSplitLeft,
+                                    slotIndex: slotIdx
+                                });
+                                if (!rectCss.visible) return null;
+
+                                const isSlotFocused = isSplitView && focusedSlotIndex === slotIdx;
+                                const paneBarHeight = effectiveIsQuad ? 'h-[34px]' : 'h-[36px]';
+                                const slotHeaderBg = isBright ? 'rgba(250, 250, 252, 0.96)' : 'rgba(16, 17, 24, 0.96)';
+                                const slotHeaderBorder = isBright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
 
                                 return (
-                                    <div 
-                                        key={sp.id} 
-                                        className={`flex-shrink-0 h-full flex flex-col items-center justify-center relative overflow-hidden ${
-                                            isActive ? 'pointer-events-auto' : 'pointer-events-none select-none'
-                                        } ${
-                                            isSpaceGhost || isSpaceTor ? 'text-white' : (!isBright ? 'text-white' : 'text-zinc-900')
-                                        }`}
-                                        style={{ width: `${100 / visibleSpaces.length}%`, order: visualOrder >= 0 ? visualOrder : 0 }}
-                                        aria-hidden={!isActive}
-                                        {...(!isActive ? { inert: '' } : {})}
+                                    <div
+                                        key={`split-overlay-${slotIdx}-${splitFadeNonce}`}
+                                        id={slotIdx === 1 ? 'tour-splitview-rightpane' : `qbrowse-split-pane-${slotIdx}`}
+                                        onMouseDown={() => { if (isSplitView) setFocusedPane(slotIndexToFocusedPane(slotIdx)); }}
+                                        style={{
+                                            left: rectCss.left,
+                                            top: rectCss.top,
+                                            width: rectCss.width,
+                                            height: rectCss.height,
+                                            opacity: isSplitClosing ? 0 : 1,
+                                            transform: isSplitClosing ? 'scale(0.96)' : 'scale(1)',
+                                            transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
+                                                ? 'opacity 220ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
+                                                : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1), opacity 280ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
+                                        }}
+                                        className={`absolute z-20 overflow-hidden ${slotTab || isSplitClosing ? 'pointer-events-none' : 'pointer-events-auto'} ${(!isReducedMotion && splitFadeNonce > 0 && !isSplitClosing) ? 'animate-pane-fade-in' : ''}`}
                                     >
-                                        {isEmpty && (
+                                        {slotTab ? (
+                                            /* Slim opaque pane header bar; webview below remains 100% interactive */
                                             <div
-                                                key="dash"
-                                                className={`absolute z-10 ${isActive ? 'pointer-events-auto' : 'pointer-events-none'}`}
                                                 style={{
-                                                    left: zenRect.left,
-                                                    top: zenRect.top,
-                                                    width: zenRect.width,
-                                                    height: zenRect.height,
-                                                    transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
-                                                        ? 'none'
-                                                        : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1)'
+                                                    backgroundColor: slotHeaderBg,
+                                                    borderBottom: `1px solid ${slotHeaderBorder}`,
+                                                    boxShadow: isSlotFocused ? 'inset 0 -1.5px 0 0 var(--accent)' : 'none'
                                                 }}
+                                                className={`pointer-events-auto ${paneBarHeight} px-3 flex items-center justify-between text-xs transition-colors ${isReducedMotion ? '' : 'animate-slide-down-fade'}`}
                                             >
-                                                {renderZenDashboard(sp.id)}
+                                                <div className="flex items-center gap-2 truncate min-w-0 pr-2">
+                                                    {isQuadSplit && (
+                                                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${isSlotFocused
+                                                                ? 'bg-accent text-zinc-950'
+                                                                : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/60')
+                                                            }`}>
+                                                            P{slotIdx + 1}
+                                                        </span>
+                                                    )}
+                                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10'
+                                                        }`}>
+                                                        {getSafeFaviconUrl(slotTab.url, settings, 32) ? (
+                                                            <img
+                                                                src={getSafeFaviconUrl(slotTab.url, settings, 32)}
+                                                                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                                                                onError={e => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            <Globe size={11} className={isBright ? 'text-zinc-600' : 'text-white/55'} />
+                                                        )}
+                                                    </div>
+                                                    <span className="font-semibold truncate text-xs">{slotTab.title}</span>
+                                                    {!isQuadSplit && slotTab.url && (
+                                                        <span className={`hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full border truncate max-w-[140px] ${isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/55'
+                                                            }`}>
+                                                            {slotTab.url.replace(/^https?:\/\//, '').split('/')[0]}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleSwapPanes(e, 0, slotIdx)}
+                                                        className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${isBright
+                                                                ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                                                : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
+                                                            }`}
+                                                        title={t('chrome.swapPanesTooltip', null, 'Swap with Primary Pane')}
+                                                    >
+                                                        <ArrowLeftRight size={11} className="transition-transform duration-300 hover:rotate-180" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSplitPaneTabId(slotIdx, null);
+                                                        }}
+                                                        className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${isBright
+                                                                ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
+                                                                : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
+                                                            }`}
+                                                        title={t('chrome.changeSplitTabTooltip', null, 'Change Split Tab')}
+                                                    >
+                                                        <Search size={11} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (isQuadSplit) {
+                                                                setSplitPaneTabId(slotIdx, null);
+                                                            } else {
+                                                                toggleSplitView();
+                                                            }
+                                                        }}
+                                                        className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${isBright
+                                                                ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/25'
+                                                                : 'border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/75 hover:text-rose-300'
+                                                            }`}
+                                                        title={isQuadSplit ? t('chrome.clearSplitSlotTooltip', null, 'Clear Pane') : t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
+                                                    >
+                                                        <X size={11} />
+                                                    </button>
+                                                </div>
                                             </div>
+                                        ) : (
+                                            <React.Suspense fallback={null}>
+                                                <SplitPaneLauncher
+                                                    slotIdx={slotIdx}
+                                                    isFocusedSlot={isSlotFocused}
+                                                    isQuadSplit={isQuadSplit}
+                                                    isVerticalSplit={isVerticalSplit}
+                                                    isSplitLeft={isSplitLeft}
+                                                    isBright={isBright}
+                                                    isTor={isTor}
+                                                    isDark={!isBright}
+                                                    isReducedMotion={isReducedMotion}
+                                                    zoomLevel={zoomLevel}
+                                                    availableTabs={availableRightTabs}
+                                                    settings={settings}
+                                                    resolvedLanguage={resolvedLanguage}
+                                                    onSelectTab={(tabId) => setSplitPaneTabId(slotIdx, tabId)}
+                                                    onOpenUrl={(url, title) => handleOpenSplitUrl(url, slotIdx, title)}
+                                                />
+                                            </React.Suspense>
                                         )}
-                                        <div 
-                                            key="bg" 
-                                            className={`absolute inset-0 pointer-events-none z-0 ${
-                                                isSpaceTor 
-                                                    ? 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_1px,transparent_1px)] opacity-30 invert' 
-                                                    : (isSpaceGhost 
-                                                        ? 'bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] opacity-20 invert' 
-                                                        : `bg-[radial-gradient(circle_at_center,rgba(0,0,0,0.04)_1px,transparent_1px)] ${!isBright ? 'opacity-20 invert' : ''}`)
-                                            }`} 
-                                            style={{ backgroundSize: '24px 24px', opacity: isEmpty ? (isSpaceTor ? 0.3 : 1) : 0.2 }}
-                                        />
-                                        <div 
-                                            key="wv" 
-                                            className={`absolute inset-0 ${isReducedMotion ? 'transition-none' : 'transition-opacity duration-300'} ${isEmpty ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                                        >
-                                            <WebViewContainer space={sp.id} />
-                                        </div>
                                     </div>
                                 );
                             })}
+
+                            {/* FULLSCREEN MOUSE TRAP OVERLAY DURING DRAGGING */}
+                            {isDraggingSplit && (
+                                <div
+                                    className={`fixed inset-0 z-[99999] select-none bg-transparent ${dragAxisRef.current === 'both'
+                                            ? 'cursor-move'
+                                            : (dragAxisRef.current === 'y' ? 'cursor-row-resize' : 'cursor-col-resize')
+                                        }`}
+                                />
+                            )}
+
+                            {/* RESIZABLE SPLIT HAIRLINES + SEGMENTED FLOATING PILLS */}
+                            {renderSplitActive && (
+                                <>
+                                    {/* Vertical Divider Hairline (Horizontal & Quad) */}
+                                    {(!effectiveIsVertical || effectiveIsQuad) && (
+                                        <div
+                                            onMouseDown={(e) => handleSplitMouseDown(e, 'x')}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                triggerSplitAxisAnim(520);
+                                                setSplitRatio(50);
+                                                if (isQuadSplit) setSplitRatioY(50);
+                                                showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                            }}
+                                            style={{
+                                                left: 'var(--split-x, 50%)',
+                                                opacity: isSplitClosing ? 0 : 1,
+                                                pointerEvents: isSplitClosing ? 'none' : undefined,
+                                                transition: 'opacity 280ms ease-out',
+                                                ...(isSplitLeft && !effectiveIsQuad ? { left: 'calc(100% - var(--split-x, 50%))' } : {})
+                                            }}
+                                            className="absolute top-0 bottom-0 w-3 -ml-1.5 z-40 cursor-col-resize flex items-center justify-center group"
+                                            title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
+                                        >
+                                            <div className={`w-[1px] h-full pointer-events-none transition-all duration-200 ${isDraggingSplit
+                                                    ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
+                                                    : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
+                                                }`} />
+                                            {!effectiveIsQuad && (
+                                                <div
+                                                    onMouseEnter={openSplitMenuHover}
+                                                    onMouseLeave={scheduleSplitMenuClose}
+                                                    style={{
+                                                        backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
+                                                        borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
+                                                    }}
+                                                    className={`absolute w-4 h-10 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
+                                                        }`}
+                                                >
+                                                    <div className="flex flex-col gap-0.5 items-center pointer-events-none">
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Horizontal Divider Hairline (Vertical & Quad) */}
+                                    {(effectiveIsVertical || effectiveIsQuad) && (
+                                        <div
+                                            onMouseDown={(e) => handleSplitMouseDown(e, 'y')}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                triggerSplitAxisAnim(520);
+                                                setSplitRatioY(50);
+                                                if (isQuadSplit) setSplitRatio(50);
+                                                showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                            }}
+                                            style={{
+                                                top: 'var(--split-y, 50%)',
+                                                opacity: isSplitClosing ? 0 : 1,
+                                                pointerEvents: isSplitClosing ? 'none' : undefined,
+                                                transition: 'opacity 280ms ease-out'
+                                            }}
+                                            className="absolute left-0 right-0 h-3 -mt-1.5 z-40 cursor-row-resize flex items-center justify-center group"
+                                            title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
+                                        >
+                                            <div className={`h-[1px] w-full pointer-events-none transition-all duration-200 ${isDraggingSplit
+                                                    ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
+                                                    : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
+                                                }`} />
+                                            {!effectiveIsQuad && (
+                                                <div
+                                                    onMouseEnter={openSplitMenuHover}
+                                                    onMouseLeave={scheduleSplitMenuClose}
+                                                    style={{
+                                                        backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
+                                                        borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
+                                                    }}
+                                                    className={`absolute w-10 h-4 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
+                                                        }`}
+                                                >
+                                                    <div className="flex flex-row gap-0.5 items-center pointer-events-none">
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                        <div className="w-1 h-1 rounded-full bg-current opacity-65" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Quad Center Crosshair Handle */}
+                                    {effectiveIsQuad && (
+                                        <div
+                                            onMouseDown={(e) => handleSplitMouseDown(e, 'both')}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                triggerSplitAxisAnim(520);
+                                                setSplitRatio(50);
+                                                setSplitRatioY(50);
+                                                showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
+                                            }}
+                                            onMouseEnter={openSplitMenuHover}
+                                            onMouseLeave={scheduleSplitMenuClose}
+                                            style={{
+                                                left: 'var(--split-x, 50%)',
+                                                top: 'var(--split-y, 50%)',
+                                                opacity: isSplitClosing ? 0 : 1,
+                                                pointerEvents: isSplitClosing ? 'none' : undefined,
+                                                transition: 'opacity 280ms ease-out',
+                                                backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.96)' : 'rgba(20,21,30,0.96)'),
+                                                borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)')
+                                            }}
+                                            className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border z-40 cursor-move flex items-center justify-center shadow-lg transition-transform duration-200 ${isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-110'
+                                                }`}
+                                            title={t('chrome.dragResizeQuadTooltip', null, 'Drag to resize 2×2 grid • Click for options • Double-click to reset')}
+                                        >
+                                            <LayoutGrid size={12} className="pointer-events-none opacity-80" />
+                                        </div>
+                                    )}
+
+                                    {/* Segmented Floating Split Divider Pills (2-Row Staggered Spring Stack) */}
+                                    {isSplitView && !isSplitClosing && (
+                                        <div
+                                            onMouseEnter={openSplitMenuHover}
+                                            onMouseLeave={scheduleSplitMenuClose}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onDoubleClick={(e) => e.stopPropagation()}
+                                            style={{
+                                                left: isVerticalSplit ? '50%' : `clamp(100px, ${dividerXPercent}%, calc(100% - 100px))`,
+                                                top: isVerticalSplit
+                                                    ? `clamp(48px, calc(${dividerYPercent}% + 14px), calc(100% - 82px))`
+                                                    : (isQuadSplit
+                                                        ? `clamp(48px, calc(${dividerYPercent}% + 18px), calc(100% - 82px))`
+                                                        : 'calc(50% + 22px)')
+                                            }}
+                                            className={`absolute -translate-x-1/2 z-50 pt-1.5 ${isMenuOpen
+                                                    ? 'pointer-events-auto'
+                                                    : 'pointer-events-none'
+                                                }`}
+                                        >
+                                            <div className="flex flex-col items-center gap-1">
+                                                {/* Row 1: Layout + Ratio SlidingPillSwitchers */}
+                                                <div className={`flex items-center justify-center gap-1 transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${isMenuOpen
+                                                        ? 'opacity-100 translate-y-0 scale-100'
+                                                        : 'opacity-0 -translate-y-1.5 scale-95'
+                                                    }`}>
+                                                    <SlidingPillSwitcher
+                                                        size="xs"
+                                                        opaque
+                                                        isBright={isBright}
+                                                        value={splitOrientation}
+                                                        onChange={handleSelectSplitLayout}
+                                                        options={[
+                                                            { id: 'horizontal', icon: SplitSquareHorizontal, title: t('chrome.splitHorizontalTooltip', null, 'Side-by-Side (2-Col)') },
+                                                            { id: 'vertical', icon: SplitSquareVertical, title: t('chrome.splitVerticalTooltip', null, 'Stacked (2-Row)') },
+                                                            { id: 'quad', icon: LayoutGrid, title: t('chrome.splitQuadTooltip', null, 'Quad Grid (2×2)') }
+                                                        ]}
+                                                    />
+
+                                                    <SlidingPillSwitcher
+                                                        size="xs"
+                                                        opaque
+                                                        allowNone
+                                                        isBright={isBright}
+                                                        className="font-mono"
+                                                        value={activePreset}
+                                                        onChange={(pct) => {
+                                                            triggerSplitAxisAnim(520);
+                                                            if (isQuadSplit) {
+                                                                setSplitRatio(pct);
+                                                                setSplitRatioY(pct);
+                                                            } else if (isVerticalSplit) {
+                                                                setSplitRatioY(pct);
+                                                            } else {
+                                                                setSplitRatio(pct);
+                                                            }
+                                                        }}
+                                                        options={[
+                                                            { id: 30, label: '30', title: '30 / 70' },
+                                                            { id: 50, label: '50', title: t('chrome.splitResetTooltip', null, 'Reset 50/50') },
+                                                            { id: 70, label: '70', title: '70 / 30' }
+                                                        ]}
+                                                    />
+                                                </div>
+
+                                                {/* Row 2: Centered Quick Actions Capsule (staggered 45ms reveal) */}
+                                                <div
+                                                    style={pillOpaqueStyle}
+                                                    className={`h-7 flex items-center justify-center gap-0.5 p-0.5 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${isMenuOpen
+                                                            ? 'opacity-100 translate-y-0 scale-100 delay-[45ms]'
+                                                            : 'opacity-0 -translate-y-1.5 scale-95 delay-0'
+                                                        }`}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleSwapPanes(e, 0, 1)}
+                                                        disabled={!hasAnySecondaryTab}
+                                                        className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                                            }`}
+                                                        title={t('chrome.swapPanesTooltip', null, 'Swap Panes (Ctrl+Alt+\\)')}
+                                                    >
+                                                        <ArrowLeftRight size={11} className="transition-transform duration-300 group-hover/btn:rotate-180" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleReloadBothSplitPanes}
+                                                        className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                                            }`}
+                                                        title={t('chrome.splitReloadBothTooltip', null, 'Reload All Panes')}
+                                                    >
+                                                        <RefreshCw size={11} className="transition-transform duration-300 group-hover/btn:rotate-90" />
+                                                    </button>
+                                                    {hasAnySecondaryTab && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => handlePromoteSecondaryPane(e, splitSlots[1] ? 1 : ([2, 3].find(i => splitSlots[i]) || 1))}
+                                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
+                                                                }`}
+                                                            title={t('chrome.splitKeepSecondaryTooltip', null, 'Focus Secondary as Full Tab')}
+                                                        >
+                                                            <Maximize size={11} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setIsSplitMenuPinned(false);
+                                                            toggleSplitView();
+                                                        }}
+                                                        className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${isBright ? 'hover:bg-rose-500/15 hover:text-rose-600' : 'hover:bg-rose-500/20 hover:text-rose-300'
+                                                            }`}
+                                                        title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
+                                                    >
+                                                        <X size={11} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
-
-                    {/* SECONDARY SPLIT PANE OVERLAYS (HEADER BARS & LAUNCHERS) */}
-                    {secondarySlotIndices.map((slotIdx) => {
-                        const slotTab = effectiveSlots[slotIdx] || null;
-                        const rectCss = getSlotRectCss({
-                            isSplitView: renderSplitActive,
-                            splitOrientation: effectiveSplitOrientation,
-                            isSplitLeft,
-                            slotIndex: slotIdx
-                        });
-                        if (!rectCss.visible) return null;
-
-                        const isSlotFocused = isSplitView && focusedSlotIndex === slotIdx;
-                        const paneBarHeight = effectiveIsQuad ? 'h-[34px]' : 'h-[36px]';
-                        const slotHeaderBg = isBright ? 'rgba(250, 250, 252, 0.96)' : 'rgba(16, 17, 24, 0.96)';
-                        const slotHeaderBorder = isBright ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
-
-                        return (
-                            <div
-                                key={`split-overlay-${slotIdx}-${splitFadeNonce}`}
-                                id={slotIdx === 1 ? 'tour-splitview-rightpane' : `qbrowse-split-pane-${slotIdx}`}
-                                onMouseDown={() => { if (isSplitView) setFocusedPane(slotIndexToFocusedPane(slotIdx)); }}
-                                style={{
-                                    left: rectCss.left,
-                                    top: rectCss.top,
-                                    width: rectCss.width,
-                                    height: rectCss.height,
-                                    opacity: isSplitClosing ? 0 : 1,
-                                    transform: isSplitClosing ? 'scale(0.96)' : 'scale(1)',
-                                    transition: (isDraggingSplit || isSplitAxisAnimating || isReducedMotion)
-                                        ? 'opacity 220ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
-                                        : 'left 340ms cubic-bezier(0.22,1,0.36,1), top 340ms cubic-bezier(0.22,1,0.36,1), width 340ms cubic-bezier(0.22,1,0.36,1), height 340ms cubic-bezier(0.22,1,0.36,1), opacity 280ms ease-out, transform 300ms cubic-bezier(0.22,1,0.36,1)'
-                                }}
-                                className={`absolute z-20 overflow-hidden ${slotTab || isSplitClosing ? 'pointer-events-none' : 'pointer-events-auto'} ${(!isReducedMotion && splitFadeNonce > 0 && !isSplitClosing) ? 'animate-pane-fade-in' : ''}`}
-                            >
-                                {slotTab ? (
-                                    /* Slim opaque pane header bar; webview below remains 100% interactive */
-                                    <div
-                                        style={{
-                                            backgroundColor: slotHeaderBg,
-                                            borderBottom: `1px solid ${slotHeaderBorder}`,
-                                            boxShadow: isSlotFocused ? 'inset 0 -1.5px 0 0 var(--accent)' : 'none'
-                                        }}
-                                        className={`pointer-events-auto ${paneBarHeight} px-3 flex items-center justify-between text-xs transition-colors ${isReducedMotion ? '' : 'animate-slide-down-fade'}`}
-                                    >
-                                        <div className="flex items-center gap-2 truncate min-w-0 pr-2">
-                                            {isQuadSplit && (
-                                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                                                    isSlotFocused
-                                                        ? 'bg-accent text-zinc-950'
-                                                        : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/60')
-                                                }`}>
-                                                    P{slotIdx + 1}
-                                                </span>
-                                            )}
-                                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                                                isBright ? 'bg-black/[0.04] border-black/[0.08]' : 'bg-white/[0.06] border-white/10'
-                                            }`}>
-                                                {getSafeFaviconUrl(slotTab.url, settings, 32) ? (
-                                                    <img
-                                                        src={getSafeFaviconUrl(slotTab.url, settings, 32)}
-                                                        className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                                                        onError={e => { e.target.style.display = 'none'; }}
-                                                    />
-                                                ) : (
-                                                    <Globe size={11} className={isBright ? 'text-zinc-600' : 'text-white/55'} />
-                                                )}
-                                            </div>
-                                            <span className="font-semibold truncate text-xs">{slotTab.title}</span>
-                                            {!isQuadSplit && slotTab.url && (
-                                                <span className={`hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full border truncate max-w-[140px] ${
-                                                    isBright ? 'bg-black/[0.04] border-black/[0.08] text-zinc-600' : 'bg-white/[0.04] border-white/[0.06] text-white/55'
-                                                }`}>
-                                                    {slotTab.url.replace(/^https?:\/\//, '').split('/')[0]}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => handleSwapPanes(e, 0, slotIdx)}
-                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright
-                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
-                                                        : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
-                                                }`}
-                                                title={t('chrome.swapPanesTooltip', null, 'Swap with Primary Pane')}
-                                            >
-                                                <ArrowLeftRight size={11} className="transition-transform duration-300 hover:rotate-180" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setSplitPaneTabId(slotIdx, null);
-                                                }}
-                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright
-                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.06]'
-                                                        : 'border-white/[0.08] hover:border-white/20 bg-white/[0.04] hover:bg-white/[0.08] text-white/75 hover:text-white'
-                                                }`}
-                                                title={t('chrome.changeSplitTabTooltip', null, 'Change Split Tab')}
-                                            >
-                                                <Search size={11} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (isQuadSplit) {
-                                                        setSplitPaneTabId(slotIdx, null);
-                                                    } else {
-                                                        toggleSplitView();
-                                                    }
-                                                }}
-                                                className={`w-6 h-6 rounded-full border transition active:scale-95 cursor-pointer flex items-center justify-center ${
-                                                    isBright
-                                                        ? 'border-black/[0.08] bg-black/[0.03] text-zinc-700 hover:text-rose-600 hover:bg-rose-500/10 hover:border-rose-500/25'
-                                                        : 'border-white/[0.08] hover:border-rose-500/30 bg-white/[0.04] hover:bg-rose-500/15 text-white/75 hover:text-rose-300'
-                                                }`}
-                                                title={isQuadSplit ? t('chrome.clearSplitSlotTooltip', null, 'Clear Pane') : t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
-                                            >
-                                                <X size={11} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <React.Suspense fallback={null}>
-                                        <SplitPaneLauncher
-                                            slotIdx={slotIdx}
-                                            isFocusedSlot={isSlotFocused}
-                                            isQuadSplit={isQuadSplit}
-                                            isVerticalSplit={isVerticalSplit}
-                                            isSplitLeft={isSplitLeft}
-                                            isBright={isBright}
-                                            isTor={isTor}
-                                            isDark={!isBright}
-                                            isReducedMotion={isReducedMotion}
-                                            zoomLevel={zoomLevel}
-                                            availableTabs={availableRightTabs}
-                                            settings={settings}
-                                            resolvedLanguage={resolvedLanguage}
-                                            onSelectTab={(tabId) => setSplitPaneTabId(slotIdx, tabId)}
-                                            onOpenUrl={(url, title) => handleOpenSplitUrl(url, slotIdx, title)}
-                                        />
-                                    </React.Suspense>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    {/* FULLSCREEN MOUSE TRAP OVERLAY DURING DRAGGING */}
-                    {isDraggingSplit && (
-                        <div
-                            className={`fixed inset-0 z-[99999] select-none bg-transparent ${
-                                dragAxisRef.current === 'both'
-                                    ? 'cursor-move'
-                                    : (dragAxisRef.current === 'y' ? 'cursor-row-resize' : 'cursor-col-resize')
-                            }`}
-                        />
-                    )}
-
-                    {/* RESIZABLE SPLIT HAIRLINES + SEGMENTED FLOATING PILLS */}
-                    {renderSplitActive && (
-                        <>
-                            {/* Vertical Divider Hairline (Horizontal & Quad) */}
-                            {(!effectiveIsVertical || effectiveIsQuad) && (
-                                <div
-                                    onMouseDown={(e) => handleSplitMouseDown(e, 'x')}
-                                    onDoubleClick={(e) => {
-                                        e.stopPropagation();
-                                        triggerSplitAxisAnim(520);
-                                        setSplitRatio(50);
-                                        if (isQuadSplit) setSplitRatioY(50);
-                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
-                                    }}
-                                    style={{
-                                        left: 'var(--split-x, 50%)',
-                                        opacity: isSplitClosing ? 0 : 1,
-                                        pointerEvents: isSplitClosing ? 'none' : undefined,
-                                        transition: 'opacity 280ms ease-out',
-                                        ...(isSplitLeft && !effectiveIsQuad ? { left: 'calc(100% - var(--split-x, 50%))' } : {})
-                                    }}
-                                    className="absolute top-0 bottom-0 w-3 -ml-1.5 z-40 cursor-col-resize flex items-center justify-center group"
-                                    title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
-                                >
-                                    <div className={`w-[1px] h-full pointer-events-none transition-all duration-200 ${
-                                        isDraggingSplit
-                                            ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
-                                            : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
-                                    }`} />
-                                    {!effectiveIsQuad && (
-                                        <div
-                                            onMouseEnter={openSplitMenuHover}
-                                            onMouseLeave={scheduleSplitMenuClose}
-                                            style={{
-                                                backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
-                                                borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
-                                            }}
-                                            className={`absolute w-4 h-10 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${
-                                                isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
-                                            }`}
-                                        >
-                                            <div className="flex flex-col gap-0.5 items-center pointer-events-none">
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Horizontal Divider Hairline (Vertical & Quad) */}
-                            {(effectiveIsVertical || effectiveIsQuad) && (
-                                <div
-                                    onMouseDown={(e) => handleSplitMouseDown(e, 'y')}
-                                    onDoubleClick={(e) => {
-                                        e.stopPropagation();
-                                        triggerSplitAxisAnim(520);
-                                        setSplitRatioY(50);
-                                        if (isQuadSplit) setSplitRatio(50);
-                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
-                                    }}
-                                    style={{
-                                        top: 'var(--split-y, 50%)',
-                                        opacity: isSplitClosing ? 0 : 1,
-                                        pointerEvents: isSplitClosing ? 'none' : undefined,
-                                        transition: 'opacity 280ms ease-out'
-                                    }}
-                                    className="absolute left-0 right-0 h-3 -mt-1.5 z-40 cursor-row-resize flex items-center justify-center group"
-                                    title={t('chrome.dragResizeSplit', null, 'Drag to resize • Double-click to reset 50/50')}
-                                >
-                                    <div className={`h-[1px] w-full pointer-events-none transition-all duration-200 ${
-                                        isDraggingSplit
-                                            ? 'bg-accent shadow-[0_0_12px_var(--accent)]'
-                                            : (!isBright ? 'bg-white/[0.10] group-hover:bg-accent/70' : 'bg-black/[0.10] group-hover:bg-accent/70')
-                                    }`} />
-                                    {!effectiveIsQuad && (
-                                        <div
-                                            onMouseEnter={openSplitMenuHover}
-                                            onMouseLeave={scheduleSplitMenuClose}
-                                            style={{
-                                                backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.95)' : 'rgba(20,21,30,0.95)'),
-                                                borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)')
-                                            }}
-                                            className={`absolute w-10 h-4 rounded-full border flex items-center justify-center transition-transform duration-200 shadow-md ${
-                                                isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-105'
-                                            }`}
-                                        >
-                                            <div className="flex flex-row gap-0.5 items-center pointer-events-none">
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                                <div className="w-1 h-1 rounded-full bg-current opacity-65" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Quad Center Crosshair Handle */}
-                            {effectiveIsQuad && (
-                                <div
-                                    onMouseDown={(e) => handleSplitMouseDown(e, 'both')}
-                                    onDoubleClick={(e) => {
-                                        e.stopPropagation();
-                                        triggerSplitAxisAnim(520);
-                                        setSplitRatio(50);
-                                        setSplitRatioY(50);
-                                        showToast(t('chrome.splitRatioReset', null, 'Split View: 50 / 50'));
-                                    }}
-                                    onMouseEnter={openSplitMenuHover}
-                                    onMouseLeave={scheduleSplitMenuClose}
-                                    style={{
-                                        left: 'var(--split-x, 50%)',
-                                        top: 'var(--split-y, 50%)',
-                                        opacity: isSplitClosing ? 0 : 1,
-                                        pointerEvents: isSplitClosing ? 'none' : undefined,
-                                        transition: 'opacity 280ms ease-out',
-                                        backgroundColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(255,255,255,0.96)' : 'rgba(20,21,30,0.96)'),
-                                        borderColor: isDraggingSplit ? 'var(--accent)' : (isBright ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)')
-                                    }}
-                                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border z-40 cursor-move flex items-center justify-center shadow-lg transition-transform duration-200 ${
-                                        isDraggingSplit ? 'text-zinc-950 scale-110 shadow-[0_0_20px_var(--accent)]' : 'hover:scale-110'
-                                    }`}
-                                    title={t('chrome.dragResizeQuadTooltip', null, 'Drag to resize 2×2 grid • Click for options • Double-click to reset')}
-                                >
-                                    <LayoutGrid size={12} className="pointer-events-none opacity-80" />
-                                </div>
-                            )}
-
-                            {/* Segmented Floating Split Divider Pills (2-Row Staggered Spring Stack) */}
-                            {isSplitView && !isSplitClosing && (
-                            <div
-                                onMouseEnter={openSplitMenuHover}
-                                onMouseLeave={scheduleSplitMenuClose}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onDoubleClick={(e) => e.stopPropagation()}
-                                style={{
-                                    left: isVerticalSplit ? '50%' : `clamp(100px, ${dividerXPercent}%, calc(100% - 100px))`,
-                                    top: isVerticalSplit
-                                        ? `clamp(48px, calc(${dividerYPercent}% + 14px), calc(100% - 82px))`
-                                        : (isQuadSplit
-                                            ? `clamp(48px, calc(${dividerYPercent}% + 18px), calc(100% - 82px))`
-                                            : 'calc(50% + 22px)')
-                                }}
-                                className={`absolute -translate-x-1/2 z-50 pt-1.5 ${
-                                    isMenuOpen
-                                        ? 'pointer-events-auto'
-                                        : 'pointer-events-none'
-                                }`}
-                            >
-                                <div className="flex flex-col items-center gap-1">
-                                    {/* Row 1: Layout + Ratio SlidingPillSwitchers */}
-                                    <div className={`flex items-center justify-center gap-1 transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                        isMenuOpen
-                                            ? 'opacity-100 translate-y-0 scale-100'
-                                            : 'opacity-0 -translate-y-1.5 scale-95'
-                                    }`}>
-                                        <SlidingPillSwitcher
-                                            size="xs"
-                                            opaque
-                                            isBright={isBright}
-                                            value={splitOrientation}
-                                            onChange={handleSelectSplitLayout}
-                                            options={[
-                                                { id: 'horizontal', icon: SplitSquareHorizontal, title: t('chrome.splitHorizontalTooltip', null, 'Side-by-Side (2-Col)') },
-                                                { id: 'vertical', icon: SplitSquareVertical, title: t('chrome.splitVerticalTooltip', null, 'Stacked (2-Row)') },
-                                                { id: 'quad', icon: LayoutGrid, title: t('chrome.splitQuadTooltip', null, 'Quad Grid (2×2)') }
-                                            ]}
-                                        />
-
-                                        <SlidingPillSwitcher
-                                            size="xs"
-                                            opaque
-                                            allowNone
-                                            isBright={isBright}
-                                            className="font-mono"
-                                            value={activePreset}
-                                            onChange={(pct) => {
-                                                triggerSplitAxisAnim(520);
-                                                if (isQuadSplit) {
-                                                    setSplitRatio(pct);
-                                                    setSplitRatioY(pct);
-                                                } else if (isVerticalSplit) {
-                                                    setSplitRatioY(pct);
-                                                } else {
-                                                    setSplitRatio(pct);
-                                                }
-                                            }}
-                                            options={[
-                                                { id: 30, label: '30', title: '30 / 70' },
-                                                { id: 50, label: '50', title: t('chrome.splitResetTooltip', null, 'Reset 50/50') },
-                                                { id: 70, label: '70', title: '70 / 30' }
-                                            ]}
-                                        />
-                                    </div>
-
-                                    {/* Row 2: Centered Quick Actions Capsule (staggered 45ms reveal) */}
-                                    <div
-                                        style={pillOpaqueStyle}
-                                        className={`h-7 flex items-center justify-center gap-0.5 p-0.5 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                                            isMenuOpen
-                                                ? 'opacity-100 translate-y-0 scale-100 delay-[45ms]'
-                                                : 'opacity-0 -translate-y-1.5 scale-95 delay-0'
-                                        }`}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleSwapPanes(e, 0, 1)}
-                                            disabled={!hasAnySecondaryTab}
-                                            className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed ${
-                                                isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
-                                            }`}
-                                            title={t('chrome.swapPanesTooltip', null, 'Swap Panes (Ctrl+Alt+\\)')}
-                                        >
-                                            <ArrowLeftRight size={11} className="transition-transform duration-300 group-hover/btn:rotate-180" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleReloadBothSplitPanes}
-                                            className={`group/btn w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
-                                                isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
-                                            }`}
-                                            title={t('chrome.splitReloadBothTooltip', null, 'Reload All Panes')}
-                                        >
-                                            <RefreshCw size={11} className="transition-transform duration-300 group-hover/btn:rotate-90" />
-                                        </button>
-                                        {hasAnySecondaryTab && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => handlePromoteSecondaryPane(e, splitSlots[1] ? 1 : ([2, 3].find(i => splitSlots[i]) || 1))}
-                                                className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
-                                                    isBright ? 'hover:bg-black/8 hover:text-zinc-950' : 'hover:bg-white/12 hover:text-white'
-                                                }`}
-                                                title={t('chrome.splitKeepSecondaryTooltip', null, 'Focus Secondary as Full Tab')}
-                                            >
-                                                <Maximize size={11} />
-                                            </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setIsSplitMenuPinned(false);
-                                                toggleSplitView();
-                                            }}
-                                            className={`w-6 h-6 rounded-full flex items-center justify-center transition active:scale-90 cursor-pointer ${
-                                                isBright ? 'hover:bg-rose-500/15 hover:text-rose-600' : 'hover:bg-rose-500/20 hover:text-rose-300'
-                                            }`}
-                                            title={t('chrome.closeSplitViewTooltip', null, 'Close Split View')}
-                                        >
-                                            <X size={11} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            </div>
-            );
+                );
             })()}
 
             {topBarPosition === 'bottom' && <TopBar />}
@@ -1834,12 +1853,11 @@ export default function MainFrame() {
             {/* FLOATING ZOOM HUDS (Page Zoom & Canvas Zoom) */}
             <div className="absolute bottom-8 right-8 z-[9990] flex flex-col items-end gap-2 pointer-events-none">
                 {/* CANVAS ZOOM HUD (Ctrl+Alt+Wheel / Ctrl+Alt++) */}
-                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    isCanvasZoomHUDVisible 
-                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isCanvasZoomHUDVisible
+                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
                         : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
-                }`}>
-                    <div 
+                    }`}>
+                    <div
                         style={getLiquidGlassInlineStyle(isBright)}
                         className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl transition-all ${getLiquidGlassSurfaceClasses(isBright)}`}
                     >
@@ -1848,7 +1866,7 @@ export default function MainFrame() {
                             {t('chrome.canvasZoom', null, 'Canvas Zoom:')} <span className="font-mono font-bold">{canvasZoomLevel}%</span>
                         </span>
                         {canvasZoomLevel !== 100 && (
-                            <button 
+                            <button
                                 onClick={handleResetCanvasZoom}
                                 className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
                                 title={t('chrome.resetCanvasZoomTooltip', null, 'Reset Canvas Zoom (Ctrl+Alt+0)')}
@@ -1860,12 +1878,11 @@ export default function MainFrame() {
                 </div>
 
                 {/* PAGE ZOOM HUD */}
-                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    isZoomHUDVisible 
-                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+                <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isZoomHUDVisible
+                        ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
                         : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
-                }`}>
-                    <div 
+                    }`}>
+                    <div
                         style={getLiquidGlassInlineStyle(isBright)}
                         className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl transition-all ${getLiquidGlassSurfaceClasses(isBright)}`}
                     >
@@ -1874,26 +1891,24 @@ export default function MainFrame() {
                             {zoomLevel}%
                         </span>
                         <div className={`flex items-center gap-1 pl-2 border-l ${isBright ? 'border-black/10' : 'border-white/10'}`}>
-                            <button 
+                            <button
                                 onClick={() => zoomOut()}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
-                                    isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
-                                }`}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
+                                    }`}
                                 title={t('chrome.zoomOutTooltip', null, 'Zoom Out (Ctrl -)')}
                             >
                                 -
                             </button>
-                            <button 
+                            <button
                                 onClick={() => zoomIn()}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${
-                                    isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
-                                }`}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition active:scale-95 cursor-pointer ${isBright ? 'hover:bg-black/[0.06] text-zinc-800 hover:text-zinc-950' : 'hover:bg-white/10 text-white/85 hover:text-white'
+                                    }`}
                                 title={t('chrome.zoomInTooltip', null, 'Zoom In (Ctrl +)')}
                             >
                                 +
                             </button>
                             {zoomLevel !== 100 && (
-                                <button 
+                                <button
                                     onClick={() => resetZoom()}
                                     className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent hover:bg-accent/30 transition ml-1 active:scale-95 flex items-center gap-1 cursor-pointer"
                                     title={t('chrome.resetZoomCtrl0', null, 'Reset Zoom (Ctrl 0)')}
@@ -1908,15 +1923,17 @@ export default function MainFrame() {
 
             {/* TOAST POPUP (Minimalist Linear / Raycast Floating Bottom-Center Capsule - Portaled above modals) */}
             {(toast || isToastClosing) && typeof document !== 'undefined' && createPortal(
-                <div 
-                    role="status" 
+                <div
+                    role="status"
                     aria-live="polite"
-                    style={getLiquidGlassInlineStyle(isBright)}
-                    className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2 !rounded-full text-xs font-medium ${getLiquidGlassSurfaceClasses(isBright)} ${
-                        isToastClosing ? 'animate-toast-out' : 'animate-toast'
-                    } flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${
-                        isBright ? 'text-zinc-900' : 'text-white/95'
-                    }`}
+                    style={{
+                        ...getLiquidGlassInlineStyle(isBright),
+                        left: `${toastCenterX}px`,
+                        bottom: '24px'
+                    }}
+                    className={`fixed -translate-x-1/2 z-[99999] px-4 py-2 !rounded-full text-xs font-medium ${getLiquidGlassSurfaceClasses(isBright)} ${isToastClosing ? 'animate-toast-out' : 'animate-toast'
+                        } flex items-center gap-2.5 max-w-md pointer-events-none select-none tracking-wide ${isBright ? 'text-zinc-900' : 'text-white/95'
+                        }`}
                 >
                     {getToastIcon(toast, isBright)}
                     <span className="truncate leading-none">{typeof toast === 'object' && toast !== null ? (toast.message || toast.text || '') : toast}</span>
