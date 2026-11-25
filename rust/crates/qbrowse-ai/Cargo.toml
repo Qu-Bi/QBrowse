@@ -1,0 +1,32 @@
+[package]
+name = "qbrowse-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+dashmap.workspace = true
+flate2.workspace = true
+image.workspace = true
+lopdf.workspace = true
+once_cell.workspace = true
+quick-xml.workspace = true
+reqwest.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+tokio.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+reqwest = { workspace = true, features = ["native-tls"] }
+windows = { version = "0.58", features = ["Foundation", "Graphics_Imaging", "Media_Ocr", "Storage_Streams"] }
+
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { workspace = true, features = ["rustls-tls"] }
+
+[lib]
+name = "qbrowse_ai"
+path = "src/lib.rs"

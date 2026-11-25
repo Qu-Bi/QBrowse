@@ -100,7 +100,7 @@ export default function LocalFileViewer({ tab }) {
     }
 
     // If probing says directory or URL ends with slash
-    const isDir = probeResult?.isDirectory || (!probeResult?.isText && !probeResult?.base64 && !probeResult?.success && (url.endsWith('/') || url.endsWith('\\')));
+    const isDir = probeResult?.isDirectory || (!probeResult?.isText && !probeResult?.base64 && !probeResult?.streamUrl && !probeResult?.success && (url.endsWith('/') || url.endsWith('\\')));
 
     if (isDir) {
         return <LocalDirectoryPage url={url} onNavigate={handleNavigate} />;

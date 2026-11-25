@@ -1,0 +1,22 @@
+[package]
+name = "qbrowse-storage"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+dashmap.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+regex.workspace = true
+chrono.workspace = true
+scraper.workspace = true
+
+[lib]
+name = "qbrowse_storage"
+path = "src/lib.rs"

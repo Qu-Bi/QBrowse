@@ -2704,17 +2704,75 @@ let currentSmartDarkConfig = {
     excludeMedia: true
 };
 let smartDarkTimer = null;
+let smartDarkSettlingTimers = [];
 let isApplyingSmartDark = false;
 let observedDocEl = false;
 let observedBody = false;
+let observedHead = false;
+let observedSpaRoots = new WeakSet();
 let updateOAuthThemeGlobal = null;
+let lastSmartDarkStatusKey = '';
+
+function emitSmartDarkStatus({ isForceDark, isExcluded, isNativelyDark, isInverted }) {
+    try {
+        if (typeof window === 'undefined' || window !== window.top) return;
+        const url = window.location ? window.location.href : '';
+        const payload = {
+            isForceDark: Boolean(isForceDark),
+            isExcluded: Boolean(isExcluded),
+            isNativelyDark: Boolean(isNativelyDark),
+            isInverted: Boolean(isInverted),
+            url
+        };
+        const key = JSON.stringify(payload);
+        if (key === lastSmartDarkStatusKey) return;
+        lastSmartDarkStatusKey = key;
+        ipcRenderer.sendToHost('smart-dark-status', payload);
+    } catch (_) {}
+}
 
 function isInternalSmartDarkScheme(protocol) {
     const p = String(protocol || '').toLowerCase();
     return p === 'about:' || p === 'qbrowse:' || p === 'chrome:' || p === 'chrome-extension:' || p === 'devtools:' || p === 'data:' || p === 'blob:' || p === 'view-source:';
 }
 
+function isAppShellWindow() {
+    try {
+        if (typeof window === 'undefined') return false;
+        if (window.electronAPI) return true;
+        const loc = window.location;
+        if (!loc) return false;
+        if (loc.protocol === 'file:' && /index\.html$/i.test(loc.pathname || '')) return true;
+        if (loc.hostname === 'localhost' && (loc.port === '1420' || loc.port === '5173')) return true;
+        return false;
+    } catch (_) {
+        return false;
+    }
+}
+
+function clearSmartDarkSettlingTimers() {
+    for (let i = 0; i < smartDarkSettlingTimers.length; i++) {
+        clearTimeout(smartDarkSettlingTimers[i]);
+    }
+    smartDarkSettlingTimers = [];
+}
+
+function scheduleSmartDarkSettlingChecks() {
+    clearSmartDarkSettlingTimers();
+    if (!currentSmartDarkConfig.isForceDark || currentSmartDarkConfig.isExcluded) return;
+    const delays = [180, 500, 1200, 2500];
+    for (let i = 0; i < delays.length; i++) {
+        const id = setTimeout(() => {
+            if (currentSmartDarkConfig.isForceDark && !currentSmartDarkConfig.isExcluded) {
+                runSmartDark();
+            }
+        }, delays[i]);
+        smartDarkSettlingTimers.push(id);
+    }
+}
+
 function teardownSmartDark(docEl) {
+    clearSmartDarkSettlingTimers();
     if (smartDarkTimer) {
         clearTimeout(smartDarkTimer);
         smartDarkTimer = null;
@@ -2724,6 +2782,8 @@ function teardownSmartDark(docEl) {
         smartDarkObserver = null;
         observedDocEl = false;
         observedBody = false;
+        observedHead = false;
+        observedSpaRoots = new WeakSet();
     }
     const styleEl = document.getElementById('qbrowse-smart-dark-style');
     if (styleEl) styleEl.remove();
@@ -2806,10 +2866,23 @@ function runSmartDark() {
         const docEl = document.documentElement;
         if (!docEl) return;
 
+        if (isAppShellWindow()) {
+            docEl.classList.remove('qbrowse-smart-dark-active');
+            docEl.classList.remove('qbrowse-smart-dark-exclude-media');
+            teardownSmartDark(docEl);
+            return;
+        }
+
         const isInternalPage = isInternalSmartDarkScheme(window.location && window.location.protocol);
 
         if (!isForceDark || isExcluded || isInternalPage) {
             teardownSmartDark(docEl);
+            emitSmartDarkStatus({
+                isForceDark,
+                isExcluded,
+                isNativelyDark: false,
+                isInverted: false
+            });
             return;
         }
 
@@ -2982,7 +3055,7 @@ function runSmartDark() {
         }
 
         // 4. Inspect actual painted background luminance in visual top-to-bottom paint order
-        // (SPA root / main -> body -> html). First opaque background determines page tone.
+        // (SPA root / main -> body -> html), plus viewport paint-stack sampling for full-bleed dark wrappers.
         let foundExplicitBackground = false;
         if (!isNativelyDark) {
             const spaRoots = [
@@ -3019,6 +3092,51 @@ function runSmartDark() {
                     break;
                 } catch (_) {}
             }
+
+            // Paint-stack sampling via elementsFromPoint to catch dark full-viewport wrappers over white/transparent body
+            if (!isNativelyDark && typeof document.elementsFromPoint === 'function') {
+                try {
+                    const vw = window.innerWidth || docEl.clientWidth || 0;
+                    const vh = window.innerHeight || docEl.clientHeight || 0;
+                    if (vw >= 200 && vh >= 200) {
+                        const points = [
+                            [Math.round(vw * 0.5), Math.round(vh * 0.5)],
+                            [Math.round(vw * 0.18), Math.round(vh * 0.3)],
+                            [Math.round(vw * 0.82), Math.round(vh * 0.7)]
+                        ];
+                        const skipTags = new Set(['IMG', 'VIDEO', 'CANVAS', 'SVG', 'IFRAME', 'BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA', 'PATH', 'PICTURE']);
+                        let darkPoints = 0;
+                        let fullBleedDark = false;
+                        for (let p = 0; p < points.length; p++) {
+                            const stack = document.elementsFromPoint(points[p][0], points[p][1]) || [];
+                            for (let j = 0; j < stack.length; j++) {
+                                const el = stack[j];
+                                if (!el || skipTags.has(el.tagName)) continue;
+                                const st = window.getComputedStyle(el);
+                                const bg = parseSmartDarkCssColor(st.backgroundColor);
+                                if (!bg || bg.a < 0.5) continue;
+                                if (isCurrentlyActive && el === docEl && bg.r === 255 && bg.g === 255 && bg.b === 255 && bg.a >= 0.99) {
+                                    continue;
+                                }
+                                const rect = el.getBoundingClientRect();
+                                if (rect.width < vw * 0.3 || rect.height < vh * 0.3) continue;
+                                foundExplicitBackground = true;
+                                const lum = getSmartDarkLuminance(bg, 255);
+                                if (lum < 0.38) {
+                                    darkPoints++;
+                                    if (rect.width >= vw * 0.6 && rect.height >= vh * 0.6) {
+                                        fullBleedDark = true;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        if (fullBleedDark || darkPoints >= 2) {
+                            isNativelyDark = true;
+                        }
+                    }
+                } catch (_) {}
+            }
         }
 
         // 5. Dual color-scheme ("light dark" / "dark light") + prefers-color-scheme: dark + no explicit bg
@@ -3044,8 +3162,10 @@ function runSmartDark() {
             } catch (_) {}
         }
 
-        // Apply or remove dark mode with state-check to avoid unnecessary DOM writes
-        const shouldBeActive = !isNativelyDark;
+        // Hydration grace delay: if the document is still loading and hasn't shown native dark yet,
+        // wait for DOMContentLoaded + settling checks before applying inversion so SPAs don't flash-lock.
+        const isStillLoading = document.readyState === 'loading';
+        const shouldBeActive = isNativelyDark ? false : !isStillLoading;
         const isMediaClassActive = docEl.classList.contains('qbrowse-smart-dark-exclude-media');
         const desiredMediaClass = shouldBeActive && shouldExcludeMedia;
 
@@ -3101,7 +3221,14 @@ function runSmartDark() {
             }
         }
 
-        // Setup MutationObserver with loop-prevention and dynamic attachment
+        emitSmartDarkStatus({
+            isForceDark,
+            isExcluded,
+            isNativelyDark,
+            isInverted: shouldBeActive
+        });
+
+        // Setup MutationObserver with loop-prevention and dynamic attachment (html, body, head stylesheets, SPA roots)
         if (!smartDarkObserver) {
             smartDarkObserver = new MutationObserver((mutations) => {
                 if (isApplyingSmartDark) return;
@@ -3120,19 +3247,37 @@ function runSmartDark() {
                             isRelevant = true;
                             break;
                         }
+                    } else if (m.type === 'childList' && m.addedNodes && m.addedNodes.length > 0) {
+                        for (let i = 0; i < m.addedNodes.length; i++) {
+                            const node = m.addedNodes[i];
+                            if (!node || node.nodeType !== 1) continue;
+                            if (node.id === 'qbrowse-smart-dark-style') continue;
+                            const tag = node.tagName;
+                            if (tag === 'STYLE') {
+                                isRelevant = true;
+                            } else if (tag === 'LINK' && String(node.rel || '').toLowerCase().includes('stylesheet')) {
+                                isRelevant = true;
+                                node.addEventListener('load', () => {
+                                    if (smartDarkTimer) clearTimeout(smartDarkTimer);
+                                    smartDarkTimer = setTimeout(runSmartDark, 120);
+                                }, { once: true });
+                            }
+                        }
+                        if (isRelevant) break;
                     }
                 }
                 if (!isRelevant) return;
 
                 if (smartDarkTimer) clearTimeout(smartDarkTimer);
-                smartDarkTimer = setTimeout(runSmartDark, 220);
+                smartDarkTimer = setTimeout(runSmartDark, 180);
             });
         }
 
+        const attrFilter = ['class', 'style', 'data-theme', 'data-duet-theme', 'data-color-mode', 'data-bs-theme', 'theme', 'dark'];
         if (docEl && !observedDocEl) {
             smartDarkObserver.observe(docEl, {
                 attributes: true,
-                attributeFilter: ['class', 'style', 'data-theme', 'data-duet-theme', 'data-color-mode', 'data-bs-theme', 'theme', 'dark'],
+                attributeFilter: attrFilter,
                 attributeOldValue: true,
                 childList: false,
                 subtree: false
@@ -3143,12 +3288,41 @@ function runSmartDark() {
         if (body && !observedBody) {
             smartDarkObserver.observe(body, {
                 attributes: true,
-                attributeFilter: ['class', 'style', 'data-theme', 'data-duet-theme', 'data-color-mode', 'data-bs-theme', 'theme', 'dark'],
+                attributeFilter: attrFilter,
                 attributeOldValue: true,
                 childList: false,
                 subtree: false
             });
             observedBody = true;
+        }
+
+        if (document.head && !observedHead) {
+            smartDarkObserver.observe(document.head, {
+                childList: true,
+                subtree: false
+            });
+            observedHead = true;
+        }
+
+        const spaCandidates = [
+            document.getElementById('__next'),
+            document.getElementById('root'),
+            document.getElementById('app'),
+            document.querySelector('[data-reactroot]'),
+            document.querySelector('main')
+        ];
+        for (let i = 0; i < spaCandidates.length; i++) {
+            const rootEl = spaCandidates[i];
+            if (rootEl && !observedSpaRoots.has(rootEl)) {
+                smartDarkObserver.observe(rootEl, {
+                    attributes: true,
+                    attributeFilter: attrFilter,
+                    attributeOldValue: true,
+                    childList: false,
+                    subtree: false
+                });
+                observedSpaRoots.add(rootEl);
+            }
         }
     } catch (e) {}
 }
@@ -3160,17 +3334,37 @@ function checkSmartDark(isForceDark, isExcluded, excludeMedia = true) {
         excludeMedia: typeof excludeMedia === 'boolean' ? excludeMedia : true
     };
     runSmartDark();
+    scheduleSmartDarkSettlingChecks();
     if (typeof updateOAuthThemeGlobal === 'function') {
         updateOAuthThemeGlobal();
     }
 }
 
-window.addEventListener('DOMContentLoaded', runSmartDark);
-window.addEventListener('load', runSmartDark);
-window.addEventListener('popstate', runSmartDark);
-window.addEventListener('hashchange', runSmartDark);
+window.addEventListener('DOMContentLoaded', () => {
+    runSmartDark();
+    scheduleSmartDarkSettlingChecks();
+});
+window.addEventListener('load', () => {
+    runSmartDark();
+    scheduleSmartDarkSettlingChecks();
+});
+window.addEventListener('popstate', () => {
+    runSmartDark();
+    scheduleSmartDarkSettlingChecks();
+});
+window.addEventListener('hashchange', () => {
+    runSmartDark();
+    scheduleSmartDarkSettlingChecks();
+});
 
 ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded, excludeMedia } = {}) => {
+    if (isAppShellWindow()) {
+        if (document.documentElement) {
+            document.documentElement.classList.remove('qbrowse-smart-dark-active');
+            document.documentElement.classList.remove('qbrowse-smart-dark-exclude-media');
+        }
+        return;
+    }
     checkSmartDark(isForceDark, isExcluded, excludeMedia);
     if (typeof updateOAuthThemeGlobal === 'function') {
         updateOAuthThemeGlobal();
@@ -3178,7 +3372,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded, excludeMed
 });
 
 // Immediately query main process on preload startup for top-level frames so state is ready before DOM ready
-if (typeof window !== 'undefined' && window === window.top) {
+if (typeof window !== 'undefined' && window === window.top && !isAppShellWindow()) {
     try {
         ipcRenderer.invoke('get-smart-dark-state', window.location.href)
             .then(state => {
@@ -6510,6 +6704,51 @@ async function queryAdblockPageState() {
         ].join(',');
 
         let isCollapserAllowed = true;
+
+        // Scoped wp.pl interstitial / welcome-screen redirect ad auto-skipper
+        if (/(^|\.)wp\.pl$/i.test(hostname)) {
+            let wpInterstitialHandled = false;
+            const skipWpInterstitial = () => {
+                if (wpInterstitialHandled || !isCollapserAllowed) return;
+                try {
+                    const bodyText = (document.body && document.body.innerText) || '';
+                    if (!/REKLAMA\s*:\s*Przekierowanie/i.test(bodyText) && !/Przejdź teraz/i.test(bodyText)) {
+                        return;
+                    }
+                    const links = document.querySelectorAll('a, button');
+                    for (let i = 0; i < links.length; i++) {
+                        const el = links[i];
+                        const txt = (el.textContent || '').trim();
+                        if (/^Przejdź teraz/i.test(txt)) {
+                            wpInterstitialHandled = true;
+                            const overlay = el.closest('div[style*="fixed"], div[class*="welcome"], div[class*="interstitial"], div[class*="reklama"]') || document.body;
+                            if (overlay && overlay !== document.body) {
+                                overlay.style.setProperty('display', 'none', 'important');
+                            }
+                            if (el.tagName === 'A' && el.href && /^https?:/i.test(el.href)) {
+                                window.location.replace(el.href);
+                            } else {
+                                el.click();
+                            }
+                            return;
+                        }
+                    }
+                } catch (_) {}
+            };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', skipWpInterstitial, { once: true });
+            } else {
+                skipWpInterstitial();
+            }
+            const wpTimer = setInterval(() => {
+                if (wpInterstitialHandled) {
+                    clearInterval(wpTimer);
+                    return;
+                }
+                skipWpInterstitial();
+            }, 150);
+            setTimeout(() => clearInterval(wpTimer), 6000);
+        }
 
         function collapseElement(el) {
             if (!isCollapserAllowed || !el || el.dataset.qbCollapsed === 'true') return;

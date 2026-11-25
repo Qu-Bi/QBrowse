@@ -5,7 +5,7 @@ import useOmniboxEngine, { getCompletedSuggestionText } from '../../hooks/useOmn
 import OmniboxSuggestionsDropdown from '../common/OmniboxSuggestionsDropdown';
 import useUIStore from '../../store/useUIStore';
 import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
-import { formatTabCount } from '../../i18n/domains/chrome';
+import { formatTabCount } from '../../i18n/helpers.js';
 import { useTranslation } from '../../i18n/index';
 
 const isOverlayBlockingSplitLauncher = (state) => Boolean(

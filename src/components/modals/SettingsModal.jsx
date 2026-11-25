@@ -1861,7 +1861,7 @@ const SettingsModalContent = () => {
 
                                     {/* 5 Style Selector Pills (Flagship SlidingPillSwitcher) */}
                                     <SlidingPillSwitcher
-                                        options={TEXT_HIGHLIGHT_STYLES.map((st) => ({ id: st.id, label: st.label }))}
+                                        options={TEXT_HIGHLIGHT_STYLES.map((st) => ({ id: st.id, label: t('cfg.appearance.highlightStyles.' + st.id, null, st.label) }))}
                                         value={textHighlightStyle}
                                         onChange={(id) => setTextHighlightStyle(id)}
                                         isBright={isBright}
@@ -1886,12 +1886,12 @@ const SettingsModalContent = () => {
                                                             : (sw.hex === 'accent' ? (isBright ? 'border-black/10 bg-white text-zinc-800' : 'border-white/15 bg-white/[0.06] text-zinc-200') : '')
                                                     }`}
                                                     style={sw.hex === 'accent' ? undefined : { backgroundColor: displayBg }}
-                                                    title={sw.name}
+                                                    title={t('cfg.appearance.highlightSwatches.' + (sw.id === 'accent' ? 'accent' : sw.id.slice(1)), null, sw.name)}
                                                 >
                                                     {sw.hex === 'accent' ? (
                                                         <>
                                                             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: accentColor }} />
-                                                            <span className="text-[11px] font-medium">Accent</span>
+                                                            <span className="text-[11px] font-medium">{t('cfg.appearance.highlightAccentLabel', null, 'Accent')}</span>
                                                         </>
                                                     ) : (
                                                         active && <div className="w-2 h-2 bg-white rounded-full" />
@@ -7258,7 +7258,7 @@ const SettingsModalContent = () => {
                                         }`}
                                     >
                                         <HelpCircle size={13} className="text-accent" />
-                                        <span>Help Center (F1)</span>
+                                        <span>{t('cfg.about.helpCenterBtn', null, 'Help Center (F1)')}</span>
                                     </button>
                                     <button
                                         onClick={() => useUIStore.getState().openHelpModal('terms')}
@@ -7267,7 +7267,7 @@ const SettingsModalContent = () => {
                                         }`}
                                     >
                                         <FileText size={13} className="text-accent" />
-                                        <span>Terms of Service</span>
+                                        <span>{t('cfg.about.termsBtn', null, 'Terms of Service')}</span>
                                     </button>
                                     <button
                                         onClick={() => useUIStore.getState().openHelpModal('privacy')}
@@ -7276,7 +7276,7 @@ const SettingsModalContent = () => {
                                         }`}
                                     >
                                         <ShieldCheck size={13} className="text-emerald-400" />
-                                        <span>Privacy Policy</span>
+                                        <span>{t('cfg.about.privacyBtn', null, 'Privacy Policy')}</span>
                                     </button>
                                     <button
                                         onClick={() => useUIStore.getState().openHelpModal('licenses')}
@@ -7285,7 +7285,7 @@ const SettingsModalContent = () => {
                                         }`}
                                     >
                                         <Scale size={13} className="text-accent" />
-                                        <span>Open-Source Licenses</span>
+                                        <span>{t('cfg.about.licensesBtn', null, 'Open-Source Licenses')}</span>
                                     </button>
                                 </div>
                             </div>

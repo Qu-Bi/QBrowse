@@ -4,6 +4,7 @@ const path = require('path');
 const fsSync = require('fs');
 const fsPromisesDefault = require('fs/promises');
 const { execFileSync: defaultExecFileSync } = require('child_process');
+const rustBridge = require('./rustBridge.cjs');
 
 const ARCH_ALIASES = {
     x64: ['x64', 'amd64', 'x86_64'],
@@ -118,40 +119,15 @@ function comparePrerelease(preA, preB) {
 }
 
 function compareSemver(verA, verB) {
-    const cleanA = normalizeSemver(verA);
-    const cleanB = normalizeSemver(verB);
-    const dashIdxA = cleanA.indexOf('-');
-    const dashIdxB = cleanB.indexOf('-');
-    const mainA = dashIdxA === -1 ? cleanA : cleanA.slice(0, dashIdxA);
-    const preA = dashIdxA === -1 ? '' : cleanA.slice(dashIdxA + 1);
-    const mainB = dashIdxB === -1 ? cleanB : cleanB.slice(0, dashIdxB);
-    const preB = dashIdxB === -1 ? '' : cleanB.slice(dashIdxB + 1);
-
-    const partsA = mainA.split('.').map(n => parseInt(n, 10) || 0);
-    const partsB = mainB.split('.').map(n => parseInt(n, 10) || 0);
-    const len = Math.max(partsA.length, partsB.length, 3);
-
-    for (let i = 0; i < len; i++) {
-        const a = partsA[i] || 0;
-        const b = partsB[i] || 0;
-        if (a > b) return 1;
-        if (a < b) return -1;
-    }
-
-    return comparePrerelease(preA, preB);
+    return rustBridge.sysCompareSemver(String(verA || ''), String(verB || ''));
 }
 
 function normalizeLinuxArch(arch = process.arch) {
-    const raw = String(arch || 'x64').toLowerCase().trim();
-    if (raw === 'amd64' || raw === 'x86_64' || raw === 'x64') return 'x64';
-    if (raw === 'aarch64' || raw === 'arm64') return 'arm64';
-    if (raw === 'i386' || raw === 'i686' || raw === 'ia32' || raw === 'x86') return 'ia32';
-    if (raw === 'armv7l' || raw === 'armhf' || raw === 'arm') return 'arm';
-    return raw;
+    return rustBridge.sysLinuxNormalizeArch(String(arch || 'x64'));
 }
 
 function getLinuxMetadataFileName(arch = process.arch, edition = 'standard') {
-    const normArch = normalizeLinuxArch(arch);
+    const normArch = rustBridge.sysLinuxNormalizeArch(String(arch || 'x64'));
     const prefix = String(edition || 'standard').toLowerCase() === 'rust' ? 'rust' : 'latest';
     if (normArch === 'x64') return `${prefix}-linux.yml`;
     return `${prefix}-linux-${normArch}.yml`;
@@ -164,31 +140,11 @@ function isRustEditionAsset(fileName) {
 
 function detectAssetArch(fileName) {
     if (!fileName || typeof fileName !== 'string') return null;
-    // Strip trailing archive extensions before matching arch tokens
-    const stripped = fileName.replace(/\.(tar\.gz|tar\.xz|tar\.bz2|appimage|deb|rpm|pacman|zip|blockmap)$/i, '');
-    for (const entry of ALL_ARCH_PATTERNS) {
-        if (entry.regex.test(stripped)) {
-            return entry.arch;
-        }
-    }
-    return null;
+    return rustBridge.sysLinuxDetectAssetArch(fileName) || null;
 }
 
 function isNonPackageArtifact(fileName) {
-    const lower = String(fileName || '').toLowerCase();
-    return (
-        lower.endsWith('.blockmap') ||
-        lower.endsWith('.yml') ||
-        lower.endsWith('.yaml') ||
-        lower.endsWith('.sha256') ||
-        lower.endsWith('.sha512') ||
-        lower.endsWith('.asc') ||
-        lower.endsWith('.sig') ||
-        lower.endsWith('.exe') ||
-        lower.endsWith('.msi') ||
-        lower.endsWith('.dmg') ||
-        lower.endsWith('.pkg')
-    );
+    return rustBridge.sysLinuxIsNonPackageArtifact(String(fileName || ''));
 }
 
 function sanitizeUpdateFileName(name, fallback = 'QBrowse-update.bin') {
@@ -381,6 +337,52 @@ function selectLinuxReleaseAsset(assets = [], installType = 'appimage', arch = p
     };
 }
 
+function selectWindowsReleaseAsset(assets = [], ymlData = null) {
+    const exeAssets = (Array.isArray(assets) ? assets : []).filter((a) => {
+        if (!a || typeof a.name !== 'string' || !a.browser_download_url) return false;
+        const n = a.name.toLowerCase();
+        return n.endsWith('.exe')
+            && !n.endsWith('.blockmap')
+            && !n.includes('web-setup')
+            && !n.includes('online-setup')
+            && !n.includes('bootstrapper')
+            && !n.includes('uninstall');
+    });
+    if (exeAssets.length === 0) return null;
+
+    let preferred = null;
+    if (ymlData && ymlData.path) {
+        const normTarget = ymlData.path.replace(/[-.\s]+/g, '').toLowerCase();
+        preferred = exeAssets.find((a) =>
+            a.name === ymlData.path ||
+            a.name.replace(/[-.\s]+/g, '').toLowerCase() === normTarget
+        ) || null;
+    }
+    if (!preferred) {
+        preferred = exeAssets.find((a) => /setup/i.test(a.name)) || exeAssets[0] || null;
+    }
+    if (!preferred) return null;
+
+    let expectedSha512 = ymlData?.sha512 || null;
+    if (ymlData?.files?.length) {
+        const normPreferred = preferred.name.replace(/[-.\s]+/g, '').toLowerCase();
+        const matchedFile = ymlData.files.find((f) =>
+            f && f.url && (
+                f.url === preferred.name ||
+                f.url.replace(/[-.\s]+/g, '').toLowerCase() === normPreferred
+            )
+        );
+        if (matchedFile?.sha512) expectedSha512 = matchedFile.sha512;
+    }
+
+    return {
+        name: preferred.name,
+        url: preferred.browser_download_url,
+        size: preferred.size || 0,
+        sha512: expectedSha512
+    };
+}
+
 function shellQuotePosix(str) {
     // POSIX-safe single-quoting: replace ' with '\''
     const s = String(str || '').replace(/[\r\n\0]/g, '');
@@ -482,6 +484,7 @@ module.exports = {
     sanitizeUpdateFileName,
     detectLinuxInstallType,
     selectLinuxReleaseAsset,
+    selectWindowsReleaseAsset,
     shellQuotePosix,
     buildLinuxInstallCommand,
     replaceAppImageAtomically,

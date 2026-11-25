@@ -1,0 +1,28 @@
+[package]
+name = "qbrowse-sys"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+sha2.workspace = true
+sysinfo.workspace = true
+tokio.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+reqwest = { workspace = true, features = ["native-tls"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"] }
+windows-registry = "0.4"
+
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { workspace = true, features = ["rustls-tls"] }
+
+[lib]
+name = "qbrowse_sys"
+path = "src/lib.rs"

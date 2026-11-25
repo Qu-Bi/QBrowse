@@ -12,7 +12,7 @@ import useHistoryStore from '../store/useHistoryStore';
 import useAIStore from '../store/useAIStore';
 import useTorStore from '../store/useTorStore';
 import { t, resolveActiveLanguage } from '../i18n/index';
-import { selectPluralForm } from '../i18n/domains/chrome.js';
+import { selectPluralForm } from '../i18n/helpers.js';
 import { topSites } from '../utils/topSites';
 import { pathToSafeFileUrl } from '../utils/fileUrlHelpers';
 import { getFocusedSplitTab, isUrlAllowedInPin } from '../utils/pinnedAppHelpers';
@@ -392,6 +392,13 @@ export default function useOmniboxEngine({
         const historySource = rawHistory.length > 200 ? rawHistory.slice(0, 200) : rawHistory;
 
         const results = [...siteMatches];
+        if (typeof window !== 'undefined' && typeof window.electronAPI?.rustSearchHistory === 'function') {
+            try {
+                const rustResults = window.electronAPI.rustSearchHistory(q, cleanQ, historySource);
+                if (Array.isArray(rustResults)) return rustResults.slice(0, 8);
+            } catch (_) {}
+        }
+
         const now = Date.now();
 
         for (let i = 0; i < historySource.length; i++) {

@@ -1,7 +1,8 @@
-// Modular domain translations: pop namespace (context menus, popovers, auth)
+// Modular domain translations: pop namespace (Popovers, ContextMenus, Modals)
 
 const en = {
     ctx: {
+        resetPinHome: "Reset to Home URL",
         colorAccent: "Accent",
         colorYellow: "Yellow",
         colorGreen: "Green",
@@ -150,7 +151,9 @@ const en = {
         deleteWorkspace: "Delete Workspace",
         deletedWorkspace: "Deleted workspace \"{name}\"",
         manageWorkspaces: "Manage Workspaces...",
-        copiedToClipboard: "Copied to clipboard"
+        copiedToClipboard: "Copied to clipboard",
+        hideDistractingItems: "Hide Distracting Items...",
+        showHiddenItemsCount: "Show Hidden Items ({count})"
     },
     auth: {
         firebaseConfigured: "Firebase Cloud Sync credentials configured!",
@@ -581,7 +584,11 @@ const en = {
         darkExcludedToast: "Excluded {domain} from Force Dark Mode",
         darkIncludedToast: "Removed {domain} from Force Dark whitelist",
         darkRemoveRuleTooltip: "Remove {rule} from whitelist",
-        darkExcludeSiteTooltip: "Exclude {domain} from Force Dark Mode"
+        darkExcludeSiteTooltip: "Exclude {domain} from Force Dark Mode",
+        darkNativeDetected: "Native dark detected · Not inverted",
+        hideDistractingItems: "Hide Distracting Items",
+        showHiddenItemsTitle: "Restore all hidden elements on this site",
+        showHiddenItemsCount: "Show Hidden ({count})"
     },
     permission: {
         thisSite: "This site",
@@ -779,6 +786,7 @@ const en = {
 
 const pl = {
     ctx: {
+        resetPinHome: "Przywróć adres domowy",
         colorAccent: "Akcent",
         colorYellow: "Żółty",
         colorGreen: "Zielony",
@@ -927,7 +935,9 @@ const pl = {
         deleteWorkspace: "Usuń obszar roboczy",
         deletedWorkspace: "Usunięto obszar roboczy „{name}”",
         manageWorkspaces: "Zarządzaj obszarami roboczymi...",
-        copiedToClipboard: "Skopiowano do schowka"
+        copiedToClipboard: "Skopiowano do schowka",
+        hideDistractingItems: "Ukryj elementy rozpraszające...",
+        showHiddenItemsCount: "Pokaż ukryte elementy ({count})"
     },
     auth: {
         firebaseConfigured: "Poświadczenia Firebase Cloud Sync skonfigurowane!",
@@ -1342,7 +1352,27 @@ const pl = {
         clear: "Wyczyść",
         manage: "Zarządzaj",
         sitePermissions: "Uprawnienia witryny",
-        resetAllPermissions: "Resetuj wszystkie uprawnienia"
+        resetAllPermissions: "Resetuj wszystkie uprawnienia",
+        hideDistractingItems: "Ukryj elementy rozpraszające",
+        showHiddenItemsTitle: "Przywróć wszystkie ukryte elementy w tej witrynie",
+        showHiddenItemsCount: "Pokaż ukryte ({count})",
+        permCamera: "Kamera",
+        permMicrophone: "Mikrofon",
+        permMidi: "Urządzenia MIDI",
+        permDisplayCapture: "Udostępnianie ekranu",
+        forceDarkSiteLabel: "Wymuś tryb ciemny",
+        darkWhitelisted: "Na białej liście (natywny motyw)",
+        darkExcludedVia: "Wykluczono przez {rule}",
+        darkExcludedExact: "Pominięto na {rule}",
+        darkActiveOnSite: "Aktywny na tej stronie",
+        darkGlobalOff: "Wymuszony tryb ciemny jest wyłączony",
+        darkExcludeBtn: "Wyklucz",
+        darkAllowBtn: "Włącz ponownie",
+        darkExcludedToast: "Wykluczono {domain} z wymuszonego trybu ciemnego",
+        darkIncludedToast: "Usunięto {domain} z białej listy trybu ciemnego",
+        darkRemoveRuleTooltip: "Usuń {rule} z białej listy",
+        darkExcludeSiteTooltip: "Wyklucz {domain} z trybu ciemnego",
+        darkNativeDetected: "Wykryto natywny tryb ciemny · Nie odwrócono",
     },
     tor: {
         exitIpCopied: "Skopiowano wyjściowy adres IP do schowka",
@@ -1498,11 +1528,49 @@ const pl = {
         instruction: "Kliknij i przeciągnij, aby zaznaczyć obszar • Naciśnij {key}, aby anulować",
         snipBtn: "Wytnij",
         cancelEsc: "Anuluj (Esc)"
+    },
+    permission: {
+        thisSite: "Ta witryna",
+        sessionOnly: "Tylko w tej sesji",
+        queueCount: "{current} z {total}",
+        allow: "Zezwól",
+        allowOnce: "Zezwól raz",
+        allowSession: "Zezwól na czas sesji",
+        block: "Blokuj",
+        titleCamera: "Dostęp do kamery",
+        descCamera: "{host} chce używać Twojej kamery",
+        titleMicrophone: "Dostęp do mikrofonu",
+        descMicrophone: "{host} chce używać Twojego mikrofonu",
+        titleCameraMic: "Kamera i mikrofon",
+        descCameraMic: "{host} chce używać Twojej kamery i mikrofonu",
+        titleGeolocation: "Dostęp do lokalizacji",
+        descGeolocation: "{host} chce poznać Twoją lokalizację",
+        titleNotifications: "Powiadomienia",
+        descNotifications: "{host} chce wyświetlać powiadomienia",
+        titleClipboard: "Dostęp do schowka",
+        descClipboard: "{host} chce odczytywać tekst i obrazy ze schowka",
+        titleMidi: "Urządzenia MIDI",
+        descMidi: "{host} chce sterować urządzeniami MIDI i komunikować się z nimi",
+        titleSensors: "Ruch i czujniki",
+        descSensors: "{host} chce uzyskać dostęp do czujników ruchu i orientacji",
+        titleIdle: "Wykrywanie bezczynności",
+        descIdle: "{host} chce wiedzieć, kiedy aktywnie korzystasz z urządzenia",
+        titleDisplayCapture: "Udostępnianie ekranu",
+        descDisplayCapture: "{host} chce przechwytywać i udostępniać Twój ekran",
+        titleWindowManagement: "Zarządzanie oknami",
+        descWindowManagement: "{host} chce zarządzać oknami na Twoich ekranach",
+        titleSpeakerSelection: "Wyjście audio",
+        descSpeakerSelection: "{host} chce wybierać urządzenia wyjścia audio",
+        titleOpenExternal: "Zewnętrzna aplikacja",
+        descOpenExternal: "{host} chce otworzyć zewnętrzną aplikację",
+        titleGeneric: "Uprawnienie witryny",
+        descGeneric: "{host} chce uzyskać dostęp do: {permission}"
     }
 };
 
 const fr = {
     ctx: {
+        resetPinHome: "Réinitialiser à l’URL d’accueil",
         colorAccent: "Accent",
         colorYellow: "Jaune",
         colorGreen: "Vert",
@@ -1651,7 +1719,9 @@ const fr = {
         deleteWorkspace: "Supprimer l'espace de travail",
         deletedWorkspace: "Espace « {name} » supprimé",
         manageWorkspaces: "Gérer les espaces de travail...",
-        copiedToClipboard: "Copié dans le presse-papiers"
+        copiedToClipboard: "Copié dans le presse-papiers",
+        hideDistractingItems: "Masquer les éléments gênants...",
+        showHiddenItemsCount: "Afficher les éléments masqués ({count})"
     },
     auth: {
         firebaseConfigured: "Identifiants Firebase Cloud Sync configurés !",
@@ -2066,7 +2136,27 @@ const fr = {
         clear: "Effacer",
         manage: "Gérer",
         sitePermissions: "Autorisations du site",
-        resetAllPermissions: "Tout réinitialiser"
+        resetAllPermissions: "Tout réinitialiser",
+        hideDistractingItems: "Masquer les éléments gênants",
+        showHiddenItemsTitle: "Restaurer tous les éléments masqués sur ce site",
+        showHiddenItemsCount: "Afficher masqués ({count})",
+        permCamera: "Caméra",
+        permMicrophone: "Microphone",
+        permMidi: "Appareils MIDI",
+        permDisplayCapture: "Partage d'écran",
+        forceDarkSiteLabel: "Forcer le mode sombre",
+        darkWhitelisted: "En liste blanche (thème natif)",
+        darkExcludedVia: "Exclu via {rule}",
+        darkExcludedExact: "Ignoré sur {rule}",
+        darkActiveOnSite: "Actif sur ce site",
+        darkGlobalOff: "Le mode sombre forcé est désactivé",
+        darkExcludeBtn: "Exclure",
+        darkAllowBtn: "Réactiver",
+        darkExcludedToast: "{domain} exclu du mode sombre forcé",
+        darkIncludedToast: "{domain} retiré de la liste blanche du mode sombre",
+        darkRemoveRuleTooltip: "Retirer {rule} de la liste blanche",
+        darkExcludeSiteTooltip: "Exclure {domain} du mode sombre forcé",
+        darkNativeDetected: "Thème sombre natif détecté · Non inversé",
     },
     tor: {
         exitIpCopied: "IP de sortie copiée dans le presse-papiers",
@@ -2222,11 +2312,49 @@ const fr = {
         instruction: "Cliquez et glissez pour sélectionner une zone • Appuyez sur {key} pour annuler",
         snipBtn: "Capturer",
         cancelEsc: "Annuler (Échap)"
+    },
+    permission: {
+        thisSite: "Ce site",
+        sessionOnly: "Session uniquement",
+        queueCount: "{current} sur {total}",
+        allow: "Autoriser",
+        allowOnce: "Autoriser une fois",
+        allowSession: "Autoriser pour la session",
+        block: "Bloquer",
+        titleCamera: "Accès à la caméra",
+        descCamera: "{host} souhaite utiliser votre caméra",
+        titleMicrophone: "Accès au microphone",
+        descMicrophone: "{host} souhaite utiliser votre microphone",
+        titleCameraMic: "Caméra et microphone",
+        descCameraMic: "{host} souhaite utiliser votre caméra et votre microphone",
+        titleGeolocation: "Accès à la position",
+        descGeolocation: "{host} souhaite connaître votre position",
+        titleNotifications: "Notifications",
+        descNotifications: "{host} souhaite afficher des notifications",
+        titleClipboard: "Accès au presse-papiers",
+        descClipboard: "{host} souhaite lire le texte et les images copiés",
+        titleMidi: "Appareils MIDI",
+        descMidi: "{host} souhaite contrôler et communiquer avec les appareils MIDI",
+        titleSensors: "Mouvement et capteurs",
+        descSensors: "{host} souhaite accéder aux capteurs de mouvement et d'orientation",
+        titleIdle: "Détection d'inactivité",
+        descIdle: "{host} souhaite savoir quand vous utilisez activement cet appareil",
+        titleDisplayCapture: "Partage d'écran",
+        descDisplayCapture: "{host} souhaite capturer et partager votre écran",
+        titleWindowManagement: "Gestion des fenêtres",
+        descWindowManagement: "{host} souhaite gérer les fenêtres sur vos écrans",
+        titleSpeakerSelection: "Sortie audio",
+        descSpeakerSelection: "{host} souhaite sélectionner les périphériques de sortie audio",
+        titleOpenExternal: "Application externe",
+        descOpenExternal: "{host} souhaite ouvrir une application externe",
+        titleGeneric: "Autorisation du site",
+        descGeneric: "{host} souhaite accéder à {permission}"
     }
 };
 
 const de = {
     ctx: {
+        resetPinHome: "Auf Start-URL zurücksetzen",
         colorAccent: "Akzent",
         colorYellow: "Gelb",
         colorGreen: "Grün",
@@ -2375,7 +2503,9 @@ const de = {
         deleteWorkspace: "Arbeitsbereich löschen",
         deletedWorkspace: "Arbeitsbereich „{name}“ gelöscht",
         manageWorkspaces: "Arbeitsbereiche verwalten...",
-        copiedToClipboard: "In Zwischenablage kopiert"
+        copiedToClipboard: "In Zwischenablage kopiert",
+        hideDistractingItems: "Störende Objekte ausblenden...",
+        showHiddenItemsCount: "Ausgeblendete Objekte zeigen ({count})"
     },
     auth: {
         firebaseConfigured: "Firebase Cloud Sync-Zugangsdaten konfiguriert!",
@@ -2790,7 +2920,27 @@ const de = {
         clear: "Löschen",
         manage: "Verwalten",
         sitePermissions: "Website-Berechtigungen",
-        resetAllPermissions: "Alle Berechtigungen zurücksetzen"
+        resetAllPermissions: "Alle Berechtigungen zurücksetzen",
+        hideDistractingItems: "Störende Objekte ausblenden",
+        showHiddenItemsTitle: "Alle ausgeblendeten Elemente auf dieser Website wiederherstellen",
+        showHiddenItemsCount: "Einblenden ({count})",
+        permCamera: "Kamera",
+        permMicrophone: "Mikrofon",
+        permMidi: "MIDI-Geräte",
+        permDisplayCapture: "Bildschirmfreigabe",
+        forceDarkSiteLabel: "Dunkelmodus erzwingen",
+        darkWhitelisted: "Auf Ausnahmeliste (natives Design)",
+        darkExcludedVia: "Ausgeschlossen über {rule}",
+        darkExcludedExact: "Übersprungen auf {rule}",
+        darkActiveOnSite: "Auf dieser Website aktiv",
+        darkGlobalOff: "Erzwungener Dunkelmodus ist aus",
+        darkExcludeBtn: "Ausschließen",
+        darkAllowBtn: "Wieder aktivieren",
+        darkExcludedToast: "{domain} vom erzwungenen Dunkelmodus ausgeschlossen",
+        darkIncludedToast: "{domain} von der Dunkelmodus-Ausnahmeliste entfernt",
+        darkRemoveRuleTooltip: "{rule} von Ausnahmeliste entfernen",
+        darkExcludeSiteTooltip: "{domain} vom Dunkelmodus ausschließen",
+        darkNativeDetected: "Natives Dunkeldesign erkannt · Nicht invertiert",
     },
     tor: {
         exitIpCopied: "Exit-IP in die Zwischenablage kopiert",
@@ -2946,11 +3096,49 @@ const de = {
         instruction: "Klicken und ziehen, um einen Bereich auszuwählen • {key} zum Abbrechen drücken",
         snipBtn: "Aufnehmen",
         cancelEsc: "Abbrechen (Esc)"
+    },
+    permission: {
+        thisSite: "Diese Website",
+        sessionOnly: "Nur für diese Sitzung",
+        queueCount: "{current} von {total}",
+        allow: "Zulassen",
+        allowOnce: "Einmal zulassen",
+        allowSession: "Für Sitzung zulassen",
+        block: "Blockieren",
+        titleCamera: "Kamerazugriff",
+        descCamera: "{host} möchte Ihre Kamera verwenden",
+        titleMicrophone: "Mikrofonzugriff",
+        descMicrophone: "{host} möchte Ihr Mikrofon verwenden",
+        titleCameraMic: "Kamera & Mikrofon",
+        descCameraMic: "{host} möchte Kamera und Mikrofon verwenden",
+        titleGeolocation: "Standortzugriff",
+        descGeolocation: "{host} möchte Ihren Standort abfragen",
+        titleNotifications: "Benachrichtigungen",
+        descNotifications: "{host} möchte Benachrichtigungen anzeigen",
+        titleClipboard: "Zwischenablagezugriff",
+        descClipboard: "{host} möchte Text und Bilder aus der Zwischenablage lesen",
+        titleMidi: "MIDI-Geräte",
+        descMidi: "{host} möchte MIDI-Geräte steuern und mit ihnen kommunizieren",
+        titleSensors: "Bewegung & Sensoren",
+        descSensors: "{host} möchte auf Bewegungs- und Lagesensoren zugreifen",
+        titleIdle: "Inaktivitätserkennung",
+        descIdle: "{host} möchte erkennen, wann Sie dieses Gerät aktiv nutzen",
+        titleDisplayCapture: "Bildschirmfreigabe",
+        descDisplayCapture: "{host} möchte Ihren Bildschirm aufnehmen und teilen",
+        titleWindowManagement: "Fensterverwaltung",
+        descWindowManagement: "{host} möchte Fenster auf Ihren Bildschirmen verwalten",
+        titleSpeakerSelection: "Audioausgabe",
+        descSpeakerSelection: "{host} möchte Audioausgabegeräte auswählen",
+        titleOpenExternal: "Externe Anwendung",
+        descOpenExternal: "{host} möchte eine externe Anwendung öffnen",
+        titleGeneric: "Website-Berechtigung",
+        descGeneric: "{host} möchte auf {permission} zugreifen"
     }
 };
 
 const es = {
     ctx: {
+        resetPinHome: "Restablecer a URL de inicio",
         colorAccent: "Acento",
         colorYellow: "Amarillo",
         colorGreen: "Verde",
@@ -3099,7 +3287,9 @@ const es = {
         deleteWorkspace: "Eliminar espacio de trabajo",
         deletedWorkspace: "Espacio «{name}» eliminado",
         manageWorkspaces: "Gestionar espacios de trabajo...",
-        copiedToClipboard: "Copiado al portapapeles"
+        copiedToClipboard: "Copiado al portapapeles",
+        hideDistractingItems: "Ocultar elementos distractores...",
+        showHiddenItemsCount: "Mostrar elementos ocultos ({count})"
     },
     auth: {
         firebaseConfigured: "¡Credenciales de Firebase Cloud Sync configuradas!",
@@ -3514,7 +3704,27 @@ const es = {
         clear: "Borrar",
         manage: "Gestionar",
         sitePermissions: "Permisos del sitio",
-        resetAllPermissions: "Restablecer permisos"
+        resetAllPermissions: "Restablecer permisos",
+        hideDistractingItems: "Ocultar elementos distractores",
+        showHiddenItemsTitle: "Restaurar todos los elementos ocultos en este sitio",
+        showHiddenItemsCount: "Mostrar ocultos ({count})",
+        permCamera: "Cámara",
+        permMicrophone: "Micrófono",
+        permMidi: "Dispositivos MIDI",
+        permDisplayCapture: "Compartir pantalla",
+        forceDarkSiteLabel: "Forzar modo oscuro",
+        darkWhitelisted: "En lista blanca (tema nativo)",
+        darkExcludedVia: "Excluido mediante {rule}",
+        darkExcludedExact: "Omitido en {rule}",
+        darkActiveOnSite: "Activo en este sitio",
+        darkGlobalOff: "El modo oscuro forzado está desactivado",
+        darkExcludeBtn: "Excluir",
+        darkAllowBtn: "Reactivar",
+        darkExcludedToast: "{domain} excluido del modo oscuro forzado",
+        darkIncludedToast: "{domain} eliminado de la lista blanca del modo oscuro",
+        darkRemoveRuleTooltip: "Eliminar {rule} de la lista blanca",
+        darkExcludeSiteTooltip: "Excluir {domain} del modo oscuro forzado",
+        darkNativeDetected: "Modo oscuro nativo detectado · Sin invertir",
     },
     tor: {
         exitIpCopied: "IP de salida copiada al portapapeles",
@@ -3670,11 +3880,49 @@ const es = {
         instruction: "Haz clic y arrastra para seleccionar un área • Pulsa {key} para cancelar",
         snipBtn: "Capturar",
         cancelEsc: "Cancelar (Esc)"
+    },
+    permission: {
+        thisSite: "Este sitio",
+        sessionOnly: "Solo sesión",
+        queueCount: "{current} de {total}",
+        allow: "Permitir",
+        allowOnce: "Permitir una vez",
+        allowSession: "Permitir durante la sesión",
+        block: "Bloquear",
+        titleCamera: "Acceso a la cámara",
+        descCamera: "{host} quiere usar tu cámara",
+        titleMicrophone: "Acceso al micrófono",
+        descMicrophone: "{host} quiere usar tu micrófono",
+        titleCameraMic: "Cámara y micrófono",
+        descCameraMic: "{host} quiere usar tu cámara y micrófono",
+        titleGeolocation: "Acceso a la ubicación",
+        descGeolocation: "{host} quiere conocer tu ubicación",
+        titleNotifications: "Notificaciones",
+        descNotifications: "{host} quiere mostrar notificaciones",
+        titleClipboard: "Acceso al portapapeles",
+        descClipboard: "{host} quiere leer texto e imágenes copiados",
+        titleMidi: "Dispositivos MIDI",
+        descMidi: "{host} quiere controlar y comunicarse con dispositivos MIDI",
+        titleSensors: "Movimiento y sensores",
+        descSensors: "{host} quiere acceder a los sensores de movimiento y orientación",
+        titleIdle: "Detección de inactividad",
+        descIdle: "{host} quiere saber cuándo usas activamente este dispositivo",
+        titleDisplayCapture: "Compartir pantalla",
+        descDisplayCapture: "{host} quiere capturar y compartir tu pantalla",
+        titleWindowManagement: "Gestión de ventanas",
+        descWindowManagement: "{host} quiere gestionar ventanas en tus pantallas",
+        titleSpeakerSelection: "Salida de audio",
+        descSpeakerSelection: "{host} quiere seleccionar dispositivos de salida de audio",
+        titleOpenExternal: "Aplicación externa",
+        descOpenExternal: "{host} quiere abrir una aplicación externa",
+        titleGeneric: "Permiso del sitio",
+        descGeneric: "{host} quiere acceder a {permission}"
     }
 };
 
 const pt = {
     ctx: {
+        resetPinHome: "Redefinir para URL inicial",
         colorAccent: "Destaque",
         colorYellow: "Amarelo",
         colorGreen: "Verde",
@@ -3823,7 +4071,9 @@ const pt = {
         deleteWorkspace: "Excluir espaço de trabalho",
         deletedWorkspace: "Espaço “{name}” excluído",
         manageWorkspaces: "Gerenciar espaços de trabalho...",
-        copiedToClipboard: "Copiado para a área de transferência"
+        copiedToClipboard: "Copiado para a área de transferência",
+        hideDistractingItems: "Ocultar itens de distração...",
+        showHiddenItemsCount: "Mostrar itens ocultos ({count})"
     },
     auth: {
         firebaseConfigured: "Credenciais do Firebase Cloud Sync configuradas!",
@@ -4238,7 +4488,27 @@ const pt = {
         clear: "Limpar",
         manage: "Gerenciar",
         sitePermissions: "Permissões do site",
-        resetAllPermissions: "Redefinir todas as permissões"
+        resetAllPermissions: "Redefinir todas as permissões",
+        hideDistractingItems: "Ocultar itens de distração",
+        showHiddenItemsTitle: "Restaurar todos os elementos ocultos neste site",
+        showHiddenItemsCount: "Mostrar ocultos ({count})",
+        permCamera: "Câmera",
+        permMicrophone: "Microfone",
+        permMidi: "Dispositivos MIDI",
+        permDisplayCapture: "Compartilhamento de tela",
+        forceDarkSiteLabel: "Forçar modo escuro",
+        darkWhitelisted: "Na lista de permissões (tema nativo)",
+        darkExcludedVia: "Excluído via {rule}",
+        darkExcludedExact: "Ignorado em {rule}",
+        darkActiveOnSite: "Ativo neste site",
+        darkGlobalOff: "Modo escuro forçado está desativado",
+        darkExcludeBtn: "Excluir",
+        darkAllowBtn: "Reativar",
+        darkExcludedToast: "{domain} excluído do modo escuro forçado",
+        darkIncludedToast: "{domain} removido da lista do modo escuro",
+        darkRemoveRuleTooltip: "Remover {rule} da lista",
+        darkExcludeSiteTooltip: "Excluir {domain} do modo escuro forçado",
+        darkNativeDetected: "Modo escuro nativo detectado · Não invertido",
     },
     tor: {
         exitIpCopied: "IP de saída copiado para a área de transferência",
@@ -4394,11 +4664,49 @@ const pt = {
         instruction: "Clique e arraste para selecionar uma área • Pressione {key} para cancelar",
         snipBtn: "Capturar",
         cancelEsc: "Cancelar (Esc)"
+    },
+    permission: {
+        thisSite: "Este site",
+        sessionOnly: "Apenas nesta sessão",
+        queueCount: "{current} de {total}",
+        allow: "Permitir",
+        allowOnce: "Permitir uma vez",
+        allowSession: "Permitir nesta sessão",
+        block: "Bloquear",
+        titleCamera: "Acesso à câmera",
+        descCamera: "{host} deseja usar sua câmera",
+        titleMicrophone: "Acesso ao microfone",
+        descMicrophone: "{host} deseja usar seu microfone",
+        titleCameraMic: "Câmera e microfone",
+        descCameraMic: "{host} deseja usar sua câmera e microfone",
+        titleGeolocation: "Acesso à localização",
+        descGeolocation: "{host} deseja saber sua localização",
+        titleNotifications: "Notificações",
+        descNotifications: "{host} deseja mostrar notificações",
+        titleClipboard: "Acesso à área de transferência",
+        descClipboard: "{host} deseja ler textos e imagens copiados",
+        titleMidi: "Dispositivos MIDI",
+        descMidi: "{host} deseja controlar e se comunicar com dispositivos MIDI",
+        titleSensors: "Movimento e sensores",
+        descSensors: "{host} deseja acessar sensores de movimento e orientação",
+        titleIdle: "Detecção de inatividade",
+        descIdle: "{host} deseja saber quando você está usando este dispositivo",
+        titleDisplayCapture: "Compartilhamento de tela",
+        descDisplayCapture: "{host} deseja capturar e compartilhar sua tela",
+        titleWindowManagement: "Gerenciamento de janelas",
+        descWindowManagement: "{host} deseja gerenciar janelas em suas telas",
+        titleSpeakerSelection: "Saída de áudio",
+        descSpeakerSelection: "{host} deseja selecionar dispositivos de saída de áudio",
+        titleOpenExternal: "Aplicativo externo",
+        descOpenExternal: "{host} deseja abrir um aplicativo externo",
+        titleGeneric: "Permissão do site",
+        descGeneric: "{host} deseja acessar {permission}"
     }
 };
 
 const zh = {
     ctx: {
+        resetPinHome: "重置为主页网址",
         colorAccent: "主题色",
         colorYellow: "黄色",
         colorGreen: "绿色",
@@ -4547,7 +4855,9 @@ const zh = {
         deleteWorkspace: "删除工作区",
         deletedWorkspace: "已删除工作区“{name}”",
         manageWorkspaces: "管理工作区...",
-        copiedToClipboard: "已复制到剪贴板"
+        copiedToClipboard: "已复制到剪贴板",
+        hideDistractingItems: "隐藏干扰项目...",
+        showHiddenItemsCount: "显示隐藏项目 ({count})"
     },
     auth: {
         firebaseConfigured: "Firebase 云同步凭据已配置！",
@@ -4962,7 +5272,27 @@ const zh = {
         clear: "清除",
         manage: "管理",
         sitePermissions: "网站权限",
-        resetAllPermissions: "重置所有权限"
+        resetAllPermissions: "重置所有权限",
+        hideDistractingItems: "隐藏干扰项目",
+        showHiddenItemsTitle: "恢复此网站上所有隐藏的元素",
+        showHiddenItemsCount: "显示已隐藏 ({count})",
+        permCamera: "摄像头",
+        permMicrophone: "麦克风",
+        permMidi: "MIDI 设备",
+        permDisplayCapture: "屏幕共享",
+        forceDarkSiteLabel: "强制深色模式",
+        darkWhitelisted: "已加入白名单（原生主题）",
+        darkExcludedVia: "通过 {rule} 排除",
+        darkExcludedExact: "在 {rule} 上跳过",
+        darkActiveOnSite: "在此网站上生效",
+        darkGlobalOff: "强制深色模式已关闭",
+        darkExcludeBtn: "排除",
+        darkAllowBtn: "重新启用",
+        darkExcludedToast: "已将 {domain} 排除出强制深色模式",
+        darkIncludedToast: "已将 {domain} 从深色模式白名单中移除",
+        darkRemoveRuleTooltip: "从白名单移除 {rule}",
+        darkExcludeSiteTooltip: "将 {domain} 排除出强制深色模式",
+        darkNativeDetected: "检测到原生深色 · 未反转",
     },
     tor: {
         exitIpCopied: "出口 IP 已复制到剪贴板",
@@ -5118,11 +5448,49 @@ const zh = {
         instruction: "点击并拖拽以选择截图区域 • 按 {key} 取消",
         snipBtn: "截图",
         cancelEsc: "取消 (Esc)"
+    },
+    permission: {
+        thisSite: "此网站",
+        sessionOnly: "仅限本次会话",
+        queueCount: "{current} / {total}",
+        allow: "允许",
+        allowOnce: "仅允许一次",
+        allowSession: "本次会话允许",
+        block: "阻止",
+        titleCamera: "摄像头权限",
+        descCamera: "{host} 请求使用您的摄像头",
+        titleMicrophone: "麦克风权限",
+        descMicrophone: "{host} 请求使用您的麦克风",
+        titleCameraMic: "摄像头与麦克风",
+        descCameraMic: "{host} 请求使用您的摄像头和麦克风",
+        titleGeolocation: "位置信息权限",
+        descGeolocation: "{host} 请求获取您的位置",
+        titleNotifications: "通知",
+        descNotifications: "{host} 请求显示通知",
+        titleClipboard: "剪贴板权限",
+        descClipboard: "{host} 请求读取剪贴板中的文本和图片",
+        titleMidi: "MIDI 设备",
+        descMidi: "{host} 请求控制并与 MIDI 设备通信",
+        titleSensors: "运动与传感器",
+        descSensors: "{host} 请求访问运动和方向传感器",
+        titleIdle: "空闲检测",
+        descIdle: "{host} 请求了解您何时正在使用此设备",
+        titleDisplayCapture: "屏幕共享",
+        descDisplayCapture: "{host} 请求捕获并共享您的屏幕",
+        titleWindowManagement: "窗口管理",
+        descWindowManagement: "{host} 请求管理您显示器上的窗口",
+        titleSpeakerSelection: "音频输出",
+        descSpeakerSelection: "{host} 请求选择音频输出设备",
+        titleOpenExternal: "外部应用",
+        descOpenExternal: "{host} 请求打开外部应用程序",
+        titleGeneric: "网站权限",
+        descGeneric: "{host} 请求访问 {permission}"
     }
 };
 
 const ja = {
     ctx: {
+        resetPinHome: "ホーム URL にリセット",
         colorAccent: "アクセント",
         colorYellow: "イエロー",
         colorGreen: "グリーン",
@@ -5271,7 +5639,9 @@ const ja = {
         deleteWorkspace: "ワークスペースを削除",
         deletedWorkspace: "ワークスペース「{name}」を削除しました",
         manageWorkspaces: "ワークスペースを管理...",
-        copiedToClipboard: "クリップボードにコピーしました"
+        copiedToClipboard: "クリップボードにコピーしました",
+        hideDistractingItems: "気を散らす項目を非表示...",
+        showHiddenItemsCount: "非表示の項目を表示 ({count})"
     },
     auth: {
         firebaseConfigured: "Firebase クラウド同期の認証情報を設定しました！",
@@ -5686,7 +6056,27 @@ const ja = {
         clear: "消去",
         manage: "管理",
         sitePermissions: "サイトの権限",
-        resetAllPermissions: "すべての権限をリセット"
+        resetAllPermissions: "すべての権限をリセット",
+        hideDistractingItems: "気を散らす項目を非表示",
+        showHiddenItemsTitle: "このサイトで非表示にした要素をすべて復元",
+        showHiddenItemsCount: "非表示を表示 ({count})",
+        permCamera: "カメラ",
+        permMicrophone: "マイク",
+        permMidi: "MIDI デバイス",
+        permDisplayCapture: "画面共有",
+        forceDarkSiteLabel: "強制ダークモード",
+        darkWhitelisted: "ホワイトリスト済み（元のテーマ）",
+        darkExcludedVia: "{rule} により除外",
+        darkExcludedExact: "{rule} でスキップ",
+        darkActiveOnSite: "このサイトで有効",
+        darkGlobalOff: "強制ダークモードはオフです",
+        darkExcludeBtn: "除外",
+        darkAllowBtn: "再有効化",
+        darkExcludedToast: "{domain} を強制ダークモードから除外しました",
+        darkIncludedToast: "{domain} をダークモードのホワイトリストから削除しました",
+        darkRemoveRuleTooltip: "ホワイトリストから {rule} を削除",
+        darkExcludeSiteTooltip: "{domain} を強制ダークモードから除外",
+        darkNativeDetected: "ネイティブのダークテーマを検出 · 反転なし",
     },
     tor: {
         exitIpCopied: "出口 IP をクリップボードにコピーしました",
@@ -5842,11 +6232,49 @@ const ja = {
         instruction: "クリック＆ドラッグで範囲を選択 • {key} でキャンセル",
         snipBtn: "切り取り",
         cancelEsc: "キャンセル (Esc)"
+    },
+    permission: {
+        thisSite: "このサイト",
+        sessionOnly: "このセッションのみ",
+        queueCount: "{current} / {total}",
+        allow: "許可",
+        allowOnce: "1回のみ許可",
+        allowSession: "セッション中許可",
+        block: "ブロック",
+        titleCamera: "カメラへのアクセス",
+        descCamera: "{host} がカメラの使用を求めています",
+        titleMicrophone: "マイクへのアクセス",
+        descMicrophone: "{host} がマイクの使用を求めています",
+        titleCameraMic: "カメラとマイク",
+        descCameraMic: "{host} がカメラとマイクの使用を求めています",
+        titleGeolocation: "位置情報へのアクセス",
+        descGeolocation: "{host} が位置情報の取得を求めています",
+        titleNotifications: "通知",
+        descNotifications: "{host} が通知の表示を求めています",
+        titleClipboard: "クリップボードへのアクセス",
+        descClipboard: "{host} がクリップボードのテキストや画像の読み取りを求めています",
+        titleMidi: "MIDI デバイス",
+        descMidi: "{host} が MIDI デバイスの制御と通信を求めています",
+        titleSensors: "モーションとセンサー",
+        descSensors: "{host} がモーションおよび方向センサーへのアクセスを求めています",
+        titleIdle: "アイドル検出",
+        descIdle: "{host} がデバイスの使用状況の確認を求めています",
+        titleDisplayCapture: "画面共有",
+        descDisplayCapture: "{host} が画面のキャプチャと共有を求めています",
+        titleWindowManagement: "ウィンドウ管理",
+        descWindowManagement: "{host} がディスプレイ上のウィンドウ管理を求めています",
+        titleSpeakerSelection: "音声出力",
+        descSpeakerSelection: "{host} が音声出力デバイスの選択を求めています",
+        titleOpenExternal: "外部アプリケーション",
+        descOpenExternal: "{host} が外部アプリケーションを開こうとしています",
+        titleGeneric: "サイトの権限",
+        descGeneric: "{host} が {permission} へのアクセスを求めています"
     }
 };
 
 const ru = {
     ctx: {
+        resetPinHome: "Сбросить на домашний URL",
         colorAccent: "Акцент",
         colorYellow: "Жёлтый",
         colorGreen: "Зелёный",
@@ -5995,7 +6423,9 @@ const ru = {
         deleteWorkspace: "Удалить пространство",
         deletedWorkspace: "Пространство «{name}» удалено",
         manageWorkspaces: "Управление пространствами...",
-        copiedToClipboard: "Скопировано в буфер обмена"
+        copiedToClipboard: "Скопировано в буфер обмена",
+        hideDistractingItems: "Скрыть отвлекающие объекты...",
+        showHiddenItemsCount: "Показать скрытые объекты ({count})"
     },
     auth: {
         firebaseConfigured: "Учётные данные Firebase Cloud Sync настроены!",
@@ -6410,7 +6840,27 @@ const ru = {
         clear: "Очистить",
         manage: "Управление",
         sitePermissions: "Разрешения сайта",
-        resetAllPermissions: "Сбросить все разрешения"
+        resetAllPermissions: "Сбросить все разрешения",
+        hideDistractingItems: "Скрыть отвлекающие объекты",
+        showHiddenItemsTitle: "Восстановить все скрытые элементы на этом сайте",
+        showHiddenItemsCount: "Показать скрытые ({count})",
+        permCamera: "Камера",
+        permMicrophone: "Микрофон",
+        permMidi: "MIDI-устройства",
+        permDisplayCapture: "Демонстрация экрана",
+        forceDarkSiteLabel: "Принудительная тёмная тема",
+        darkWhitelisted: "В белом списке (исходная тема)",
+        darkExcludedVia: "Исключено через {rule}",
+        darkExcludedExact: "Пропущено на {rule}",
+        darkActiveOnSite: "Активно на этом сайте",
+        darkGlobalOff: "Принудительная тёмная тема выкл.",
+        darkExcludeBtn: "Исключить",
+        darkAllowBtn: "Включить снова",
+        darkExcludedToast: "{domain} исключён из принудительной тёмной темы",
+        darkIncludedToast: "{domain} удалён из белого списка тёмной темы",
+        darkRemoveRuleTooltip: "Удалить {rule} из белого списка",
+        darkExcludeSiteTooltip: "Исключить {domain} из тёмной темы",
+        darkNativeDetected: "Обнаружена встроенная тёмная тема · Без инверсии",
     },
     tor: {
         exitIpCopied: "Выходной IP скопирован в буфер обмена",
@@ -6566,11 +7016,49 @@ const ru = {
         instruction: "Нажмите и перетащите для выбора области • Нажмите {key} для отмены",
         snipBtn: "Снять",
         cancelEsc: "Отмена (Esc)"
+    },
+    permission: {
+        thisSite: "Этот сайт",
+        sessionOnly: "Только на сеанс",
+        queueCount: "{current} из {total}",
+        allow: "Разрешить",
+        allowOnce: "Разрешить один раз",
+        allowSession: "Разрешить на сеанс",
+        block: "Блокировать",
+        titleCamera: "Доступ к камере",
+        descCamera: "{host} запрашивает доступ к вашей камере",
+        titleMicrophone: "Доступ к микрофону",
+        descMicrophone: "{host} запрашивает доступ к микрофону",
+        titleCameraMic: "Камера и микрофон",
+        descCameraMic: "{host} запрашивает доступ к камере и микрофону",
+        titleGeolocation: "Доступ к геолокации",
+        descGeolocation: "{host} запрашивает ваше местоположение",
+        titleNotifications: "Уведомления",
+        descNotifications: "{host} хочет показывать уведомления",
+        titleClipboard: "Доступ к буферу обмена",
+        descClipboard: "{host} хочет читать текст и изображения из буфера обмена",
+        titleMidi: "MIDI-устройства",
+        descMidi: "{host} запрашивает управление MIDI-устройствами",
+        titleSensors: "Движение и датчики",
+        descSensors: "{host} запрашивает доступ к датчикам движения и ориентации",
+        titleIdle: "Определение бездействия",
+        descIdle: "{host} хочет знать, когда вы активно используете устройство",
+        titleDisplayCapture: "Демонстрация экрана",
+        descDisplayCapture: "{host} хочет захватывать и транслировать ваш экран",
+        titleWindowManagement: "Управление окнами",
+        descWindowManagement: "{host} хочет управлять окнами на ваших экранах",
+        titleSpeakerSelection: "Вывод звука",
+        descSpeakerSelection: "{host} хочет выбирать устройства вывода звука",
+        titleOpenExternal: "Внешнее приложение",
+        descOpenExternal: "{host} хочет открыть внешнее приложение",
+        titleGeneric: "Разрешение сайта",
+        descGeneric: "{host} запрашивает доступ к {permission}"
     }
 };
 
 const it = {
     ctx: {
+        resetPinHome: "Ripristina URL iniziale",
         colorAccent: "Accento",
         colorYellow: "Giallo",
         colorGreen: "Verde",
@@ -6719,7 +7207,9 @@ const it = {
         deleteWorkspace: "Elimina spazio di lavoro",
         deletedWorkspace: "Spazio «{name}» eliminato",
         manageWorkspaces: "Gestisci spazi di lavoro...",
-        copiedToClipboard: "Copiato negli appunti"
+        copiedToClipboard: "Copiato negli appunti",
+        hideDistractingItems: "Nascondi elementi che distraggono...",
+        showHiddenItemsCount: "Mostra elementi nascosti ({count})"
     },
     auth: {
         firebaseConfigured: "Credenziali Firebase Cloud Sync configurate!",
@@ -7134,7 +7624,27 @@ const it = {
         clear: "Cancella",
         manage: "Gestisci",
         sitePermissions: "Permessi del sito",
-        resetAllPermissions: "Ripristina tutti i permessi"
+        resetAllPermissions: "Ripristina tutti i permessi",
+        hideDistractingItems: "Nascondi elementi che distraggono",
+        showHiddenItemsTitle: "Ripristina tutti gli elementi nascosti in questo sito",
+        showHiddenItemsCount: "Mostra nascosti ({count})",
+        permCamera: "Fotocamera",
+        permMicrophone: "Microfono",
+        permMidi: "Dispositivi MIDI",
+        permDisplayCapture: "Condivisione schermo",
+        forceDarkSiteLabel: "Forza modalità scura",
+        darkWhitelisted: "In whitelist (tema nativo)",
+        darkExcludedVia: "Escluso tramite {rule}",
+        darkExcludedExact: "Ignorato su {rule}",
+        darkActiveOnSite: "Attivo su questo sito",
+        darkGlobalOff: "Modalità scura forzata disattivata",
+        darkExcludeBtn: "Escludi",
+        darkAllowBtn: "Riattiva",
+        darkExcludedToast: "{domain} escluso dalla modalità scura forzata",
+        darkIncludedToast: "{domain} rimosso dalla whitelist della modalità scura",
+        darkRemoveRuleTooltip: "Rimuovi {rule} dalla whitelist",
+        darkExcludeSiteTooltip: "Escludi {domain} dalla modalità scura",
+        darkNativeDetected: "Tema scuro nativo rilevato · Non invertito",
     },
     tor: {
         exitIpCopied: "IP di uscita copiato negli appunti",
@@ -7290,11 +7800,49 @@ const it = {
         instruction: "Clicca e trascina per selezionare un'area • Premi {key} per annullare",
         snipBtn: "Acquisisci",
         cancelEsc: "Annulla (Esc)"
+    },
+    permission: {
+        thisSite: "Questo sito",
+        sessionOnly: "Solo sessione",
+        queueCount: "{current} di {total}",
+        allow: "Consenti",
+        allowOnce: "Consenti una volta",
+        allowSession: "Consenti per la sessione",
+        block: "Blocca",
+        titleCamera: "Accesso fotocamera",
+        descCamera: "{host} vuole usare la tua fotocamera",
+        titleMicrophone: "Accesso microfono",
+        descMicrophone: "{host} vuole usare il tuo microfono",
+        titleCameraMic: "Fotocamera e microfono",
+        descCameraMic: "{host} vuole usare fotocamera e microfono",
+        titleGeolocation: "Accesso posizione",
+        descGeolocation: "{host} vuole conoscere la tua posizione",
+        titleNotifications: "Notifiche",
+        descNotifications: "{host} vuole mostrare notifiche",
+        titleClipboard: "Accesso appunti",
+        descClipboard: "{host} vuole leggere testo e immagini dagli appunti",
+        titleMidi: "Dispositivi MIDI",
+        descMidi: "{host} vuole controllare e comunicare con i dispositivi MIDI",
+        titleSensors: "Movimento e sensori",
+        descSensors: "{host} vuole accedere ai sensori di movimento e orientamento",
+        titleIdle: "Rilevamento inattività",
+        descIdle: "{host} vuole sapere quando usi attivamente il dispositivo",
+        titleDisplayCapture: "Condivisione schermo",
+        descDisplayCapture: "{host} vuole acquisire e condividere il tuo schermo",
+        titleWindowManagement: "Gestione finestre",
+        descWindowManagement: "{host} vuole gestire le finestre sui tuoi schermi",
+        titleSpeakerSelection: "Uscita audio",
+        descSpeakerSelection: "{host} vuole selezionare i dispositivi di uscita audio",
+        titleOpenExternal: "Applicazione esterna",
+        descOpenExternal: "{host} vuole aprire un'applicazione esterna",
+        titleGeneric: "Autorizzazione sito",
+        descGeneric: "{host} vuole accedere a {permission}"
     }
 };
 
 const uk = {
     ctx: {
+        resetPinHome: "Скинути на домашній URL",
         colorAccent: "Акцент",
         colorYellow: "Жовтий",
         colorGreen: "Зелений",
@@ -7443,7 +7991,9 @@ const uk = {
         deleteWorkspace: "Видалити робочий простір",
         deletedWorkspace: "Простір «{name}» видалено",
         manageWorkspaces: "Керувати робочими просторами...",
-        copiedToClipboard: "Скопійовано до буфера обміну"
+        copiedToClipboard: "Скопійовано до буфера обміну",
+        hideDistractingItems: "Сховати відволікаючі елементи...",
+        showHiddenItemsCount: "Показати сховані елементи ({count})"
     },
     auth: {
         firebaseConfigured: "Облікові дані Firebase Cloud Sync налаштовано!",
@@ -7858,7 +8408,27 @@ const uk = {
         clear: "Очистити",
         manage: "Керувати",
         sitePermissions: "Дозволи сайту",
-        resetAllPermissions: "Скинути всі дозволи"
+        resetAllPermissions: "Скинути всі дозволи",
+        hideDistractingItems: "Сховати відволікаючі елементи",
+        showHiddenItemsTitle: "Відновити всі сховані елементи на цьому сайті",
+        showHiddenItemsCount: "Показати сховані ({count})",
+        permCamera: "Камера",
+        permMicrophone: "Мікрофон",
+        permMidi: "MIDI-пристрої",
+        permDisplayCapture: "Демонстрація екрана",
+        forceDarkSiteLabel: "Примусова темна тема",
+        darkWhitelisted: "У білому списку (власна тема)",
+        darkExcludedVia: "Виключено через {rule}",
+        darkExcludedExact: "Пропущено на {rule}",
+        darkActiveOnSite: "Активно на цьому сайті",
+        darkGlobalOff: "Примусову темну тему вимкнено",
+        darkExcludeBtn: "Виключити",
+        darkAllowBtn: "Увімкнути знову",
+        darkExcludedToast: "{domain} виключено з примусової темної теми",
+        darkIncludedToast: "{domain} видалено з білого списку темної теми",
+        darkRemoveRuleTooltip: "Видалити {rule} з білого списку",
+        darkExcludeSiteTooltip: "Виключити {domain} з темної теми",
+        darkNativeDetected: "Виявлено вбудовану темну тему · Не інвертовано",
     },
     tor: {
         exitIpCopied: "Вихідний IP скопійовано в буфер обміну",
@@ -8014,11 +8584,49 @@ const uk = {
         instruction: "Натисніть і перетягніть для вибору області • Натисніть {key} для скасування",
         snipBtn: "Зняти",
         cancelEsc: "Скасувати (Esc)"
+    },
+    permission: {
+        thisSite: "Цей сайт",
+        sessionOnly: "Лише на сеанс",
+        queueCount: "{current} з {total}",
+        allow: "Дозволити",
+        allowOnce: "Дозволити один раз",
+        allowSession: "Дозволити на сеанс",
+        block: "Блокувати",
+        titleCamera: "Доступ до камери",
+        descCamera: "{host} хоче використовувати вашу камеру",
+        titleMicrophone: "Доступ до мікрофона",
+        descMicrophone: "{host} хоче використовувати ваш мікрофон",
+        titleCameraMic: "Камера та мікрофон",
+        descCameraMic: "{host} хоче використовувати камеру та мікрофон",
+        titleGeolocation: "Доступ до геолокації",
+        descGeolocation: "{host} хоче знати ваше місцезнаходження",
+        titleNotifications: "Сповіщення",
+        descNotifications: "{host} хоче показувати сповіщення",
+        titleClipboard: "Доступ до буфера обміну",
+        descClipboard: "{host} хоче читати текст та зображення з буфера обміну",
+        titleMidi: "MIDI-пристрої",
+        descMidi: "{host} хоче керувати MIDI-пристроями",
+        titleSensors: "Рух і датчики",
+        descSensors: "{host} хоче отримати доступ до датчиків руху та орієнтації",
+        titleIdle: "Визначення бездіяльності",
+        descIdle: "{host} хоче знати, коли ви активно користуєтеся пристроєм",
+        titleDisplayCapture: "Демонстрація екрана",
+        descDisplayCapture: "{host} хоче захоплювати та транслювати ваш екран",
+        titleWindowManagement: "Керування вікнами",
+        descWindowManagement: "{host} хоче керувати вікнами на ваших екранах",
+        titleSpeakerSelection: "Вивід звуку",
+        descSpeakerSelection: "{host} хоче вибирати пристрої виводу звуку",
+        titleOpenExternal: "Зовнішня програма",
+        descOpenExternal: "{host} хоче відкрити зовнішню програму",
+        titleGeneric: "Дозвіл сайту",
+        descGeneric: "{host} хоче отримати доступ до {permission}"
     }
 };
 
 const ko = {
     ctx: {
+        resetPinHome: "홈 URL로 재설정",
         colorAccent: "강조",
         colorYellow: "노랑",
         colorGreen: "초록",
@@ -8167,7 +8775,9 @@ const ko = {
         deleteWorkspace: "워크스페이스 삭제",
         deletedWorkspace: "워크스페이스 “{name}” 삭제됨",
         manageWorkspaces: "워크스페이스 관리...",
-        copiedToClipboard: "클립보드에 복사됨"
+        copiedToClipboard: "클립보드에 복사됨",
+        hideDistractingItems: "방해되는 항목 가리기...",
+        showHiddenItemsCount: "가려진 항목 표시 ({count})"
     },
     auth: {
         firebaseConfigured: "Firebase 클라우드 동기화 자격 증명이 구성되었습니다!",
@@ -8582,7 +9192,27 @@ const ko = {
         clear: "지우기",
         manage: "관리",
         sitePermissions: "사이트 권한",
-        resetAllPermissions: "모든 권한 초기화"
+        resetAllPermissions: "모든 권한 초기화",
+        hideDistractingItems: "방해되는 항목 가리기",
+        showHiddenItemsTitle: "이 사이트의 가려진 요소 모두 복원",
+        showHiddenItemsCount: "가려진 항목 표시 ({count})",
+        permCamera: "카메라",
+        permMicrophone: "마이크",
+        permMidi: "MIDI 장치",
+        permDisplayCapture: "화면 공유",
+        forceDarkSiteLabel: "강제 다크 모드",
+        darkWhitelisted: "허용 목록됨 (기본 테마)",
+        darkExcludedVia: "{rule}에 의해 제외됨",
+        darkExcludedExact: "{rule}에서 건너뜀",
+        darkActiveOnSite: "이 사이트에서 활성",
+        darkGlobalOff: "강제 다크 모드 꺼짐",
+        darkExcludeBtn: "제외",
+        darkAllowBtn: "다시 활성화",
+        darkExcludedToast: "{domain}을(를) 강제 다크 모드에서 제외했습니다",
+        darkIncludedToast: "{domain}을(를) 다크 모드 허용 목록에서 제거했습니다",
+        darkRemoveRuleTooltip: "허용 목록에서 {rule} 제거",
+        darkExcludeSiteTooltip: "{domain}을(를) 강제 다크 모드에서 제외",
+        darkNativeDetected: "기본 다크 모드 감지됨 · 반전 안 함",
     },
     tor: {
         exitIpCopied: "출구 IP가 클립보드에 복사되었습니다",
@@ -8738,150 +9368,46 @@ const ko = {
         instruction: "클릭하고 드래그하여 영역을 선택하세요 • {key} 키를 눌러 취소",
         snipBtn: "캡처",
         cancelEsc: "취소 (Esc)"
+    },
+    permission: {
+        thisSite: "이 사이트",
+        sessionOnly: "이번 세션만",
+        queueCount: "{current} / {total}",
+        allow: "허용",
+        allowOnce: "한 번만 허용",
+        allowSession: "세션 동안 허용",
+        block: "차단",
+        titleCamera: "카메라 액세스",
+        descCamera: "{host}이(가) 카메라를 사용하려고 합니다",
+        titleMicrophone: "마이크 액세스",
+        descMicrophone: "{host}이(가) 마이크를 사용하려고 합니다",
+        titleCameraMic: "카메라 및 마이크",
+        descCameraMic: "{host}이(가) 카메라와 마이크를 사용하려고 합니다",
+        titleGeolocation: "위치 액세스",
+        descGeolocation: "{host}이(가) 사용자의 위치를 확인하려고 합니다",
+        titleNotifications: "알림",
+        descNotifications: "{host}이(가) 알림을 표시하려고 합니다",
+        titleClipboard: "클립보드 액세스",
+        descClipboard: "{host}이(가) 클립보드의 텍스트와 이미지를 읽으려고 합니다",
+        titleMidi: "MIDI 장치",
+        descMidi: "{host}이(가) MIDI 장치를 제어하고 통신하려고 합니다",
+        titleSensors: "동작 및 센서",
+        descSensors: "{host}이(가) 동작 및 방향 센서에 액세스하려고 합니다",
+        titleIdle: "유휴 감지",
+        descIdle: "{host}이(가) 기기를 사용 중인지 확인하려고 합니다",
+        titleDisplayCapture: "화면 공유",
+        descDisplayCapture: "{host}이(가) 화면을 캡처하고 공유하려고 합니다",
+        titleWindowManagement: "창 관리",
+        descWindowManagement: "{host}이(가) 디스플레이의 창을 관리하려고 합니다",
+        titleSpeakerSelection: "오디오 출력",
+        descSpeakerSelection: "{host}이(가) 오디오 출력 장치를 선택하려고 합니다",
+        titleOpenExternal: "외부 앱",
+        descOpenExternal: "{host}이(가) 외부 애플리케이션을 열려고 합니다",
+        titleGeneric: "사이트 권한",
+        descGeneric: "{host}이(가) {permission}에 액세스하려고 합니다"
     }
 };
 
-const ERASER_POPOVERS_I18N = {
-    en: {
-        ctx: {
-            hideDistractingItems: "Hide Distracting Items...",
-            showHiddenItemsCount: "Show Hidden Items ({count})"
-        },
-        site: {
-            hideDistractingItems: "Hide Distracting Items",
-            showHiddenItemsTitle: "Restore all hidden elements on this site",
-            showHiddenItemsCount: "Show Hidden ({count})"
-        }
-    },
-    pl: {
-        ctx: {
-            hideDistractingItems: "Ukryj elementy rozpraszające...",
-            showHiddenItemsCount: "Pokaż ukryte elementy ({count})"
-        },
-        site: {
-            hideDistractingItems: "Ukryj elementy rozpraszające",
-            showHiddenItemsTitle: "Przywróć wszystkie ukryte elementy w tej witrynie",
-            showHiddenItemsCount: "Pokaż ukryte ({count})"
-        }
-    },
-    fr: {
-        ctx: {
-            hideDistractingItems: "Masquer les éléments gênants...",
-            showHiddenItemsCount: "Afficher les éléments masqués ({count})"
-        },
-        site: {
-            hideDistractingItems: "Masquer les éléments gênants",
-            showHiddenItemsTitle: "Restaurer tous les éléments masqués sur ce site",
-            showHiddenItemsCount: "Afficher masqués ({count})"
-        }
-    },
-    de: {
-        ctx: {
-            hideDistractingItems: "Störende Objekte ausblenden...",
-            showHiddenItemsCount: "Ausgeblendete Objekte zeigen ({count})"
-        },
-        site: {
-            hideDistractingItems: "Störende Objekte ausblenden",
-            showHiddenItemsTitle: "Alle ausgeblendeten Elemente auf dieser Website wiederherstellen",
-            showHiddenItemsCount: "Einblenden ({count})"
-        }
-    },
-    es: {
-        ctx: {
-            hideDistractingItems: "Ocultar elementos distractores...",
-            showHiddenItemsCount: "Mostrar elementos ocultos ({count})"
-        },
-        site: {
-            hideDistractingItems: "Ocultar elementos distractores",
-            showHiddenItemsTitle: "Restaurar todos los elementos ocultos en este sitio",
-            showHiddenItemsCount: "Mostrar ocultos ({count})"
-        }
-    },
-    pt: {
-        ctx: {
-            hideDistractingItems: "Ocultar itens de distração...",
-            showHiddenItemsCount: "Mostrar itens ocultos ({count})"
-        },
-        site: {
-            hideDistractingItems: "Ocultar itens de distração",
-            showHiddenItemsTitle: "Restaurar todos os elementos ocultos neste site",
-            showHiddenItemsCount: "Mostrar ocultos ({count})"
-        }
-    },
-    zh: {
-        ctx: {
-            hideDistractingItems: "隐藏干扰项目...",
-            showHiddenItemsCount: "显示隐藏项目 ({count})"
-        },
-        site: {
-            hideDistractingItems: "隐藏干扰项目",
-            showHiddenItemsTitle: "恢复此网站上所有隐藏的元素",
-            showHiddenItemsCount: "显示已隐藏 ({count})"
-        }
-    },
-    ja: {
-        ctx: {
-            hideDistractingItems: "気を散らす項目を非表示...",
-            showHiddenItemsCount: "非表示の項目を表示 ({count})"
-        },
-        site: {
-            hideDistractingItems: "気を散らす項目を非表示",
-            showHiddenItemsTitle: "このサイトで非表示にした要素をすべて復元",
-            showHiddenItemsCount: "非表示を表示 ({count})"
-        }
-    },
-    ru: {
-        ctx: {
-            hideDistractingItems: "Скрыть отвлекающие объекты...",
-            showHiddenItemsCount: "Показать скрытые объекты ({count})"
-        },
-        site: {
-            hideDistractingItems: "Скрыть отвлекающие объекты",
-            showHiddenItemsTitle: "Восстановить все скрытые элементы на этом сайте",
-            showHiddenItemsCount: "Показать скрытые ({count})"
-        }
-    },
-    it: {
-        ctx: {
-            hideDistractingItems: "Nascondi elementi che distraggono...",
-            showHiddenItemsCount: "Mostra elementi nascosti ({count})"
-        },
-        site: {
-            hideDistractingItems: "Nascondi elementi che distraggono",
-            showHiddenItemsTitle: "Ripristina tutti gli elementi nascosti in questo sito",
-            showHiddenItemsCount: "Mostra nascosti ({count})"
-        }
-    },
-    uk: {
-        ctx: {
-            hideDistractingItems: "Сховати відволікаючі елементи...",
-            showHiddenItemsCount: "Показати сховані елементи ({count})"
-        },
-        site: {
-            hideDistractingItems: "Сховати відволікаючі елементи",
-            showHiddenItemsTitle: "Відновити всі сховані елементи на цьому сайті",
-            showHiddenItemsCount: "Показати сховані ({count})"
-        }
-    },
-    ko: {
-        ctx: {
-            hideDistractingItems: "방해되는 항목 가리기...",
-            showHiddenItemsCount: "가려진 항목 표시 ({count})"
-        },
-        site: {
-            hideDistractingItems: "방해되는 항목 가리기",
-            showHiddenItemsTitle: "이 사이트의 가려진 요소 모두 복원",
-            showHiddenItemsCount: "가려진 항목 표시 ({count})"
-        }
-    }
+export default {
+    en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko
 };
-
-const popoversPack = { en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko };
-Object.entries(ERASER_POPOVERS_I18N).forEach(([code, extra]) => {
-    if (popoversPack[code]) {
-        popoversPack[code].ctx = Object.assign(popoversPack[code].ctx || {}, extra.ctx);
-        popoversPack[code].site = Object.assign(popoversPack[code].site || {}, extra.site);
-    }
-});
-
-export default popoversPack;

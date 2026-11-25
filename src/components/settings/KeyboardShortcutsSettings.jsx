@@ -22,7 +22,14 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
     const [pendingConflict, setPendingConflict] = useState(null); // { actionId, combo, conflict: { id, label } }
     const isMac = useMemo(() => isMacPlatform(), []);
 
-    const tr = (key, fallback) => (typeof t === 'function' ? t(key, null, fallback) : fallback);
+    const tr = (key, fallback, params = null) => {
+        if (typeof t === 'function') return t(key, params, fallback);
+        if (!params || typeof fallback !== 'string') return fallback;
+        return fallback.replace(/\{(\w+)\}/g, (_, k) => (params[k] !== undefined ? String(params[k]) : `{${k}}`));
+    };
+
+    const getCategoryLabel = (category) => tr(`cfg.shortcuts.categories.${category.toLowerCase()}`, category);
+    const getActionLabel = (action) => tr(`cfg.shortcuts.actions.${action.id}`, action.label);
 
     useEffect(() => {
         if (!recordingActionId) return undefined;
@@ -94,14 +101,18 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
         return SHORTCUT_ACTIONS.filter((action) => {
             const effective = getEffectiveCombo(action.id, customShortcuts);
             const displayCombo = formatComboForDisplay(effective, isMac).toLowerCase();
+            const localizedLabel = getActionLabel(action).toLowerCase();
+            const localizedCategory = getCategoryLabel(action.category).toLowerCase();
             return (
+                localizedLabel.includes(normalizedQuery) ||
+                localizedCategory.includes(normalizedQuery) ||
                 action.label.toLowerCase().includes(normalizedQuery) ||
                 action.category.toLowerCase().includes(normalizedQuery) ||
                 effective.toLowerCase().includes(normalizedQuery) ||
                 displayCombo.includes(normalizedQuery)
             );
         });
-    }, [normalizedQuery, customShortcuts, isMac]);
+    }, [normalizedQuery, customShortcuts, isMac, t]);
 
     const groupedCategories = useMemo(() => {
         return SHORTCUT_CATEGORIES.map((category) => ({
@@ -185,10 +196,13 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                         <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
                         <div>
                             <p className="font-semibold">
-                                {formatComboForDisplay(pendingConflict.combo, isMac)} is already bound to "{pendingConflict.conflict.label}".
+                                {tr('cfg.shortcuts.conflictBound', '{combo} is already bound to "{action}".', {
+                                    combo: formatComboForDisplay(pendingConflict.combo, isMac),
+                                    action: getActionLabel(pendingConflict.conflict)
+                                })}
                             </p>
                             <p className="opacity-80 mt-0.5">
-                                Swap their bindings, replace the existing shortcut, or cancel.
+                                {tr('cfg.shortcuts.conflictHint', 'Swap their bindings, replace the existing shortcut, or cancel.')}
                             </p>
                         </div>
                     </div>
@@ -199,7 +213,7 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                             className="px-2.5 py-1 rounded-lg bg-amber-500 text-zinc-950 font-bold text-[11px] hover:bg-amber-400 transition cursor-pointer flex items-center gap-1"
                         >
                             <Check size={12} />
-                            <span>Swap / Replace</span>
+                            <span>{tr('cfg.shortcuts.swapReplaceBtn', 'Swap / Replace')}</span>
                         </button>
                         <button
                             type="button"
@@ -208,7 +222,7 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                                 isBright ? 'border-black/15 hover:bg-black/5' : 'border-white/15 hover:bg-white/10'
                             }`}
                         >
-                            Override
+                            {tr('cfg.shortcuts.overrideBtn', 'Override')}
                         </button>
                         <button
                             type="button"
@@ -228,7 +242,7 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                 <div className={`p-8 text-center rounded-2xl border text-xs ${
                     isBright ? 'bg-black/[0.02] border-black/[0.06] text-zinc-500' : 'bg-white/[0.02] border-white/[0.06] text-zinc-400'
                 }`}>
-                    No shortcuts matching "{searchQuery}".
+                    {tr('cfg.shortcuts.noMatches', 'No shortcuts matching "{query}".', { query: searchQuery })}
                 </div>
             ) : (
                 <div className="space-y-5">
@@ -237,7 +251,7 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                             <h4 className={`text-[11px] font-bold uppercase tracking-wider font-mono px-1 ${
                                 isBright ? 'text-zinc-500' : 'text-zinc-400'
                             }`}>
-                                {category}
+                                {getCategoryLabel(category)}
                             </h4>
                             <div className={`rounded-2xl border divide-y overflow-hidden ${
                                 isBright
@@ -259,11 +273,11 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                                         >
                                             <div className="flex items-center gap-2 min-w-0 pr-3">
                                                 <span className={`text-xs font-medium truncate ${isBright ? 'text-zinc-800' : 'text-zinc-200'}`}>
-                                                    {action.label}
+                                                    {getActionLabel(action)}
                                                 </span>
                                                 {isCustomized && (
                                                     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/25">
-                                                        Custom
+                                                        {tr('cfg.shortcuts.customizedBadge', 'Custom')}
                                                     </span>
                                                 )}
                                             </div>
@@ -282,9 +296,9 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                                                                 ? 'bg-white hover:bg-black/5 text-zinc-700 border-black/10 shadow-xs'
                                                                 : 'bg-black/40 hover:bg-white/10 text-zinc-200 border-white/10'
                                                     }`}
-                                                    title={isRecording ? 'Press new key combination (Esc to cancel)' : 'Click to record new shortcut'}
+                                                    title={isRecording ? tr('cfg.shortcuts.recordingTooltip', 'Press new key combination (Esc to cancel)') : tr('cfg.shortcuts.recordTooltip', 'Click to record new shortcut')}
                                                 >
-                                                    {isRecording ? 'Press keys...' : display}
+                                                    {isRecording ? tr('cfg.shortcuts.pressKeys', 'Press keys...') : display}
                                                 </button>
 
                                                 {isCustomized && (
@@ -299,7 +313,7 @@ export default function KeyboardShortcutsSettings({ isBright, showToast, t }) {
                                                                 ? 'border-black/10 text-zinc-500 hover:text-zinc-800 hover:bg-black/5'
                                                                 : 'border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'
                                                         }`}
-                                                        title="Restore default shortcut"
+                                                        title={tr('cfg.shortcuts.restoreDefaultTooltip', 'Restore default shortcut')}
                                                     >
                                                         <RotateCcw size={12} />
                                                     </button>

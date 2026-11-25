@@ -1,0 +1,33 @@
+[package]
+name = "qbrowse-vault"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+aes-gcm.workspace = true
+anyhow.workspace = true
+argon2.workspace = true
+base64.workspace = true
+csv.workspace = true
+data-encoding.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+hmac.workspace = true
+once_cell.workspace = true
+p256.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+scrypt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Foundation", "Security_Credentials_UI", "Security_Cryptography_DataProtection", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT"] }
+
+[lib]
+name = "qbrowse_vault"
+path = "src/lib.rs"

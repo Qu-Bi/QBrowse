@@ -13,12 +13,7 @@ import useUIStore from '../../store/useUIStore';
 import useAIStore, { MODEL_PRESETS } from '../../store/useAIStore';
 import useTabStore from '../../store/useTabStore';
 import { useAnnotationStore, normalizeAnnotationUrl, deduplicateAnnotationList, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
-import { startRecording, stopRecordingAndTranscribe } from '../../utils/whisperSTT';
-import * as pdfjsLib from 'pdfjs-dist';
 import { useTranslation } from '../../i18n/index';
-
-// Configure pdfjs worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 function formatBytes(bytes) {
     if (!bytes || bytes <= 0) return '0 B';
@@ -346,50 +341,52 @@ export default function ToolHub() {
         showHubToast(t('tools.toolhub.toasts.clipboardCleared', null, 'Clipboard history cleared'));
     };
 
-    const handleFileUpload = async (e) => {
-        const files = Array.from(e.target.files || []);
+    const attachFiles = async (fileList) => {
+        const files = Array.from(fileList || []);
         for (const file of files) {
-            const isImage = file.type.startsWith('image/');
-            const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
-            
+            const isImage = Boolean(file.type && file.type.startsWith('image/'));
+            const isPdf = file.type === 'application/pdf' || (file.name && file.name.endsWith('.pdf'));
+
             // PDF to Image Processing
             if (isPdf && parsePdfAsImage) {
                 showHubToast(t('tools.toolhub.toasts.parsingPdf', { name: file.name }, `Parsing PDF visually: ${file.name}`));
                 try {
+                    const pdfjsLib = await import('pdfjs-dist');
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                    
+
                     // Limit to first 10 pages to save VRAM
                     const totalPagesToParse = Math.min(pdf.numPages, 10);
-                    
+
                     for (let pageNum = 1; pageNum <= totalPagesToParse; pageNum++) {
                         const page = await pdf.getPage(pageNum);
                         const viewport = page.getViewport({ scale: 1.5 });
-                        
+
                         const canvas = document.createElement('canvas');
                         const context = canvas.getContext('2d');
                         canvas.height = viewport.height;
                         canvas.width = viewport.width;
-                        
+
                         await page.render({ canvasContext: context, viewport }).promise;
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                        
+
                         addAttachment({
                             name: t('tools.toolhub.pdfPageName', { name: file.name, page: pageNum }, `${file.name} (Pg ${pageNum})`),
                             size: t('tools.toolhub.pdfImageSize', null, 'PDF Image'),
                             type: 'image',
+                            isImage: true,
                             dataUrl: dataUrl,
                             content: undefined
                         });
                     }
-                    
+
                     if (pdf.numPages > 10) {
                         showHubToast(t('tools.toolhub.toasts.pdfVramLimit', { name: file.name }, `Parsed first 10 pages of ${file.name} as images (VRAM limit).`));
                     }
                 } catch (err) {
                     console.error('Failed to parse PDF as image:', err);
                     showHubToast(t('tools.toolhub.toasts.pdfVisualFailed', null, 'Failed to parse PDF visually. Falling back to text extraction.'));
-                    // Fallback to old behavior inside error block if needed
                 }
                 continue;
             }
@@ -402,7 +399,14 @@ export default function ToolHub() {
                 previewDataUrl = await new Promise(r => { reader.onload = e => r(e.target.result); reader.readAsDataURL(file); });
             }
 
-            if (window.electronAPI && typeof window.electronAPI.parseFile === 'function' && file.path) {
+            if (isPdf && file.path && window.electronAPI && typeof window.electronAPI.rustExtractPdfText === 'function') {
+                try {
+                    contentText = await window.electronAPI.rustExtractPdfText(file.path);
+                } catch (_) {
+                    contentText = undefined;
+                }
+            }
+            if (contentText === undefined && window.electronAPI && typeof window.electronAPI.parseFile === 'function' && file.path) {
                 try {
                     // This extracts text from PDF, DOCX, Images via OCR, and regular files
                     contentText = await window.electronAPI.parseFile(file.path);
@@ -419,14 +423,60 @@ export default function ToolHub() {
             }
 
             addAttachment({
-                name: file.name,
+                name: file.name || `image-${Date.now()}.png`,
                 size: (file.size / 1024).toFixed(1) + ' KB',
                 type: isImage ? 'image' : 'text',
+                isImage,
                 dataUrl: previewDataUrl,
                 content: contentText
             });
         }
+    };
+
+    const handleFileUpload = async (e) => {
+        await attachFiles(e.target.files);
         e.target.value = null; // Reset input
+    };
+
+    const handlePaste = async (e) => {
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        const imageFiles = [];
+        if (clipboardData.items && clipboardData.items.length > 0) {
+            for (const item of Array.from(clipboardData.items)) {
+                if (item.type && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    if (blob) {
+                        const ext = (item.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+                        const namedFile = new File([blob], `pasted-image-${Date.now()}.${ext}`, { type: item.type });
+                        imageFiles.push(namedFile);
+                    }
+                }
+            }
+        }
+        if (imageFiles.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+            for (const f of Array.from(clipboardData.files)) {
+                if (f.type && f.type.startsWith('image/')) {
+                    const ext = (f.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+                    const namedFile = f.name ? f : new File([f], `pasted-image-${Date.now()}.${ext}`, { type: f.type });
+                    imageFiles.push(namedFile);
+                }
+            }
+        }
+
+        if (imageFiles.length > 0) {
+            e.preventDefault();
+            await attachFiles(imageFiles);
+        }
+    };
+
+    const handleComposerDrop = async (e) => {
+        const dt = e.dataTransfer;
+        if (!dt?.files || dt.files.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        await attachFiles(dt.files);
     };
 
     const extractActivePageContext = async (forceExtract = false) => {
@@ -458,6 +508,7 @@ export default function ToolHub() {
     };
 
     const handleMicToggle = async () => {
+        const { startRecording, stopRecordingAndTranscribe } = await import('../../utils/whisperSTT');
         if (isRecording) {
             setIsTranscribing(true);
             setIsRecording(false);
@@ -482,7 +533,6 @@ export default function ToolHub() {
     };
 
     const activePresetName = MODEL_PRESETS.find(m => m.id === activeModelId)?.name || 'Gemma 4 E2B Instruct (Q4_K_M)';
-    const isHandleHidden = Boolean(activeModal || isModalClosing || isRightPanelOpen);
 
     return (
         <>
@@ -498,30 +548,6 @@ export default function ToolHub() {
                     setIsRightPanelOpen(false);
                 }}
             />
-            
-            <div
-                id="tour-toolhub-trigger"
-                className={`fixed ${
-                    toolHubPosition === 'left'
-                        ? 'left-0 justify-start pl-1 rounded-r-xl'
-                        : 'right-0 justify-end pr-1 rounded-l-xl'
-                } top-1/2 -translate-y-1/2 w-4 h-40 z-[40000] cursor-pointer group flex items-center transition-all duration-300 ease-out ${
-                    isHandleHidden 
-                        ? `opacity-0 pointer-events-none ${toolHubPosition === 'left' ? '-translate-x-4' : 'translate-x-4'} select-none` 
-                        : 'opacity-100 pointer-events-auto translate-x-0'
-                }`}
-                onClick={() => {
-                    if (!isHandleHidden) {
-                        setIsRightPanelOpen(true);
-                    }
-                }}
-            >
-                <div className={`w-1 h-12 rounded-full transition-all duration-300 ease-out group-hover:h-24 ${
-                    isHandleHidden 
-                        ? 'bg-transparent' 
-                        : 'bg-white/10 group-hover:bg-accent/60 group-hover:shadow-[0_0_15px_var(--accent-30)]'
-                }`}></div>
-            </div>
 
             <div 
                 id="toolhub-container"
@@ -1558,15 +1584,45 @@ export default function ToolHub() {
                         </div>
 
                         {/* Input Box & Attachment Tray */}
-                        <div className={`mt-3 flex flex-col gap-2 pt-2 border-t ${isBright ? 'border-black/[0.08]' : 'border-white/10'}`}>
+                        <div
+                            onPaste={handlePaste}
+                            onDragOver={(e) => {
+                                if (e.dataTransfer?.types?.includes('Files')) {
+                                    e.preventDefault();
+                                }
+                            }}
+                            onDrop={handleComposerDrop}
+                            className={`mt-3 flex flex-col gap-2 pt-2 border-t ${isBright ? 'border-black/[0.08]' : 'border-white/10'}`}
+                        >
                             {/* Attached Files Tray */}
                             {attachedFiles.length > 0 && (
                                 <div className="flex gap-1.5 flex-wrap">
                                     {attachedFiles.map((file, index) => (
-                                        <div key={index} className="flex items-center gap-1.5 px-2.5 py-1 bg-accent/15 border border-accent/30 rounded-xl text-[10px] text-accent font-semibold animate-pop-in">
-                                            {file.type === 'image' ? <ImageIcon size={11} /> : <FileText size={11} />}
+                                        <div
+                                            key={index}
+                                            className={`flex items-center gap-1.5 ${
+                                                (file.isImage || file.type === 'image') && file.dataUrl
+                                                    ? 'p-1 pr-2'
+                                                    : 'px-2.5 py-1'
+                                            } bg-accent/15 border border-accent/30 rounded-xl text-[10px] text-accent font-semibold animate-pop-in`}
+                                        >
+                                            {(file.isImage || file.type === 'image') && file.dataUrl ? (
+                                                <img
+                                                    src={file.dataUrl}
+                                                    alt={file.name}
+                                                    className="w-7 h-7 rounded-lg object-cover border border-white/15 flex-shrink-0"
+                                                />
+                                            ) : file.type === 'image' ? (
+                                                <ImageIcon size={11} />
+                                            ) : (
+                                                <FileText size={11} />
+                                            )}
                                             <span className="truncate max-w-[120px]">{file.name}</span>
-                                            <button onClick={() => removeAttachment(index)} className={`${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'} ml-0.5`}>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeAttachment(index)}
+                                                className={`${isBright ? 'text-zinc-500 hover:text-zinc-900' : 'text-white/40 hover:text-white'} ml-0.5 cursor-pointer`}
+                                            >
                                                 <X size={10} />
                                             </button>
                                         </div>
@@ -1650,6 +1706,7 @@ export default function ToolHub() {
                                     value={chatInput}
                                     onChange={e => setChatInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSend()}
+                                    onPaste={handlePaste}
                                     placeholder={t('tools.toolhub.chatPlaceholder', null, 'Ask local Gemma 4 AI or drop files...')}
                                     className={`flex-1 bg-transparent px-2 text-xs ${isBright ? 'text-zinc-900 placeholder-zinc-400' : 'text-white placeholder-white/30'} outline-none`}
                                 />

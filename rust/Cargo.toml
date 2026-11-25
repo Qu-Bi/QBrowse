@@ -1,0 +1,93 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/qbrowse-storage",
+  "crates/qbrowse-sync",
+  "crates/qbrowse-shield",
+  "crates/qbrowse-reader",
+  "crates/qbrowse-github",
+  "crates/qbrowse-vault",
+  "crates/qbrowse-media",
+  "crates/qbrowse-sys",
+  "crates/qbrowse-ai",
+  "crates/qbrowse-tor",
+  "crates/qbrowse-napi",
+  "crates/qbrowse-installer",
+]
+
+[workspace.package]
+version = "1.5.1"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[workspace.dependencies]
+# N-API & Async Runtime
+napi = { version = "2", default-features = false, features = ["napi8", "async", "tokio_rt", "serde-json"] }
+napi-derive = "2"
+napi-build = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "net", "process", "sync", "time"] }
+
+# Serialization & Core Utilities
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "2"
+anyhow = "1"
+once_cell = "1"
+dashmap = "6"
+parking_lot = "0.12"
+regex = "1"
+url = "2"
+percent-encoding = "2"
+chrono = { version = "0.4", features = ["serde"] }
+semver = "1.0"
+uuid = { version = "1", features = ["v4"] }
+
+# SQLite + FTS5 (pure cc-rs, zero cmake)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Shield, HTML, XML
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "css-validation"] }
+psl = "2"
+scraper = "0.20"
+ammonia = "4"
+quick-xml = "0.36"
+
+# Crypto, Vault, Sync, WebAuthn
+aes-gcm = "0.10"
+scrypt = "0.11"
+argon2 = "0.5"
+pbkdf2 = "0.12"
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+blake3 = "1.5"
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+ed25519-dalek = { version = "2", features = ["pkcs8", "rand_core"] }
+rand = "0.8"
+zeroize = { version = "1.8", features = ["derive"] }
+base64 = "0.22"
+hex = "0.4"
+data-encoding = "2"
+
+# Compression, Archives, Docs, Media, Sys
+brotli = "7"
+flate2 = "1.0"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tar = "0.4"
+csv = "1.3"
+lopdf = "0.34"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "ico", "bmp"] }
+sysinfo = "0.32"
+
+# HTTP / TLS (schannel on Windows, rustls on Linux/macOS - zero OpenSSL/CMake)
+[workspace.dependencies.reqwest]
+version = "0.12"
+default-features = false
+features = ["json", "stream", "gzip", "socks", "multipart"]

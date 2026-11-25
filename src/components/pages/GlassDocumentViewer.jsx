@@ -117,7 +117,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
         }
     }, [fileData?.base64, fileData?.mime, isMediaAudio, isMediaVideo, ext]);
 
-    const mediaSrc = blobUrl || (fileData?.base64 
+    const mediaSrc = blobUrl || fileData?.streamUrl || (fileData?.base64 
         ? `data:${fileData.mime || (isMediaAudio ? 'audio/mpeg' : 'application/octet-stream')};base64,${fileData.base64}` 
         : url);
 
@@ -248,7 +248,7 @@ export default function GlassDocumentViewer({ url, filePath, fileName, extension
                         <h3 className="text-sm font-bold text-white">{t('tools.docViewer.errorTitle', null, 'Unable to Display File')}</h3>
                         <p className="text-xs text-zinc-400">{error}</p>
                     </div>
-                ) : (!fileData?.isText && !isMediaImage && !isMediaVideo && !isMediaAudio) || (!fileData?.base64 && !blobUrl && (isMediaVideo || isMediaAudio)) ? (
+                ) : (!fileData?.isText && !isMediaImage && !isMediaVideo && !isMediaAudio) || (!fileData?.base64 && !blobUrl && !fileData?.streamUrl && (isMediaVideo || isMediaAudio)) ? (
                     /* Unsupported / Large Binary File Fallback Card */
                     <div className={`m-auto max-w-md w-full p-7 rounded-3xl border text-center space-y-4 shadow-2xl ${
                         isBright ? 'bg-white border-black/10 text-zinc-900' : 'bg-white/[0.03] border-white/10 text-zinc-100'

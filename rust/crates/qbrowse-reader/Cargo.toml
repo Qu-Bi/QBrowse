@@ -1,0 +1,18 @@
+[package]
+name = "qbrowse-reader"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ammonia.workspace = true
+anyhow.workspace = true
+once_cell.workspace = true
+regex.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+[lib]
+name = "qbrowse_reader"
+path = "src/lib.rs"

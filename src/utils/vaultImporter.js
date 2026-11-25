@@ -37,6 +37,13 @@ export function parseCSV(text) {
 }
 
 export function parseVaultContent(text, filename = '') {
+    if (typeof window !== 'undefined' && typeof window.electronAPI?.rustParseVault === 'function') {
+        try {
+            const rustRes = window.electronAPI.rustParseVault(text, filename);
+            if (rustRes && Array.isArray(rustRes.parsed)) return rustRes;
+        } catch (_) {}
+    }
+
     let parsed = [];
     let sourceName = 'File';
 

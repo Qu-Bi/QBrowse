@@ -33,6 +33,12 @@ function getGifGctEndOffset(bytes) {
  */
 export function parseGifInfo(buffer) {
     if (!buffer) return null;
+    if (typeof window !== 'undefined' && typeof window.electronAPI?.rustParseGifInfo === 'function') {
+        try {
+            const rustInfo = window.electronAPI.rustParseGifInfo(buffer);
+            if (rustInfo && typeof rustInfo.duration === 'number') return rustInfo;
+        } catch (_) {}
+    }
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     if (bytes.length < 13) return null;
 

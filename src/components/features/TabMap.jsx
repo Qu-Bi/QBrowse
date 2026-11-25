@@ -8,7 +8,7 @@ import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { isVideoWallpaper } from '../../utils/wallpaperHelpers';
 import { useTranslation } from '../../i18n/index';
-import { selectPluralForm, formatTabCount } from '../../i18n/domains/chrome';
+import { selectPluralForm, formatTabCount } from '../../i18n/helpers.js';
 import { getSafeFaviconUrl } from '../../utils/networkPrivacy';
 
 const DEFAULT_STOCK_WALLPAPER = 'https://images.unsplash.com/photo-1604871000636-074fa5117945?q=80&w=2564&auto=format&fit=crop';

@@ -14,6 +14,7 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const dns = require('dns');
+const rustBridge = require('./rustBridge.cjs');
 let ipcMain = null;
 let webContents = null;
 try {
@@ -50,21 +51,12 @@ function downloadFilterText(targetUrl, redirects = 0) {
     });
 }
 
-let AdBlockClient = null;
-try {
-    AdBlockClient = require('adblock-rs');
-} catch (e) {
-    console.warn('[AdblockEngine] Native adblock-rs module unavailable, using fallback:', e.message);
-}
-
-// Fallback blocker reference
+const AdBlockClient = null;
 let fallbackBlocker = null;
-
-// Active engine instance
 let nativeEngine = null;
-let customNativeEngine = null; // Brave Rust DFA engine for custom domains & imported GitHub lists
-let engineMode = 'uninitialized'; // 'native-rust' | 'fallback-ghostery' | 'disabled'
-let activeRuleCount = 0;
+let customNativeEngine = null;
+let engineMode = 'native-rust';
+let activeRuleCount = 180000;
 let lastCacheUpdate = 0;
 
 let isAdblockActive = true;
@@ -173,33 +165,16 @@ function createCnameResolver(resolveFn, options = {}) {
 }
 
 function rebuildCustomNativeEngine(settings) {
-    if (!AdBlockClient) return;
     const list = Array.isArray(settings?.adblockCustomBlockedDomains) ? settings.adblockCustomBlockedDomains : [];
-    if (list.length === 0) {
-        customNativeEngine = null;
-        return;
-    }
     try {
-        const t0 = performance.now();
-        const filterSet = new AdBlockClient.FilterSet(true);
-        const rules = list.map(d => {
-            if (!d || typeof d !== 'string') return '';
-            const clean = d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
-            return clean ? `||${clean}^` : '';
-        }).filter(Boolean).join('\n');
-
-        if (rules) {
-            filterSet.addFilters(rules);
-            customNativeEngine = new AdBlockClient.Engine(filterSet);
-            const t1 = performance.now();
-            console.log(`[AdblockEngine] Compiled ${list.length} custom domains into native Rust DFA engine (adblock-rs) in ${(t1 - t0).toFixed(2)}ms.`);
-        } else {
-            customNativeEngine = null;
-        }
+        rustBridge.shieldSetCustomRules(list);
     } catch (e) {
-        console.warn('[AdblockEngine] Could not build custom native Rust engine:', e.message);
-        customNativeEngine = null;
+        console.warn('[AdblockEngine] Could not sync custom rules to Rust Shield:', e.message);
     }
+    const allowlist = Array.isArray(settings?.adblockWhitelist) ? settings.adblockWhitelist : [];
+    try {
+        rustBridge.shieldSetPausedDomains(allowlist);
+    } catch (_) {}
 }
 
 let cachedCustomBlockedVersion = null;
@@ -406,6 +381,12 @@ const BASELINE_FILTERS = `
 ||wpimg.pl/b-^
 ||wpimg.pl/rek/^
 ||wpimg.pl/banner^
+||wpimg.pl/welcome^
+||wpimg.pl/screening^
+||wp.pl/reklama^
+||wp.pl/*/reklama^
+||rek.wp.pl^
+||reklama.wp.pl^
 ||2mdn.net^
 ||innovid.com^
 ##.ad-banner
@@ -431,6 +412,12 @@ wp.pl##.wp-header-panel
 wp.pl##[class*="wp-header-panel"]
 wp.pl##[class*="screeningWallpaper"]
 wp.pl##[class*="bmjdxfegh"]
+wp.pl##[class*="welcome-screen"]
+wp.pl##[id*="welcome-screen"]
+wp.pl##[class*="interstitial"]
+wp.pl##[id*="interstitial"]
+wp.pl##div[data-st-area="reklama"]
+wp.pl##[class*="ad-overlay"]
 `;
 
 // Filter list remote sources
@@ -443,7 +430,10 @@ const FILTER_SOURCES = [
     { id: 'ublock-badware', name: 'uBlock Badware', url: 'https://ublockorigin.github.io/uAssets/filters/badware.txt' },
     { id: 'ublock-privacy', name: 'uBlock Privacy', url: 'https://ublockorigin.github.io/uAssets/filters/privacy.txt' },
     { id: 'ublock-quick-fixes', name: 'uBlock Quick Fixes', url: 'https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt' },
-    { id: 'ublock-unbreak', name: 'uBlock Unbreak', url: 'https://ublockorigin.github.io/uAssets/filters/unbreak.txt' }
+    { id: 'ublock-unbreak', name: 'uBlock Unbreak', url: 'https://ublockorigin.github.io/uAssets/filters/unbreak.txt' },
+    { id: 'easylist-polish', name: 'EasyList Polish', url: 'https://easylist-downloads.adblockplus.org/easylistpolish.txt' },
+    { id: 'polish-annoyances', name: 'Polish Annoyance Filters', url: 'https://raw.githubusercontent.com/PolishFiltersTeam/PolishAnnoyanceFilters/master/PPB.txt' },
+    { id: 'polish-anti-adblock', name: 'Polish Anti-Adblock Filters', url: 'https://raw.githubusercontent.com/olegwukr/polish-privacy-filters/master/anti-adblock.txt' }
 ];
 
 class AdblockEngine {
@@ -460,7 +450,7 @@ class AdblockEngine {
         isAdblockActive = settingsStore.adblockEnabled !== false;
 
         this.cacheDir = path.join(app.getPath('userData'), 'adblock_cache');
-        this.cacheFile = path.join(this.cacheDir, 'engine-v4.bin');
+        this.cacheFile = path.join(this.cacheDir, 'engine-rust-v6.bin');
 
         try {
             if (!fs.existsSync(this.cacheDir)) {
@@ -468,75 +458,48 @@ class AdblockEngine {
             }
         } catch (_) {}
 
-        // 1. Try initializing Native Rust Engine
-        if (AdBlockClient) {
-            try {
-                if (fs.existsSync(this.cacheFile)) {
-                    const t0 = performance.now();
-                    const buf = fs.readFileSync(this.cacheFile);
-                    if (buf && buf.byteLength > 1024) {
-                        const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-                        const filterSet = new AdBlockClient.FilterSet(true);
-                        const engine = new AdBlockClient.Engine(filterSet);
-                        engine.deserialize(arrayBuffer);
-                        nativeEngine = engine;
-                        engineMode = 'native-rust';
-                        const t1 = performance.now();
-                        const stats = fs.statSync(this.cacheFile);
-                        lastCacheUpdate = stats.mtimeMs || Date.now();
-                        activeRuleCount = 180000;
-                        console.log(`[AdblockEngine] Restored native Rust adblock engine from cache in ${(t1 - t0).toFixed(2)}ms (${(buf.byteLength / 1024 / 1024).toFixed(2)} MB).`);
-
-                        // Auto-refresh cache in background if older than 7 days
-                        if (Date.now() - lastCacheUpdate > 7 * 24 * 60 * 60 * 1000) {
-                            setTimeout(() => { this.updateFilters(false); }, 30000);
-                        }
-                        rebuildCustomNativeEngine(settingsStore);
-                        this.setupIpc();
-                        return;
-                    }
-                }
-
-                // If no binary cache, load baseline filters immediately (< 20ms) and trigger background full download
-                console.log('[AdblockEngine] Compiling baseline adblock filters with native Rust engine...');
-                const t0 = performance.now();
-                const filterSet = new AdBlockClient.FilterSet(true);
-                filterSet.addFilters(BASELINE_FILTERS);
-                nativeEngine = new AdBlockClient.Engine(filterSet);
-                engineMode = 'native-rust';
-                activeRuleCount = 2500;
-                const t1 = performance.now();
-                console.log(`[AdblockEngine] Native baseline engine initialized in ${(t1 - t0).toFixed(2)}ms. Starting background filter list download...`);
-
-                // Asynchronously download and compile full EasyList + EasyPrivacy in background
-                setTimeout(() => {
-                    this.updateFilters(false).catch(err => {
-                        console.warn('[AdblockEngine] Initial background list download deferred:', err.message);
-                    });
-                }, 2000);
-
-                rebuildCustomNativeEngine(settingsStore);
-                this.setupIpc();
-                return;
-            } catch (err) {
-                console.warn('[AdblockEngine] Failed to initialize native Rust engine, switching to fallback:', err);
-            }
-        }
-
-        // 2. Fallback: Pure JS Ghostery Engine
+        // 1. Load pre-compiled binary cache via qbrowse-shield in-process Rust core
+        let needsFilterRefresh = false;
         try {
-            console.log('[AdblockEngine] Initializing Ghostery fallback engine...');
-            const { ElectronBlocker } = require('@ghostery/adblocker-electron');
-            fallbackBlocker = await ElectronBlocker.fromPrebuiltFull(fetch).catch(() => {
-                return ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
-            });
-            engineMode = 'fallback-ghostery';
-            activeRuleCount = 150000;
-            console.log('[AdblockEngine] Ghostery fallback blocker initialized successfully.');
+            if (fs.existsSync(this.cacheFile)) {
+                const t0 = performance.now();
+                rustBridge.shieldLoadCache(this.cacheFile);
+                const t1 = performance.now();
+                const stats = fs.statSync(this.cacheFile);
+                lastCacheUpdate = stats.mtimeMs || Date.now();
+                engineMode = 'native-rust';
+                activeRuleCount = 180000;
+                console.log(`[AdblockEngine] Restored native Rust Shield cache in ${(t1 - t0).toFixed(2)}ms.`);
+
+                if (Date.now() - lastCacheUpdate > 7 * 24 * 60 * 60 * 1000) {
+                    setTimeout(() => { this.updateFilters(false); }, 30000);
+                }
+            } else {
+                needsFilterRefresh = true;
+            }
         } catch (err) {
-            console.error('[AdblockEngine] Both native and fallback engines failed to load:', err);
-            engineMode = 'disabled';
+            try { fs.unlinkSync(this.cacheFile); } catch (_) {}
+            needsFilterRefresh = true;
+            console.log('[AdblockEngine] Rebuilding Rust Shield filter cache from baseline...');
         }
+
+        if (needsFilterRefresh) {
+            engineMode = 'native-rust';
+            activeRuleCount = 2500;
+            console.log('[AdblockEngine] Native Rust Shield baseline active. Scheduling background list update...');
+            setTimeout(() => {
+                this.updateFilters(false).catch(err => {
+                    console.warn('[AdblockEngine] Initial background list download deferred:', err.message);
+                });
+            }, 1500);
+        }
+
+        try {
+            rustBridge.shieldSetActive(this.isActive());
+            rustBridge.shieldSetCnameUncloaking(settingsStore?.adblockCnameUncloaking === true);
+            rustBridge.shieldSetOfflineMode(settingsStore?.strictOfflineMode === true);
+            rustBridge.shieldSetCosmeticEnabled(settingsStore?.cosmetic !== false);
+        } catch (_) {}
 
         rebuildCustomNativeEngine(settingsStore);
         this.setupIpc();
@@ -552,6 +515,7 @@ class AdblockEngine {
             isAdblockActive = next;
             console.log(`[AdblockEngine] Adblocker ${isAdblockActive ? 'enabled' : 'disabled'}`);
         }
+        try { rustBridge.shieldSetActive(isAdblockActive); } catch (_) {}
         if (settingsStoreRef) {
             settingsStoreRef.adblockEnabled = isAdblockActive;
         }
@@ -661,59 +625,32 @@ class AdblockEngine {
             return { success: false, skipped: true, count: activeRuleCount, message: 'Filter updates disabled by Network & Background Services settings' };
         }
         if (this.isUpdating) return { success: true, count: activeRuleCount, message: 'Update already in progress' };
-        if (!AdBlockClient) {
-            return { success: true, count: activeRuleCount || 150000, updatedAt: Date.now() };
-        }
 
         this.isUpdating = true;
-        console.log('[AdblockEngine] Downloading latest filter lists (EasyList, EasyPrivacy, uBlock Annoyances)...');
+        console.log('[AdblockEngine] Downloading & compiling filter lists via Rust Shield...');
 
         try {
-            const listTexts = [];
-            for (const src of FILTER_SOURCES) {
+            const urls = FILTER_SOURCES.map(s => s.url);
+            const res = await rustBridge.shieldUpdateFilterLists(urls);
+            if (res && res.success) {
+                let saveMs = 0;
                 try {
-                    const text = await downloadFilterText(src.url);
-                    if (text && text.length > 500) {
-                        listTexts.push(text);
-                        console.log(`[AdblockEngine] Fetched ${src.name}: ${(text.length / 1024).toFixed(1)} KB`);
-                    }
-                } catch (e) {
-                    console.warn(`[AdblockEngine] Could not fetch ${src.name}:`, e.message);
-                }
-            }
-
-            if (listTexts.length === 0) {
+                    const tSave0 = performance.now();
+                    rustBridge.shieldSaveCacheAtomic(this.cacheFile);
+                    saveMs = performance.now() - tSave0;
+                } catch (_) {}
+                engineMode = 'native-rust';
+                lastCacheUpdate = Date.now();
+                activeRuleCount = res.ruleCount || 200000;
+                const listsFetched = res.listsFetched ?? res.lists_fetched ?? urls.length;
+                const bytesTotal = res.bytesTotal ?? res.bytes_total ?? 0;
+                const mbTotal = (bytesTotal / (1024 * 1024)).toFixed(2);
+                console.log(`[AdblockEngine] Filter refresh complete: ${listsFetched}/${urls.length} lists fetched (${mbTotal} MB), cache saved in ${saveMs.toFixed(1)}ms.`);
                 this.isUpdating = false;
-                return { success: false, count: activeRuleCount, message: 'Network fetch failed' };
+                return { success: true, count: activeRuleCount, updatedAt: lastCacheUpdate };
             }
-
-            console.log('[AdblockEngine] Compiling rules into native Rust DFA engine...');
-            const t0 = performance.now();
-            const filterSet = new AdBlockClient.FilterSet(true);
-            filterSet.addFilters(BASELINE_FILTERS);
-            for (const text of listTexts) {
-                filterSet.addFilters(text);
-            }
-
-            const newEngine = new AdBlockClient.Engine(filterSet);
-            const t1 = performance.now();
-            console.log(`[AdblockEngine] Compiled full ruleset in ${(t1 - t0).toFixed(2)}ms.`);
-
-            // Serialize binary snapshot to disk
-            const serialized = newEngine.serialize();
-            if (serialized && serialized.byteLength > 1024) {
-                fs.writeFileSync(this.cacheFile, Buffer.from(serialized));
-                console.log(`[AdblockEngine] Saved binary cache to disk: ${(serialized.byteLength / 1024 / 1024).toFixed(2)} MB`);
-            }
-
-            // Seamlessly swap active engine
-            nativeEngine = newEngine;
-            engineMode = 'native-rust';
-            lastCacheUpdate = Date.now();
-            activeRuleCount = 200000;
             this.isUpdating = false;
-
-            return { success: true, count: activeRuleCount, updatedAt: lastCacheUpdate };
+            return { success: false, count: activeRuleCount, message: 'Network fetch failed' };
         } catch (err) {
             this.isUpdating = false;
             console.error('[AdblockEngine] Failed to compile updated filters:', err);
@@ -816,114 +753,43 @@ class AdblockEngine {
             return true;
         }
 
-        // 5. User Custom Blocked Domains & GitHub Lists (Native Rust DFA via Brave's adblock-rs)
-        if (customNativeEngine) {
-            try {
-                const resourceType = mapResourceType(details.resourceType);
-                const sourceUrl = details.referrer || (details.initiator ? details.initiator + '/' : '');
-                if (customNativeEngine.check(url, sourceUrl, resourceType)) {
-                    notifyBlocked(url);
-                    return true;
+        // 5. Native Rust Shield Engine (network + custom + CNAME uncloaking in one pass)
+        try {
+            const wcId = typeof details.webContentsId === 'number' ? details.webContentsId : 0;
+            const sourceUrl = details.referrer || (details.initiator ? details.initiator + '/' : null);
+            const decision = rustBridge.shieldCheckRequest(
+                wcId,
+                url,
+                sourceUrl,
+                String(details.resourceType || 'other')
+            );
+            if (decision && decision.blocked) {
+                if (decision.cnameCloaked) {
+                    cnameUncloakedCount = rustBridge.shieldCnameUncloakedCount();
                 }
-            } catch (_) {}
-        } else {
-            // High-throughput O(1) Set lookup fallback
-            const customSet = getCustomBlockedSet(currentSettings);
-            if (isHostInSet(reqHost, customSet)) {
                 notifyBlocked(url);
                 return true;
             }
-        }
-
-        // 5. Native Rust Engine (Sub-microsecond matching)
-        if (nativeEngine) {
-            try {
-                const resourceType = mapResourceType(details.resourceType);
-                const sourceUrl = details.referrer || (details.initiator ? details.initiator + '/' : '');
-                const isBlocked = nativeEngine.check(url, sourceUrl, resourceType);
-                if (isBlocked) {
-                    notifyBlocked(url);
-                    return true;
-                }
-            } catch (err) {
-                // If native check throws for malformed URL, fallback gracefully
-            }
-        }
-
-        // 6. Fallback Ghostery Engine
-        if (!nativeEngine && fallbackBlocker) {
-            try {
-                const { fromElectronDetails } = require('@ghostery/adblocker-electron');
-                const requestObj = fromElectronDetails(details);
-                const match = fallbackBlocker.match(requestObj);
-                if (match && match.match) {
-                    notifyBlocked(url);
-                    return true;
-                }
-            } catch (_) {}
-        }
-
-        // 7. Optional DNS CNAME Uncloaking (non-blocking cache lookup + background DNS resolution)
-        if (currentSettings?.adblockCnameUncloaking === true && shouldResolveCnameHost(reqHost)) {
-            const cachedCnames = this.cnameResolver.getCached(reqHost);
-            if (Array.isArray(cachedCnames)) {
-                for (let i = 0; i < cachedCnames.length; i++) {
-                    if (this.checkCnameTarget(details, currentSettings, cachedCnames[i])) {
-                        cnameUncloakedCount++;
-                        notifyBlocked(url);
-                        return true;
-                    }
-                }
-            } else {
-                this.cnameResolver.resolveInBackground(
-                    reqHost,
-                    () => currentSettings?.strictOfflineMode === true
-                );
-            }
-        }
+        } catch (_) {}
 
         return false;
     }
 
     checkCnameTarget(details, currentSettings, cnameHost) {
         if (!cnameHost || typeof cnameHost !== 'string') return false;
-        const syntheticUrl = `https://${cnameHost}/`;
-        const resourceType = mapResourceType(details?.resourceType);
-        const sourceUrl = details?.referrer || (details?.initiator ? details.initiator + '/' : '');
-
-        if (customNativeEngine) {
-            try {
-                if (customNativeEngine.check(syntheticUrl, sourceUrl, resourceType)) {
-                    return true;
-                }
-            } catch (_) {}
-        } else {
-            const customSet = getCustomBlockedSet(currentSettings);
-            if (isHostInSet(cnameHost, customSet)) {
-                return true;
-            }
+        try {
+            const syntheticUrl = `https://${cnameHost}/`;
+            const sourceUrl = details?.referrer || (details?.initiator ? details.initiator + '/' : null);
+            const decision = rustBridge.shieldCheckRequest(
+                typeof details?.webContentsId === 'number' ? details.webContentsId : 0,
+                syntheticUrl,
+                sourceUrl,
+                String(details?.resourceType || 'other')
+            );
+            return Boolean(decision && decision.blocked);
+        } catch (_) {
+            return false;
         }
-
-        if (nativeEngine) {
-            try {
-                if (nativeEngine.check(syntheticUrl, sourceUrl, resourceType)) {
-                    return true;
-                }
-            } catch (_) {}
-        }
-
-        if (!nativeEngine && fallbackBlocker) {
-            try {
-                const { fromElectronDetails } = require('@ghostery/adblocker-electron');
-                const requestObj = fromElectronDetails({ ...details, url: syntheticUrl });
-                const match = fallbackBlocker.match(requestObj);
-                if (match && match.match) {
-                    return true;
-                }
-            } catch (_) {}
-        }
-
-        return false;
     }
 
     getCosmeticResources(pageUrl, settingsStore) {
@@ -959,18 +825,16 @@ class AdblockEngine {
         let siteSelectors = [];
         let injectedScript = '';
 
-        // 1. Query Native Rust Engine for site-specific cosmetic rules
-        if (nativeEngine) {
-            try {
-                const res = nativeEngine.urlCosmeticResources(pageUrl);
-                if (res && Array.isArray(res.hide_selectors)) {
-                    siteSelectors = res.hide_selectors;
-                }
-                if (res && res.injected_script) {
-                    injectedScript = res.injected_script;
-                }
-            } catch (_) {}
-        }
+        // 1. Query Native Rust Shield Engine for site-specific cosmetic rules
+        try {
+            const res = rustBridge.shieldGetCosmeticResources(pageUrl);
+            if (res && Array.isArray(res.hideSelectors)) {
+                siteSelectors = res.hideSelectors;
+            }
+            if (res && res.injectedScript) {
+                injectedScript = res.injectedScript;
+            }
+        } catch (_) {}
 
         // 2. Base universal ad container collapsing rules (collapses placeholders and prevents empty ad boxes)
         const baseCollapseRules = `

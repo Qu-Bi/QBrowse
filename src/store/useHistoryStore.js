@@ -154,6 +154,16 @@ const useHistoryStore = create((set, get) => ({
     mergeRemoteHistory: (remoteHistory) => {
         if (!Array.isArray(remoteHistory) || remoteHistory.length === 0) return;
         set(state => {
+            if (typeof window !== 'undefined' && typeof window.electronAPI?.rustMergeHistory === 'function') {
+                try {
+                    const rustMerged = window.electronAPI.rustMergeHistory(state.history, remoteHistory);
+                    if (Array.isArray(rustMerged)) {
+                        try { localStorage.setItem(getActiveHistoryKey(), JSON.stringify(rustMerged)); } catch (e) {}
+                        return { history: rustMerged };
+                    }
+                } catch (_) {}
+            }
+
             const historyMap = new Map();
             // Load current local history (filtering out any ghost/tor/.onion/junk)
             state.history.forEach(item => {

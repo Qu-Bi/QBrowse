@@ -4,6 +4,7 @@ const fs = require('fs');
 const net = require('net');
 const http = require('http');
 const https = require('https');
+const rustBridge = require('./rustBridge.cjs');
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -303,8 +304,8 @@ async function downloadAndInstallTor(onProgress) {
     }
 
     try {
-        console.log(`[TorEngine] Extracting Tor bundle using native tar into: ${binDir}`);
-        execSync(`tar -xf "${tempArchive}" -C "${binDir}"`, { stdio: 'pipe' });
+        console.log(`[TorEngine] Extracting Tor bundle via Rust into: ${binDir}`);
+        await rustBridge.torExtractBundle(tempArchive, binDir);
         try { fs.unlinkSync(tempArchive); } catch (_) {}
 
         if (process.platform !== 'win32') {
@@ -399,41 +400,18 @@ function sendTorControlCommand(command) {
 }
 
 async function requestNewTorCircuit() {
-    console.log('[TorEngine] Requesting new Tor identity/circuit (SIGNAL NEWNYM)...');
+    console.log('[TorEngine] Requesting new Tor identity/circuit (SIGNAL NEWNYM via Rust)...');
     try {
-        // 1. Get existing built circuits to terminate them
-        const statusRes = await sendTorControlCommand('GETINFO circuit-status');
-        const oldCircuitIds = [];
-        if (statusRes && statusRes.includes('250+circuit-status=')) {
-            const lines = statusRes.split('\n');
-            for (const l of lines) {
-                if (l.includes('BUILT')) {
-                    const id = l.trim().split(/\s+/)[0];
-                    if (id && !isNaN(Number(id))) oldCircuitIds.push(id);
-                }
-            }
-        }
-
-        // 2. Send SIGNAL NEWNYM to switch circuits
-        const res = await sendTorControlCommand('SIGNAL NEWNYM');
-        console.log('[TorEngine] SIGNAL NEWNYM response:', res);
-        
-        const isRateLimited = res.includes('550') || res.toLowerCase().includes('rate limit');
-        const isSuccess = res.includes('250 OK') || (!res.includes('ERROR') && !isRateLimited);
-
-        // 3. Force-close previous circuits so Tor is compelled to route through a new exit
-        if (isSuccess && !isRateLimited) {
-            for (const cid of oldCircuitIds) {
-                try {
-                    await sendTorControlCommand(`CLOSECIRCUIT ${cid}`);
-                } catch (_) {}
-            }
-        }
-
-        return { 
-            success: isSuccess, 
-            rateLimited: isRateLimited, 
-            message: isRateLimited ? 'Tor limits new identity to once every 10 seconds' : res.trim() 
+        const cookiePath = path.join(getTorDataDir(), 'control_auth_cookie');
+        const res = await rustBridge.torSendNewnym(
+            activeControlPort,
+            fs.existsSync(cookiePath) ? cookiePath : null,
+            null
+        );
+        return {
+            success: Boolean(res?.success),
+            rateLimited: Boolean(res?.rateLimited),
+            message: res?.message || (res?.rateLimited ? 'Tor limits new identity to once every 10 seconds' : '250 OK')
         };
     } catch (e) {
         return { success: false, message: e.message };
@@ -441,38 +419,18 @@ async function requestNewTorCircuit() {
 }
 
 async function checkTorExitIp() {
-    const curlBin = process.platform === 'win32' ? 'curl.exe' : 'curl';
-
-    // 1. Try official check.torproject.org API
     try {
-        const out = await execPromise(`${curlBin} -s --max-time 4 --socks5-hostname 127.0.0.1:${activeSocksPort} https://check.torproject.org/api/ip`);
-        const parsed = JSON.parse(out);
-        if (parsed && parsed.IP) {
-            verifiedExitIp = parsed.IP;
+        const res = await rustBridge.torCheckExitIp(activeSocksPort);
+        if (res && res.ip && res.ip !== 'Unknown') {
+            verifiedExitIp = res.ip;
             return {
-                isTor: !!parsed.IsTor,
-                ip: parsed.IP,
-                status: parsed.IsTor ? 'Protected by Tor Network' : 'Clearweb IP'
+                isTor: Boolean(res.isTor),
+                ip: res.ip,
+                status: res.status || (res.isTor ? 'Protected by Tor Network' : 'Clearweb IP')
             };
         }
     } catch (e) {
-        console.warn('[TorEngine] SOCKS exit IP check (torproject) error:', e.message);
-    }
-
-    // 2. Fallback check endpoint over Tor SOCKS
-    try {
-        const out = await execPromise(`${curlBin} -s --max-time 4 --socks5-hostname 127.0.0.1:${activeSocksPort} https://api.ipify.org?format=json`);
-        const parsed = JSON.parse(out);
-        if (parsed && parsed.ip) {
-            verifiedExitIp = parsed.ip;
-            return {
-                isTor: true,
-                ip: parsed.ip,
-                status: 'Protected by Tor Network'
-            };
-        }
-    } catch (e) {
-        console.warn('[TorEngine] SOCKS exit IP check (ipify) error:', e.message);
+        console.warn('[TorEngine] Rust SOCKS5h exit IP check error:', e.message);
     }
 
     return { isTor: Boolean(verifiedExitIp), ip: verifiedExitIp || 'Unknown', status: 'Active' };

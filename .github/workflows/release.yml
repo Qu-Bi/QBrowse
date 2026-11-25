@@ -1,4 +1,4 @@
-name: Build & Release QBrowse (Standard + Experimental Rust)
+name: Build & Release QBrowse
 
 on:
   push:
@@ -15,9 +15,9 @@ permissions:
   contents: write
 
 jobs:
-  build-windows-standard:
-    name: Build Windows (Standard)
-    if: github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+  build-windows:
+    name: Build Windows (x64)
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-edition' || github.base_ref == 'main' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +30,14 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
 
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> target"
+
       - name: Sync version with Git tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -40,7 +48,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows Standard Installer
+      - name: Build & Test Rust Core + Parity Suite
+        shell: bash
+        run: |
+          npm run build:rust
+          test -f electron/native/qbrowse-core.win32-x64-msvc.node
+          cargo test --workspace --release --manifest-path rust/Cargo.toml
+          node tests/verify_rust_parity.cjs
+
+      - name: Build Windows Offline NSIS Installer
         run: npm run build:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,18 +68,37 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
-      - name: Upload Windows Standard Artifacts
+      - name: Build Custom Rust Web Installer
+        shell: bash
+        run: |
+          npm run build:installer
+          ls -la dist_electron/QBrowse-Web-Setup-*.exe
+          for f in dist_electron/QBrowse-Web-Setup-*.exe; do
+            "$f" --version
+          done
+
+      - name: Verify Windows Artifacts
+        shell: bash
+        run: |
+          ls -la dist_electron
+          test -f dist_electron/latest.yml
+          ls dist_electron/QBrowse-Setup-*.exe
+          ls dist_electron/QBrowse-Setup-*.exe.blockmap
+          ls dist_electron/QBrowse-Web-Setup-*.exe
+
+      - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: qbrowse-windows-standard
           path: |
-            dist_electron/*.exe
+            dist_electron/QBrowse-Setup-*.exe
+            dist_electron/QBrowse-Web-Setup-*.exe
             dist_electron/*.blockmap
             dist_electron/latest.yml
 
-  build-linux-standard:
-    name: Build Linux (Standard)
-    if: github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+  build-linux:
+    name: Build Linux (x64)
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/rust-edition' || github.base_ref == 'main' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,16 +111,24 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
 
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust -> target"
+
       - name: Sync version with Git tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           TAG_VER="${GITHUB_REF_NAME#v}"
           npm version "$TAG_VER" --no-git-tag-version --allow-same-version
 
-      - name: Install system packaging tools
+      - name: Install system packaging & Rust build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools rpm
+          sudo apt-get install -y build-essential pkg-config libarchive-tools rpm
 
       - name: Install dependencies
         run: |
@@ -93,8 +136,13 @@ jobs:
           chmod +x node_modules/.bin/vite
           chmod +x node_modules/.bin/electron-builder || true
 
-      - name: Run Updater Compatibility Tests
-        run: node test_linux_updater.cjs
+      - name: Build & Test Rust Core + Parity & Updater Suites
+        run: |
+          npm run build:rust
+          test -f electron/native/qbrowse-core.linux-x64-gnu.node
+          cargo test --workspace --release --manifest-path rust/Cargo.toml
+          node test_linux_updater.cjs
+          node tests/verify_rust_parity.cjs
 
       - name: Download Linux AI Binaries
         run: |
@@ -104,7 +152,7 @@ jobs:
           rm -f /tmp/llama.zip
           chmod +x electron/bin/* || true
 
-      - name: Build Linux Standard Packages
+      - name: Build Linux Packages
         run: npm run build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,7 +164,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
-      - name: Verify Linux Standard Artifacts
+      - name: Verify Linux Artifacts
         run: |
           ls -la dist_electron
           test -f dist_electron/latest-linux.yml
@@ -302,8 +350,8 @@ jobs:
             dist_electron/rust-linux*.yml
 
   publish-release:
-    name: Publish Dual-Edition Release
-    needs: [build-windows-standard, build-linux-standard, build-windows-rust, build-linux-rust]
+    name: Publish Unified Release
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
     steps:
@@ -315,30 +363,26 @@ jobs:
           path: release-dist
           merge-multiple: true
 
-      - name: Normalize Standard Windows Setup filenames & verify metadata
+      - name: Prepare Transition Metadata & Verify Artifacts
         run: |
           cd release-dist
-          for f in *Setup*.exe; do
-            if [ -f "$f" ]; then
-              HYPHEN_NAME=$(echo "$f" | sed -E 's/[ .]+Setup[ .]+/-Setup-/g')
-              if [ "$f" != "$HYPHEN_NAME" ]; then
-                cp "$f" "$HYPHEN_NAME"
-              fi
-            fi
-          done
           test -f latest.yml
           test -f latest-linux.yml
-          test -f rust.yml
-          test -f rust-linux.yml
+          # Transition bridge so v1.5.0 Rust Edition testers auto-update seamlessly onto v1.5.1+
+          cp latest.yml rust.yml
+          cp latest-linux.yml rust-linux.yml
+          ls -la
 
-      - name: Write Dual-Edition Release Notes
+      - name: Write Release Notes
         run: |
           cat <<'EOF' > release-notes.md
-          ### Editions Included
-          - **Standard Edition (`QBrowse-Setup-*`, `QBrowse-*`)** — Stable Node.js / Electron backend.
-          - **Rust Edition (`QBrowse-Rust-*`, `qbrowse_rust_*`, `qbrowse-rust-*`)** — **Experimental** build powered by an in-process Rust (`napi-rs`) core for faster startup, lower memory usage, native SQLite FTS5 history, native adblock/shield, QVault crypto, and zero-copy local streaming.
+          ### QBrowse (Unified Rust-Powered Release)
+          QBrowse is now unified on the high-performance Rust (`napi-rs`) core for faster startup, lower memory usage, native SQLite FTS5 history, native adblock/shield, QVault crypto, and zero-copy local streaming.
 
-          > **Note on In-App Updates:** Standard and Rust editions use separate update channels (`latest*.yml` vs `rust*.yml`), so your installed edition stays on its own track automatically.
+          ### Downloads
+          - **Windows Web Installer (`QBrowse-Web-Setup-*.exe`)** — Tiny, fast custom Rust web installer that fetches and verifies the latest build.
+          - **Windows Offline Installer (`QBrowse-Setup-*.exe`)** — Full offline NSIS installer (also used for WinGet & `.blockmap` delta auto-updates).
+          - **Linux Packages** — `.AppImage` (with delta auto-updates), `.deb`, `.rpm`, `.pacman`, and `.tar.gz`.
           EOF
 
       - name: Publish all installers to GitHub Release
@@ -350,3 +394,29 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-winget:
+    name: Publish to WinGet
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+    steps:
+      - name: Check WinGet Token
+        id: check-token
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -n "$WINGET_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "WINGET_TOKEN secret is not configured; skipping WinGet submission."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Submit WinGet Manifest Update
+        if: steps.check-token.outputs.enabled == 'true'
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: Qu-Bi.QBrowse
+          installers-regex: '^QBrowse-Setup-.*-x64\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
