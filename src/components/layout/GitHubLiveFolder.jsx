@@ -8,6 +8,7 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassMenuClasses } from '../common/ContextMenuProvider';
+import { isUrlAllowedInPin } from '../../utils/pinnedAppHelpers';
 import { useTranslation } from '../../i18n/index';
 
 export default function GitHubLiveFolder({ spaceId = 'work' }) {
@@ -82,10 +83,14 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
             return;
         }
 
+        const spacePins = useTabStore.getState().getPinnedTabsForSpace?.(spaceId) || [];
+        const matchedPin = spacePins.find(p => isUrlAllowedInPin(url, p));
+
         addTab({
             url,
             active: true,
-            title: 'GitHub'
+            title: 'GitHub',
+            pinnedId: matchedPin?.id || null
         }, spaceId);
     };
 
@@ -93,10 +98,13 @@ export default function GitHubLiveFolder({ spaceId = 'work' }) {
         if (e.button === 1) {
             e.preventDefault();
             e.stopPropagation();
+            const spacePins = useTabStore.getState().getPinnedTabsForSpace?.(spaceId) || [];
+            const matchedPin = spacePins.find(p => isUrlAllowedInPin(url, p));
             addTab({
                 url,
                 active: false,
-                title: 'GitHub'
+                title: 'GitHub',
+                pinnedId: matchedPin?.id || null
             }, spaceId);
         }
     };
