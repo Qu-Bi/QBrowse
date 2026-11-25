@@ -7,6 +7,7 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
+import { isUrlAllowedInPin } from '../../utils/pinnedAppHelpers';
 import { useTranslation } from '../../i18n/index';
 
 export default function GitHubGlancePopover() {
@@ -73,7 +74,11 @@ export default function GitHubGlancePopover() {
 
     const handleOpenUrl = (url) => {
         closeHoverGlance();
-        addTab({ url, active: true, title: 'GitHub' });
+        const tabState = useTabStore.getState();
+        const space = tabState.activeSpace;
+        const spacePins = tabState.getPinnedTabsForSpace?.(space) || [];
+        const matchedPin = spacePins.find(p => isUrlAllowedInPin(url, p));
+        addTab({ url, active: true, title: 'GitHub', pinnedId: matchedPin?.id || null });
     };
 
     const popoverWidth = 304;

@@ -893,6 +893,16 @@ const useTabStore = create((set, get) => ({
     if (makeActive && !meta.keepSplitView) {
         useUIStore.getState().parkOrCloseSplitViewForTabSwitch?.();
     }
+    let inheritedPinnedId = meta.pinnedId;
+    if (inheritedPinnedId === undefined && meta.openerTabId && cleanUrl && /^https?:\/\//i.test(cleanUrl)) {
+        const openerTab = list.find(t => t && t.id === meta.openerTabId);
+        if (openerTab?.pinnedId) {
+            const pin = get().getPinById?.(openerTab.pinnedId, activeSpace);
+            if (pin && isUrlAllowedInPin(cleanUrl, pin)) {
+                inheritedPinnedId = openerTab.pinnedId;
+            }
+        }
+    }
     get().addTab({ 
         id: `t-${now}-${Math.floor(Math.random() * 1000)}`, 
         title: targetTitle, 
@@ -900,7 +910,8 @@ const useTabStore = create((set, get) => ({
         active: makeActive, 
         folderId: null,
         createdAt: now,
-        ...meta
+        ...meta,
+        ...(inheritedPinnedId !== undefined ? { pinnedId: inheritedPinnedId } : {})
     });
   },
 
