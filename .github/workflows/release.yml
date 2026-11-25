@@ -252,6 +252,6 @@ jobs:
         if: steps.check-token.outputs.enabled == 'true'
         uses: vedantmgoyal9/winget-releaser@main
         with:
-          identifier: Qu-Bi.QBrowse
+          identifier: QuBI.QBrowse
           installers-regex: '^QBrowse-Setup-.*-x64\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}
