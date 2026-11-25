@@ -2179,7 +2179,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qbrowse-ai"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "dashmap",
@@ -2201,7 +2201,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-github"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "once_cell",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-media"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2230,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-napi"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2258,7 +2258,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-reader"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -2272,7 +2272,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-shield"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "adblock",
  "anyhow",
@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-storage"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-sync"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-sys"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "hex",
@@ -2343,7 +2343,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-tor"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "flate2",
@@ -2358,7 +2358,7 @@ dependencies = [
 
 [[package]]
 name = "qbrowse-vault"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "aes-gcm",
  "anyhow",

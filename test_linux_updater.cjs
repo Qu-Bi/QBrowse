@@ -332,6 +332,29 @@ async function run() {
         assert.ok(build.linux.mimeTypes.includes('text/html'));
     });
 
+    await test('keeps Standard and Experimental Rust edition metadata and assets strictly isolated', () => {
+        assert.strictEqual(getLinuxMetadataFileName('x64', 'standard'), 'latest-linux.yml');
+        assert.strictEqual(getLinuxMetadataFileName('x64', 'rust'), 'rust-linux.yml');
+        assert.strictEqual(getLinuxMetadataFileName('arm64', 'rust'), 'rust-linux-arm64.yml');
+
+        const mixedAssets = [
+            { name: 'QBrowse-1.5.0-x86_64.AppImage', browser_download_url: 'https://example.com/std.AppImage', size: 100 },
+            { name: 'QBrowse-Rust-1.5.0-x86_64.AppImage', browser_download_url: 'https://example.com/rust.AppImage', size: 110 },
+            { name: 'qbrowse_1.5.0_amd64.deb', browser_download_url: 'https://example.com/std.deb', size: 100 },
+            { name: 'qbrowse_rust_1.5.0_amd64.deb', browser_download_url: 'https://example.com/rust.deb', size: 110 }
+        ];
+
+        const stdAppImage = selectLinuxReleaseAsset(mixedAssets, 'appimage', 'x64', null, 'standard');
+        const rustAppImage = selectLinuxReleaseAsset(mixedAssets, 'appimage', 'x64', null, 'rust');
+        assert.strictEqual(stdAppImage?.name, 'QBrowse-1.5.0-x86_64.AppImage');
+        assert.strictEqual(rustAppImage?.name, 'QBrowse-Rust-1.5.0-x86_64.AppImage');
+
+        const stdDeb = selectLinuxReleaseAsset(mixedAssets, 'deb', 'x64', null, 'standard');
+        const rustDeb = selectLinuxReleaseAsset(mixedAssets, 'deb', 'x64', null, 'rust');
+        assert.strictEqual(stdDeb?.name, 'qbrowse_1.5.0_amd64.deb');
+        assert.strictEqual(rustDeb?.name, 'qbrowse_rust_1.5.0_amd64.deb');
+    });
+
     console.log(`\n${passed} tests passed.`);
 }
 

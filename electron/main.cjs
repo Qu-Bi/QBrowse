@@ -20,6 +20,7 @@ const {
     compareSemver,
     normalizeLinuxArch,
     getLinuxMetadataFileName,
+    isRustEditionAsset,
     sanitizeUpdateFileName,
     detectLinuxInstallType,
     selectLinuxReleaseAsset,
@@ -27,9 +28,22 @@ const {
     replaceAppImageAtomically,
     resolveLinuxDesktopEntryState
 } = require('./linuxUpdateHelper.cjs');
+
+const APP_EDITION = (() => {
+    try {
+        return require('../package.json').qbrowseEdition === 'rust' ? 'rust' : 'standard';
+    } catch {
+        return 'standard';
+    }
+})();
+const IS_RUST_EDITION = APP_EDITION === 'rust';
+
 let autoUpdater = null;
 try {
     autoUpdater = require('electron-updater').autoUpdater;
+    if (autoUpdater && IS_RUST_EDITION) {
+        autoUpdater.channel = 'rust';
+    }
 } catch (e) {
     console.warn('[AutoUpdater] Module load warning:', e.message);
 }
@@ -4534,6 +4548,7 @@ const updaterState = {
     message: null,
     silent: false,
     isPackaged: app.isPackaged,
+    edition: APP_EDITION,
     platform: process.platform,
     arch: process.arch,
     installType: initialInstallInfo.installType,
@@ -4713,14 +4728,18 @@ function parseReleaseYaml(yamlText) {
 }
 
 function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
-    const validAssets = Array.isArray(assets) ? assets.filter(a => a && a.name && a.browser_download_url) : [];
+    const validAssets = Array.isArray(assets)
+        ? assets.filter(a => a && a.name && a.browser_download_url && (IS_RUST_EDITION ? isRustEditionAsset(a.name) : !isRustEditionAsset(a.name)))
+        : [];
 
     if (process.platform === 'win32') {
         const exeAssets = validAssets.filter(a => {
             const n = a.name.toLowerCase();
             return n.endsWith('.exe') && !n.endsWith('.blockmap') && !n.includes('uninstall');
         });
-        const preferred = exeAssets.find(a => /setup/i.test(a.name)) || exeAssets[0] || null;
+        const preferred = (IS_RUST_EDITION
+            ? exeAssets.find(a => /rust/i.test(a.name))
+            : exeAssets.find(a => /setup/i.test(a.name))) || exeAssets[0] || null;
         let expectedSha512 = ymlData?.sha512 || null;
         if (ymlData?.files?.length && preferred) {
             const matchedFile = ymlData.files.find(f =>
@@ -4742,7 +4761,7 @@ function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
 
     if (process.platform === 'linux') {
         const installInfo = getPlatformInstallInfo();
-        return selectLinuxReleaseAsset(validAssets, installInfo.installType, process.arch, ymlData);
+        return selectLinuxReleaseAsset(validAssets, installInfo.installType, process.arch, ymlData, APP_EDITION);
     }
 
     // Fallback for macOS / other platforms
@@ -4759,7 +4778,10 @@ function selectBestPlatformAsset(assets = [], version = '', ymlData = null) {
 }
 
 async function fetchGitHubReleaseSyncData() {
-    const ymlFileName = process.platform === 'linux' ? getLinuxMetadataFileName(process.arch) : 'latest.yml';
+    const defaultLinuxYml = IS_RUST_EDITION ? 'rust-linux.yml' : 'latest-linux.yml';
+    const ymlFileName = process.platform === 'linux'
+        ? getLinuxMetadataFileName(process.arch, APP_EDITION)
+        : (IS_RUST_EDITION ? 'rust.yml' : 'latest.yml');
     let releaseObj = null;
 
     // 1. Primary: Query GitHub Releases REST API
@@ -4782,14 +4804,14 @@ async function fetchGitHubReleaseSyncData() {
         }
     }
 
-    // 2. If GitHub REST API succeeded, also fetch latest.yml / latest-linux*.yml for SHA-512 verification
+    // 2. If GitHub REST API succeeded, also fetch edition-specific YML metadata for SHA-512 verification
     if (releaseObj && releaseObj.tag_name) {
         const latestVersion = normalizeSemver(releaseObj.tag_name);
         const assets = Array.isArray(releaseObj.assets) ? releaseObj.assets : [];
         let ymlData = null;
 
         const ymlAsset = assets.find(a => a && a.name === ymlFileName)
-            || (process.platform === 'linux' ? assets.find(a => a && a.name === 'latest-linux.yml') : null);
+            || (process.platform === 'linux' ? assets.find(a => a && a.name === defaultLinuxYml) : null);
         if (ymlAsset && ymlAsset.browser_download_url) {
             try {
                 const { buffer } = await httpGetBuffer(ymlAsset.browser_download_url, { timeoutMs: 10000 });
@@ -4817,10 +4839,10 @@ async function fetchGitHubReleaseSyncData() {
         };
     }
 
-    // 3. Rate-limit resilient fallback: Fetch latest.yml / latest-linux*.yml directly via github.com release redirect
+    // 3. Rate-limit resilient fallback: Fetch edition YML directly via github.com release redirect
     let ymlResp = null;
-    const directCandidates = process.platform === 'linux' && ymlFileName !== 'latest-linux.yml'
-        ? [ymlFileName, 'latest-linux.yml']
+    const directCandidates = process.platform === 'linux' && ymlFileName !== defaultLinuxYml
+        ? [ymlFileName, defaultLinuxYml]
         : [ymlFileName];
     let lastYmlErr = null;
     for (const candidateYml of directCandidates) {
@@ -4868,16 +4890,25 @@ async function fetchGitHubReleaseSyncData() {
         const appImageArch = normArch === 'arm64' ? 'arm64' : 'x86_64';
 
         if (installInfo.installType === 'deb') {
-            candidateNames.push(`qbrowse_${latestVersion}_${debArch}.deb`);
+            candidateNames.push(IS_RUST_EDITION ? `qbrowse_rust_${latestVersion}_${debArch}.deb` : `qbrowse_${latestVersion}_${debArch}.deb`);
         } else if (installInfo.installType === 'rpm') {
-            candidateNames.push(`qbrowse-${latestVersion}.${rpmArch}.rpm`);
+            candidateNames.push(IS_RUST_EDITION ? `qbrowse-rust-${latestVersion}.${rpmArch}.rpm` : `qbrowse-${latestVersion}.${rpmArch}.rpm`);
         } else if (installInfo.installType === 'pacman') {
-            candidateNames.push(`qbrowse-${latestVersion}-${normArch}.pacman`, `qbrowse-${latestVersion}.pacman`);
+            candidateNames.push(
+                IS_RUST_EDITION ? `qbrowse-rust-${latestVersion}-${normArch}.pacman` : `qbrowse-${latestVersion}-${normArch}.pacman`,
+                IS_RUST_EDITION ? `qbrowse-rust-${latestVersion}.pacman` : `qbrowse-${latestVersion}.pacman`
+            );
         } else if (installInfo.installType === 'tarball') {
-            candidateNames.push(`QBrowse-${latestVersion}-${normArch}.tar.gz`, `qbrowse-${latestVersion}.tar.gz`);
+            candidateNames.push(
+                IS_RUST_EDITION ? `QBrowse-Rust-${latestVersion}-${normArch}.tar.gz` : `QBrowse-${latestVersion}-${normArch}.tar.gz`,
+                IS_RUST_EDITION ? `qbrowse-rust-${latestVersion}.tar.gz` : `qbrowse-${latestVersion}.tar.gz`
+            );
         } else {
             if (ymlData.path) candidateNames.push(ymlData.path);
-            candidateNames.push(`QBrowse-${latestVersion}-${appImageArch}.AppImage`, `QBrowse-${latestVersion}.AppImage`);
+            candidateNames.push(
+                IS_RUST_EDITION ? `QBrowse-Rust-${latestVersion}-${appImageArch}.AppImage` : `QBrowse-${latestVersion}-${appImageArch}.AppImage`,
+                IS_RUST_EDITION ? `QBrowse-Rust-${latestVersion}.AppImage` : `QBrowse-${latestVersion}.AppImage`
+            );
         }
     } else if (ymlData.path) {
         candidateNames.push(ymlData.path);
@@ -4886,7 +4917,11 @@ async function fetchGitHubReleaseSyncData() {
         const hyphenated = ymlData.path.replace(/\.Setup\./g, '-Setup-').replace(/\s+/g, '-');
         if (hyphenated !== ymlData.path && !candidateNames.includes(hyphenated)) candidateNames.push(hyphenated);
     } else if (process.platform === 'win32') {
-        candidateNames.push(`QBrowse-Setup-${latestVersion}.exe`, `QBrowse.Setup.${latestVersion}.exe`);
+        if (IS_RUST_EDITION) {
+            candidateNames.push(`QBrowse-Rust-${latestVersion}-x64.exe`);
+        } else {
+            candidateNames.push(`QBrowse-Setup-${latestVersion}.exe`, `QBrowse.Setup.${latestVersion}.exe`);
+        }
     }
 
     const chosenName = candidateNames[0] || `QBrowse-${latestVersion}`;

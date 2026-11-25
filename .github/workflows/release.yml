@@ -1,4 +1,4 @@
-name: Build & Release QBrowse (Windows & Linux)
+name: Build & Release QBrowse (Standard + Experimental Rust)
 
 on:
   push:
@@ -15,11 +15,139 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    name: Build Windows
+  build-windows-standard:
+    name: Build Windows (Standard)
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'main' || github.ref }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Sync version with Git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          npm version "$TAG_VER" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows Standard Installer
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY || secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN || secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID || secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET || secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID || secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+
+      - name: Upload Windows Standard Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qbrowse-windows-standard
+          path: |
+            dist_electron/*.exe
+            dist_electron/*.blockmap
+            dist_electron/latest.yml
+
+  build-linux-standard:
+    name: Build Linux (Standard)
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'main' || github.ref }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Sync version with Git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          npm version "$TAG_VER" --no-git-tag-version --allow-same-version
+
+      - name: Install system packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools rpm
+
+      - name: Install dependencies
+        run: |
+          npm install
+          chmod +x node_modules/.bin/vite
+          chmod +x node_modules/.bin/electron-builder || true
+
+      - name: Run Updater Compatibility Tests
+        run: node test_linux_updater.cjs
+
+      - name: Download Linux AI Binaries
+        run: |
+          mkdir -p electron/bin
+          curl -L -o /tmp/llama.zip https://github.com/ggml-org/llama.cpp/releases/download/b4528/llama-b4528-bin-ubuntu-x64.zip || true
+          unzip -o /tmp/llama.zip -d electron/bin/ || true
+          rm -f /tmp/llama.zip
+          chmod +x electron/bin/* || true
+
+      - name: Build Linux Standard Packages
+        run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY || secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN || secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID || secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET || secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID || secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+
+      - name: Verify Linux Standard Artifacts
+        run: |
+          ls -la dist_electron
+          test -f dist_electron/latest-linux.yml
+          ls dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz
+          for f in dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz; do
+            case "$(basename "$f")" in
+              *" "*) echo "ERROR: Space found in Linux artifact name: $f" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Upload Linux Standard Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qbrowse-linux-standard
+          path: |
+            dist_electron/*.deb
+            dist_electron/*.rpm
+            dist_electron/*.AppImage
+            dist_electron/*.pacman
+            dist_electron/*.tar.gz
+            dist_electron/*.blockmap
+            dist_electron/latest-linux*.yml
+
+  build-windows-rust:
+    name: Build Windows (Rust Experimental)
+    if: github.ref == 'refs/heads/rust-edition' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'rust-edition' || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -53,7 +181,7 @@ jobs:
           cargo test --workspace --release --manifest-path rust/Cargo.toml
           node tests/verify_rust_parity.cjs
 
-      - name: Build Windows Installer
+      - name: Build Windows Rust Edition Installer
         run: npm run build:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,20 +193,30 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
-      - name: Upload Windows Artifacts
+      - name: Verify Windows Rust Artifacts
+        shell: bash
+        run: |
+          ls -la dist_electron
+          test -f dist_electron/rust.yml
+          ls dist_electron/QBrowse-Rust-*.exe
+
+      - name: Upload Windows Rust Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qbrowse-windows
+          name: qbrowse-windows-rust
           path: |
-            dist_electron/*.exe
-            dist_electron/*.blockmap
-            dist_electron/latest.yml
+            dist_electron/QBrowse-Rust-*.exe
+            dist_electron/QBrowse-Rust-*.blockmap
+            dist_electron/rust.yml
 
-  build-linux:
-    name: Build Linux
+  build-linux-rust:
+    name: Build Linux (Rust Experimental)
+    if: github.ref == 'refs/heads/rust-edition' || github.base_ref == 'rust-edition' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'rust-edition' || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -127,7 +265,7 @@ jobs:
           rm -f /tmp/llama.zip
           chmod +x electron/bin/* || true
 
-      - name: Build Linux (AppImage, DEB, RPM, Pacman, Tar.gz)
+      - name: Build Linux Rust Edition Packages
         run: npm run build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,34 +277,33 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID || secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID || secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
-      - name: Verify Linux Artifacts & Auto-Update Metadata
+      - name: Verify Linux Rust Artifacts
         run: |
           ls -la dist_electron
-          test -f dist_electron/latest-linux.yml
-          ls dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz
-          # Ensure no spaces exist in Linux artifact filenames (prevents shell & latest-linux.yml mismatches)
+          test -f dist_electron/rust-linux.yml
+          ls dist_electron/QBrowse-Rust-*.AppImage dist_electron/qbrowse_rust_*.deb dist_electron/qbrowse-rust-*.rpm dist_electron/qbrowse-rust-*.pacman dist_electron/QBrowse-Rust-*.tar.gz
           for f in dist_electron/*.AppImage dist_electron/*.deb dist_electron/*.rpm dist_electron/*.pacman dist_electron/*.tar.gz; do
             case "$(basename "$f")" in
               *" "*) echo "ERROR: Space found in Linux artifact name: $f" >&2; exit 1 ;;
             esac
           done
 
-      - name: Upload Linux Artifacts
+      - name: Upload Linux Rust Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qbrowse-linux
+          name: qbrowse-linux-rust
           path: |
-            dist_electron/*.deb
-            dist_electron/*.rpm
-            dist_electron/*.AppImage
-            dist_electron/*.pacman
-            dist_electron/*.tar.gz
+            dist_electron/qbrowse_rust_*.deb
+            dist_electron/qbrowse-rust-*.rpm
+            dist_electron/QBrowse-Rust-*.AppImage
+            dist_electron/qbrowse-rust-*.pacman
+            dist_electron/QBrowse-Rust-*.tar.gz
             dist_electron/*.blockmap
-            dist_electron/latest-linux*.yml
+            dist_electron/rust-linux*.yml
 
   publish-release:
-    name: Publish Release (All Platforms)
-    needs: [build-windows, build-linux]
+    name: Publish Dual-Edition Release
+    needs: [build-windows-standard, build-linux-standard, build-windows-rust, build-linux-rust]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
     steps:
@@ -178,7 +315,7 @@ jobs:
           path: release-dist
           merge-multiple: true
 
-      - name: Normalize Windows artifact filenames for latest.yml compatibility
+      - name: Normalize Standard Windows Setup filenames & verify metadata
         run: |
           cd release-dist
           for f in *Setup*.exe; do
@@ -189,11 +326,26 @@ jobs:
               fi
             fi
           done
+          test -f latest.yml
+          test -f latest-linux.yml
+          test -f rust.yml
+          test -f rust-linux.yml
+
+      - name: Write Dual-Edition Release Notes
+        run: |
+          cat <<'EOF' > release-notes.md
+          ### Editions Included
+          - **Standard Edition (`QBrowse-Setup-*`, `QBrowse-*`)** — Stable Node.js / Electron backend.
+          - **Rust Edition (`QBrowse-Rust-*`, `qbrowse_rust_*`, `qbrowse-rust-*`)** — **Experimental** build powered by an in-process Rust (`napi-rs`) core for faster startup, lower memory usage, native SQLite FTS5 history, native adblock/shield, QVault crypto, and zero-copy local streaming.
+
+          > **Note on In-App Updates:** Standard and Rust editions use separate update channels (`latest*.yml` vs `rust*.yml`), so your installed edition stays on its own track automatically.
+          EOF
 
       - name: Publish all installers to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release-dist/*
+          body_path: release-notes.md
           draft: false
           prerelease: false
         env:
