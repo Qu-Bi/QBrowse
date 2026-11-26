@@ -47,6 +47,7 @@ pub fn version() -> String {
             qbrowse_sys::ping(),
             qbrowse_ai::ping(),
             qbrowse_tor::ping(),
+            qbrowse_extensions::ping(),
         ]
         .join(", ")
     )
@@ -1088,4 +1089,29 @@ pub fn tor_generate_torrc(config_json: Value) -> Result<String> {
     let cfg: qbrowse_tor::TorrcConfig =
         serde_json::from_value(config_json).map_err(to_napi_err)?;
     Ok(qbrowse_tor::generate_torrc(&cfg))
+}
+
+// ==================== EXTENSIONS (CRX / UNPACKED / MANIFEST) ====================
+
+#[napi]
+pub async fn ext_download_and_unpack_cws(
+    ext_id: String,
+    chrome_version: String,
+    dest_root: String,
+) -> Result<Value> {
+    let meta = qbrowse_extensions::download_and_unpack_cws(
+        &ext_id,
+        &chrome_version,
+        Path::new(&dest_root),
+    )
+    .await
+    .map_err(to_napi_err)?;
+    serde_json::to_value(meta).map_err(to_napi_err)
+}
+
+#[napi]
+pub fn ext_inspect_unpacked(dir_path: String) -> Result<Value> {
+    let meta = qbrowse_extensions::inspect_extension_dir(Path::new(&dir_path), None)
+        .map_err(to_napi_err)?;
+    serde_json::to_value(meta).map_err(to_napi_err)
 }

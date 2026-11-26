@@ -231,6 +231,42 @@ h1.text-\[8rem\].font-black.tracking-tighter {
   animation: colorSwatchPop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes extViewEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes extItemPop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-ext-view-in {
+  animation: extViewEnter 0.16s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-ext-item-in {
+  animation: extItemPop 0.22s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+html.is-window-resizing #qbrowse-viewport-frame,
+html.is-window-resizing #qbrowse-sidebar,
+html.is-window-resizing #qbrowse-extensions-hub {
+  transition: none !important;
+}
+
 /* Apple visionOS & macOS Fluid Modal System */
 @keyframes modalBackdropEnter {
   0% { opacity: 0; }
@@ -1683,6 +1719,8 @@ html.a11y-reduced-motion .animate-settings-sheet,
 html.a11y-reduced-motion .animate-settings-sheet-out,
 html.a11y-reduced-motion .animate-pop-in,
 html.a11y-reduced-motion .animate-pop-out,
+html.a11y-reduced-motion .animate-ext-view-in,
+html.a11y-reduced-motion .animate-ext-item-in,
 html.a11y-reduced-motion .animate-fade-in,
 html.a11y-reduced-motion .animate-slide-down-fade,
 html.a11y-reduced-motion .animate-slide-up-fade-out,

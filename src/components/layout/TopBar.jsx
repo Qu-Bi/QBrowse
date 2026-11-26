@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PanelLeft, PanelRight, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, Minimize2 } from 'lucide-react';
+import { PanelLeft, PanelRight, Lock, Unlock, Search, X, RefreshCw, SplitSquareHorizontal, Moon, Sun, ShieldCheck, Download, Music, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, Minimize2, Puzzle } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
+import useExtensionStore from '../../store/useExtensionStore';
 import { onGlobalNavigateBack, onGlobalNavigateForward } from '../../services/electronIPC';
 import { consumeHardwareNavEvent } from '../../utils/navDedup';
 import { formatCompactNumber } from '../../utils/formatters';
@@ -76,6 +77,7 @@ export default function TopBar() {
     const isRefreshing = useUIStore(state => state.isRefreshing);
     const zoomLevel = useUIStore(state => state.zoomLevel);
     const activePopover = useUIStore(state => state.activePopover);
+    const vaultProvider = useUIStore(state => state.settings?.vaultProvider || 'qvault');
 
     const isTopBarPopoverOpen = Boolean(activePopover && activePopover !== 'user' && activePopover !== 'userProfile');
     const isTopBarLockedOpen = isTopBarOmniboxActive || isTopBarPopoverOpen || Boolean(topBarContextMenu);
@@ -170,6 +172,11 @@ export default function TopBar() {
     const torBootstrapProgress = useTorStore(state => state.bootstrapProgress);
     const torVerifiedExitIp = useTorStore(state => state.verifiedExitIp);
     const torLastError = useTorStore(state => state.lastError);
+    const extensions = useExtensionStore(state => state.extensions);
+    const extActionStates = useExtensionStore(state => state.actionStates);
+    const activePopupExtId = useExtensionStore(state => state.activePopupExtId);
+    const openExtensionPopup = useExtensionStore(state => state.openExtensionPopup);
+    const closeExtensionPopup = useExtensionStore(state => state.closeExtensionPopup);
 
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
@@ -353,7 +360,7 @@ export default function TopBar() {
                     {/* LEFT BLOCK: Zen Mode, Navigation or Extensions based on sidebarPosition */}
                     {(() => {
                         const navBlock = (
-                            <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center ${isSidebarRight ? 'justify-end' : 'justify-start'} gap-1.5 min-w-max z-20`}>
+                            <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-none lg:flex-1 lg:min-w-max flex items-center ${isSidebarRight ? 'justify-end' : 'justify-start'} gap-1.5 z-20`}>
                                 {!isSidebarRight && (
                                     <button
                                         onClick={(e) => { 
@@ -497,6 +504,8 @@ export default function TopBar() {
                         const extensionsBlock = (() => {
                             const isVisible = (id) => !hiddenTopBarIcons.includes(id);
 
+                            const pinnedExtensions = (extensions || []).filter((e) => e.enabled !== false && e.pinned);
+                            const hasExtensions = isVisible('extensions');
                             const hasSplitView = isVisible('splitview');
                             const hasTheme = isVisible('theme');
                             const hasShield = isVisible('shield');
@@ -507,7 +516,7 @@ export default function TopBar() {
 
                             const hasTools = hasTheme || hasShield || hasMedia || hasDownloads;
                             const hasSecurity = hasTor || hasVault;
-                            const visibleCount = [hasSplitView, hasTheme, hasShield, hasMedia, hasDownloads, hasTor, hasVault].filter(Boolean).length;
+                            const visibleCount = [hasExtensions, hasSplitView, hasTheme, hasShield, hasMedia, hasDownloads, hasTor, hasVault].filter(Boolean).length;
 
                             const handleIconContextMenu = (e, iconId, iconLabel) => {
                                 e.preventDefault();
@@ -520,7 +529,7 @@ export default function TopBar() {
                             const isCollidingWithToolHub = isRightPanelOpen && ((isSidebarRight ? 'left' : 'right') === (toolHubPosition || 'right'));
 
                             return (
-                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 flex items-center ${isSidebarRight ? 'justify-start' : 'justify-end'} min-w-max z-20 transition-opacity duration-300 ${isCollidingWithToolHub ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-none lg:flex-1 lg:min-w-max flex items-center ${isSidebarRight ? 'justify-start' : 'justify-end'} z-20 transition-opacity duration-200 ${isCollidingWithToolHub ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                                     <div 
                                         id="qbrowse-extensions-hub"
                                         onContextMenu={(e) => {
@@ -530,20 +539,87 @@ export default function TopBar() {
                                             const y = Math.min(e.clientY, window.innerHeight - 280);
                                             useUIStore.getState().setTopBarContextMenu({ x, y, isHubGeneral: true });
                                         }}
-                                        className={`flex items-center gap-1 flex-shrink-0 min-w-max h-9 ${
+                                        className={`flex items-center gap-0.5 lg:gap-1 flex-shrink-0 lg:min-w-max h-9 ${
                                             frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : 'rounded-full'
-                                        } px-2 transition-all ${
+                                        } px-1.5 lg:px-2 ${
                                             isBright ? 'liquid-pill-bright' : 'liquid-pill-dark'
                                         }`}
                                         title={t('chrome.toolbarExtensionsTooltip', null, 'Toolbar & Extensions (Right-click to customize)')}
                                     >
+                                        {/* Pinned Extensions */}
+                                        {pinnedExtensions.map((ext) => {
+                                            const badgeText = extActionStates?.[ext.id]?.badgeText;
+                                            const isExtOpen = activePopover === 'extensions' && activePopupExtId === ext.id;
+                                            const extIcon = ext.iconDataUrl || ext.iconUrl;
+                                            return (
+                                                <button
+                                                    id={`tour-pinned-ext-${ext.id}`}
+                                                    key={`pinned-ext-${ext.id}`}
+                                                    onClick={() => {
+                                                        if (isExtOpen) {
+                                                            togglePopover('extensions');
+                                                        } else {
+                                                            openExtensionPopup(ext.id);
+                                                            if (activePopover !== 'extensions') {
+                                                                togglePopover('extensions');
+                                                            }
+                                                        }
+                                                    }}
+                                                    className={`relative p-1.5 rounded-full transition group cursor-pointer ${
+                                                        isExtOpen
+                                                            ? 'bg-accent/20 text-accent'
+                                                            : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/80 hover:bg-white/10')
+                                                    }`}
+                                                    title={ext.name || ext.id}
+                                                >
+                                                    {extIcon ? (
+                                                        <img src={extIcon} alt="" className="w-[15px] h-[15px] rounded-sm object-contain group-hover:scale-110 transition-transform" />
+                                                    ) : (
+                                                        <Puzzle size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                                    )}
+                                                    {badgeText && (
+                                                        <span className="absolute -top-0.5 -right-0.5 px-1 min-w-[13px] h-[13px] rounded-full bg-accent text-black text-[8px] font-bold leading-[13px] text-center shadow-xs">
+                                                            {badgeText}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+
+                                        {/* 0. Extensions Hub */}
+                                        {hasExtensions && (
+                                            <button
+                                                id="tour-extensions-trigger"
+                                                onClick={() => {
+                                                    if (activePopover !== 'extensions') {
+                                                        closeExtensionPopup();
+                                                    }
+                                                    togglePopover('extensions');
+                                                }}
+                                                onContextMenu={(e) => handleIconContextMenu(e, 'extensions', t('chrome.extensionsLabel', null, 'Extensions'))}
+                                                className={`p-1.5 rounded-full transition group cursor-pointer ${
+                                                    activePopover === 'extensions' && !activePopupExtId
+                                                        ? 'bg-accent/20 text-accent'
+                                                        : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
+                                                }`}
+                                                title={t('chrome.extensionsTooltip', null, 'Extensions (Right-click to hide)')}
+                                            >
+                                                <Puzzle size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                            </button>
+                                        )}
+
+                                        {/* Divider after Extensions if subsequent icons visible */}
+                                        {(hasExtensions || pinnedExtensions.length > 0) && (hasSplitView || hasTools || hasSecurity) && (
+                                            <div className={`hidden lg:block w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
+                                        )}
+
                                         {/* 1. Split View */}
                                         {hasSplitView && (
                                             <button 
                                                 id="tour-splitview-trigger"
                                                 onClick={() => toggleSplitView()} 
                                                 onContextMenu={(e) => handleIconContextMenu(e, 'splitview', t('nav.splitView', null, 'Split View'))}
-                                                className={`p-1.5 rounded-full transition group ${
+                                                className={`hidden lg:flex p-1.5 rounded-full transition group ${
                                                     isBright 
                                                         ? (isSplitView ? 'text-accent bg-accent/10' : 'text-zinc-600 hover:bg-black/5 hover:text-zinc-900') 
                                                         : (isSplitView ? 'text-accent bg-accent/10' : 'text-white/60 hover:text-white')
@@ -556,7 +632,7 @@ export default function TopBar() {
 
                                         {/* Divider after SplitView if subsequent icons visible */}
                                         {hasSplitView && (hasTools || hasSecurity) && (
-                                            <div className={`w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
+                                            <div className={`hidden lg:block w-px h-3.5 mx-0.5 ${isBright ? 'bg-gray-200/60' : 'bg-white/10'}`} />
                                         )}
 
                                         {/* 2. Theme & Dark Mode */}
@@ -610,7 +686,7 @@ export default function TopBar() {
                                                 id="tour-media-trigger"
                                                 onClick={() => togglePopover('media')} 
                                                 onContextMenu={(e) => handleIconContextMenu(e, 'media', t('chrome.mediaPlayerLabel', null, 'Media Player'))}
-                                                className={`p-1.5 rounded-full transition group ${
+                                                className={`hidden lg:flex p-1.5 rounded-full transition group ${
                                                     activePopover === 'media' 
                                                         ? 'bg-purple-500/20 text-purple-400' 
                                                         : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
@@ -627,7 +703,7 @@ export default function TopBar() {
                                                 id="tour-downloads-trigger"
                                                 onClick={() => { setIsRightPanelOpen(true); setRightPanelTab('downloads'); }} 
                                                 onContextMenu={(e) => handleIconContextMenu(e, 'downloads', t('nav.downloads', null, 'Downloads'))}
-                                                className={`p-1.5 rounded-full transition group ${
+                                                className={`hidden lg:flex p-1.5 rounded-full transition group ${
                                                     isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10'
                                                 }`} 
                                                 title={t('chrome.downloadsTooltip', null, 'Downloads (Right-click to hide)')}
@@ -647,7 +723,7 @@ export default function TopBar() {
                                                 id="tour-tor-trigger"
                                                 onClick={() => togglePopover('tor')} 
                                                 onContextMenu={(e) => handleIconContextMenu(e, 'tor', t('chrome.torNetworkLabel', null, 'Tor Onion Network'))}
-                                                className={`p-1.5 rounded-full transition group relative ${
+                                                className={`hidden sm:flex p-1.5 rounded-full transition group relative ${
                                                     activePopover === 'tor' || isTor 
                                                         ? 'bg-purple-500/25 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
                                                         : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
@@ -665,24 +741,69 @@ export default function TopBar() {
                                             </button>
                                         )}
 
-                                        {/* 7. QVault Passwords */}
-                                        {hasVault && (
-                                            <button 
-                                                id="tour-vault-trigger"
-                                                onClick={() => togglePopover('vault')} 
-                                                onContextMenu={(e) => handleIconContextMenu(e, 'vault', t('chrome.qvaultLabel', null, 'QVault Passwords'))}
-                                                className={`p-1.5 rounded-full transition group ${
-                                                    activePopover === 'vault' 
-                                                        ? 'bg-blue-500/20 text-blue-400' 
-                                                        : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
-                                                }`} 
-                                                title={t('chrome.qvaultTooltip', null, 'QVault Passwords (Right-click to hide)')}
-                                            >
-                                                <svg className="w-[15px] h-[15px] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.85} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                </svg>
-                                            </button>
-                                        )}
+                                        {/* 7. Vault Passwords (QVault or Default Extension Provider) */}
+                                        {hasVault && (() => {
+                                            const activeVaultExt = vaultProvider.startsWith('ext:')
+                                                ? (extensions || []).find((e) => e.id === vaultProvider.slice(4) && e.enabled !== false)
+                                                : null;
+
+                                            if (activeVaultExt) {
+                                                const isExtOpen = activePopover === 'extensions' && activePopupExtId === activeVaultExt.id;
+                                                const extIcon = activeVaultExt.iconDataUrl || activeVaultExt.iconUrl;
+                                                const badgeText = extActionStates?.[activeVaultExt.id]?.badgeText;
+                                                return (
+                                                    <button
+                                                        id="tour-vault-trigger"
+                                                        onClick={() => {
+                                                            if (isExtOpen) {
+                                                                togglePopover('extensions');
+                                                            } else {
+                                                                openExtensionPopup(activeVaultExt.id);
+                                                                if (activePopover !== 'extensions') {
+                                                                    togglePopover('extensions');
+                                                                }
+                                                            }
+                                                        }}
+                                                        onContextMenu={(e) => handleIconContextMenu(e, 'vault', activeVaultExt.name || t('chrome.qvaultLabel', null, 'QVault Passwords'))}
+                                                        className={`relative p-1.5 rounded-full transition group cursor-pointer ${
+                                                            isExtOpen
+                                                                ? 'bg-accent/20 text-accent'
+                                                                : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/80 hover:text-white hover:bg-white/10')
+                                                        }`}
+                                                        title={`${activeVaultExt.name || activeVaultExt.id} (${t('chrome.defaultVaultBadge', null, 'Default Vault')}) • Right-click to hide`}
+                                                    >
+                                                        {extIcon ? (
+                                                            <img src={extIcon} alt="" className="w-[15px] h-[15px] rounded-sm object-contain group-hover:scale-110 transition-transform" />
+                                                        ) : (
+                                                            <Puzzle size={15} strokeWidth={1.85} className="group-hover:scale-110 transition-transform" />
+                                                        )}
+                                                        {badgeText && (
+                                                            <span className="absolute -top-0.5 -right-0.5 px-1 min-w-[13px] h-[13px] rounded-full bg-accent text-black text-[8px] font-bold leading-[13px] text-center shadow-xs">
+                                                                {badgeText}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            }
+
+                                            return (
+                                                <button 
+                                                    id="tour-vault-trigger"
+                                                    onClick={() => togglePopover('vault')} 
+                                                    onContextMenu={(e) => handleIconContextMenu(e, 'vault', t('chrome.qvaultLabel', null, 'QVault Passwords'))}
+                                                    className={`p-1.5 rounded-full transition group ${
+                                                        activePopover === 'vault' 
+                                                            ? 'bg-blue-500/20 text-blue-400' 
+                                                            : (isBright ? 'text-zinc-700 hover:bg-black/10' : 'text-white/60 hover:text-white hover:bg-white/10')
+                                                    }`} 
+                                                    title={t('chrome.qvaultTooltip', null, 'QVault Passwords (Right-click to hide)')}
+                                                >
+                                                    <svg className="w-[15px] h-[15px] group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.85} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                    </svg>
+                                                </button>
+                                            );
+                                        })()}
 
                                         {/* Fallback button when all icons are hidden so user can easily unhide */}
                                         {visibleCount === 0 && (
@@ -716,7 +837,7 @@ export default function TopBar() {
                                 {isSidebarRight ? extensionsBlock : navBlock}
 
                                 {/* CENTER BLOCK: Multi-stage Centered to Fluid URL Bar */}
-                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-shrink flex-grow-0 w-full min-w-[140px] z-30 mx-2 flex items-center justify-center relative transition-[max-width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                <div style={{ WebkitAppRegion: 'no-drag' }} className={`flex-1 lg:flex-initial lg:flex-shrink lg:grow-0 w-full min-w-[120px] lg:min-w-[140px] z-30 mx-2 flex items-center justify-center relative ${
                                     omniboxStyle === 'wide'
                                         ? (isTopBarOmniboxActive ? 'max-w-5xl' : 'max-w-4xl')
                                         : omniboxStyle === 'minimal'

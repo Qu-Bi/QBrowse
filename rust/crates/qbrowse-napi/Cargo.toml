@@ -29,6 +29,7 @@ qbrowse-media = { path = "../qbrowse-media" }
 qbrowse-sys = { path = "../qbrowse-sys" }
 qbrowse-ai = { path = "../qbrowse-ai" }
 qbrowse-tor = { path = "../qbrowse-tor" }
+qbrowse-extensions = { path = "../qbrowse-extensions" }
 
 [build-dependencies]
 napi-build.workspace = true

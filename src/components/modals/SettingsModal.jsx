@@ -67,6 +67,7 @@ import { useGitHubStore } from '../../store/useGitHubStore';
 import useSyncStore from '../../store/useSyncStore';
 import useTorStore from '../../store/useTorStore';
 import useVaultStore from '../../store/useVaultStore';
+import useExtensionStore from '../../store/useExtensionStore';
 import AIEngineSettings from '../settings/AIEngineSettings';
 import { getAllBangs, getBangCatalogCount } from '../../utils/searchBangs';
 import { DOH_PROVIDERS, DNS_MODES, formatCustomDohUrl, isValidDohUrl } from '../../utils/dnsProviders';
@@ -644,6 +645,13 @@ const SettingsModalContent = () => {
     const setAllowVaultInGhostTor = useVaultStore(state => state.setAllowVaultInGhostTor);
     const neverSaveDomains = useVaultStore(state => state.neverSaveDomains) || [];
     const removeNeverSaveDomain = useVaultStore(state => state.removeNeverSaveDomain);
+    const installedExtensions = useExtensionStore(state => state.extensions) || [];
+    const currentVaultProvider = settings.vaultProvider || 'qvault';
+    const activeVaultExt = currentVaultProvider.startsWith('ext:')
+        ? installedExtensions.find((e) => e && e.id === currentVaultProvider.slice(4) && e.enabled !== false) || null
+        : null;
+    const activeVaultName = activeVaultExt ? (activeVaultExt.name || activeVaultExt.id) : 'QVault';
+    const applyVaultName = (str) => (activeVaultExt ? String(str || '').replace(/QVault/g, activeVaultName) : str);
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
@@ -2754,7 +2762,7 @@ const SettingsModalContent = () => {
                                         <SettingCard 
                                             icon={SlidersHorizontal} 
                                             title={t('cfg.layout.toolHubPosTitle', null, 'Tool Hub Drawer Position')} 
-                                            description={t('cfg.layout.toolHubPosDesc', null, 'Side panel dock for extensions, downloads, QVault, and AI assistant.')}
+                                            description={applyVaultName(t('cfg.layout.toolHubPosDesc', null, 'Side panel dock for extensions, downloads, QVault, and AI assistant.'))}
                                         >
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -3109,7 +3117,7 @@ const SettingsModalContent = () => {
                                                     { id: 'media', label: t('cfg.layout.iconLabels.media', null, 'Media Player') },
                                                     { id: 'downloads', label: t('cfg.layout.iconLabels.downloads', null, 'Downloads') },
                                                     { id: 'tor', label: t('cfg.layout.iconLabels.tor', null, 'Tor Network') },
-                                                    { id: 'vault', label: t('cfg.layout.iconLabels.vault', null, 'QVault Passwords') }
+                                                    { id: 'vault', label: activeVaultExt ? activeVaultName : t('cfg.layout.iconLabels.vault', null, 'QVault Passwords') }
                                                 ].map(item => {
                                                     const isItemVisible = !(settings.hiddenTopBarIcons || []).includes(item.id);
                                                     return (
@@ -4559,7 +4567,7 @@ const SettingsModalContent = () => {
                                 <SectionHeader
                                     icon={Ghost}
                                     title={t('cfg.privacy.vaultSectionTitle', null, 'Private Spaces, Sync & Vault')}
-                                    description={t('cfg.privacy.vaultSectionDesc', null, 'Tor routing, encrypted cloud auto-sync, QVault privacy rules, and browsing data cleanup.')}
+                                    description={applyVaultName(t('cfg.privacy.vaultSectionDesc', null, 'Tor routing, encrypted cloud auto-sync, QVault privacy rules, and browsing data cleanup.'))}
                                 />
 
                                 {/* Tor Onion Network Routing */}
@@ -4595,18 +4603,150 @@ const SettingsModalContent = () => {
                                     />
                                 </SettingCard>
 
+                                {/* Default Password & Passkey Manager (QVault vs Extension) */}
+                                {(() => {
+                                    const PASSWORD_EXT_RE = /bitwarden|proton\s*pass|1password|keepass|dashlane|lastpass|nordpass|keeper|roboform|enpass|vault/i;
+                                    const enabledExts = [...installedExtensions]
+                                        .filter((e) => e && e.enabled !== false)
+                                        .sort((a, b) => {
+                                            const aMatch = PASSWORD_EXT_RE.test(a.name || '') ? 0 : 1;
+                                            const bMatch = PASSWORD_EXT_RE.test(b.name || '') ? 0 : 1;
+                                            if (aMatch !== bMatch) return aMatch - bMatch;
+                                            return String(a.name || '').localeCompare(String(b.name || ''));
+                                        });
+                                    const currentVaultProvider = settings.vaultProvider || 'qvault';
+                                    const activeExt = currentVaultProvider.startsWith('ext:')
+                                        ? enabledExts.find((e) => e.id === currentVaultProvider.slice(4))
+                                        : null;
+
+                                    return (
+                                        <div className={`p-3.5 rounded-2xl border space-y-3 transition-all duration-200 ${
+                                            isBright ? 'bg-black/[0.02] border-black/[0.07]' : 'bg-white/[0.02] border-white/[0.06]'
+                                        }`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                                                    isBright ? 'bg-black/[0.04] text-accent border-black/[0.07]' : 'bg-white/[0.03] text-accent/80 border-white/[0.06]'
+                                                }`}>
+                                                    <ShieldCheck size={15} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className={`font-medium text-xs ${isBright ? 'text-zinc-800 font-semibold' : 'text-zinc-200'}`}>
+                                                        {t('cfg.privacy.vaultProviderTitle', null, 'Default Password & Passkey Manager')}
+                                                    </p>
+                                                    <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                                        {t('cfg.privacy.vaultProviderDesc', null, 'Choose between QVault (built-in) or an installed password manager extension such as Bitwarden or Proton Pass. Selecting an extension pauses QVault autofill, save prompts, and passkey interception.')}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSettingValue('vaultProvider', 'qvault');
+                                                        showToast(t('cfg.privacy.toastVaultProviderQvault', null, 'Default Vault: QVault (Built-in)'));
+                                                    }}
+                                                    className={`w-full p-2.5 rounded-xl border flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                                                        currentVaultProvider === 'qvault'
+                                                            ? (isBright ? 'bg-accent/12 border-accent/45 text-zinc-900' : 'bg-accent/15 border-accent/45 text-white')
+                                                            : (isBright ? 'bg-white/60 border-black/[0.06] hover:bg-black/[0.03] text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] text-white/85')
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isBright ? 'bg-blue-500/15 text-blue-600' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                            <ShieldCheck size={14} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="text-xs font-semibold truncate">
+                                                                {t('cfg.privacy.vaultProviderQvault', null, 'QVault (Built-in)')}
+                                                            </div>
+                                                            <div className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                                                {t('cfg.privacy.vaultProviderQvaultDesc', null, 'Zero-knowledge local vault with inline autofill, biometrics, and passkeys')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {currentVaultProvider === 'qvault' && (
+                                                        <span className="w-5 h-5 rounded-full bg-accent text-black flex items-center justify-center shrink-0">
+                                                            <Check size={12} />
+                                                        </span>
+                                                    )}
+                                                </button>
+
+                                                {enabledExts.length === 0 ? (
+                                                    <div className={`px-3 py-2 rounded-xl text-[11px] border ${
+                                                        isBright ? 'bg-black/[0.02] border-black/[0.06] text-zinc-500' : 'bg-white/[0.02] border-white/[0.05] text-white/45'
+                                                    }`}>
+                                                        {t('cfg.privacy.vaultProviderNoExt', null, 'Install Bitwarden, Proton Pass, or another password manager from Extensions to use it as your default vault.')}
+                                                    </div>
+                                                ) : (
+                                                    enabledExts.map((ext) => {
+                                                        const extVal = `ext:${ext.id}`;
+                                                        const isSelected = currentVaultProvider === extVal;
+                                                        const extIcon = ext.iconDataUrl || ext.iconUrl;
+                                                        return (
+                                                            <button
+                                                                key={`vp-${ext.id}`}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSettingValue('vaultProvider', extVal);
+                                                                    showToast(t('cfg.privacy.toastVaultProviderExt', { name: ext.name || ext.id }, `Default Vault switched to ${ext.name || ext.id}`));
+                                                                }}
+                                                                className={`w-full p-2.5 rounded-xl border flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                                                                    isSelected
+                                                                        ? (isBright ? 'bg-accent/12 border-accent/45 text-zinc-900' : 'bg-accent/15 border-accent/45 text-white')
+                                                                        : (isBright ? 'bg-white/60 border-black/[0.06] hover:bg-black/[0.03] text-zinc-800' : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] text-white/85')
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${isBright ? 'bg-black/[0.05]' : 'bg-white/[0.08]'}`}>
+                                                                        {extIcon ? (
+                                                                            <img src={extIcon} alt="" className="w-4 h-4 object-contain rounded" />
+                                                                        ) : (
+                                                                            <KeyRound size={13} className="text-accent" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <div className="text-xs font-semibold truncate">{ext.name || ext.id}</div>
+                                                                        <div className={`text-[10px] truncate ${isBright ? 'text-zinc-500' : 'text-white/50'}`}>
+                                                                            {t('cfg.privacy.vaultProviderExtDesc', { version: ext.version || '1.0' }, `Extension v${ext.version || '1.0'} • Handles autofill, save prompts & passkeys`)}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <span className="w-5 h-5 rounded-full bg-accent text-black flex items-center justify-center shrink-0">
+                                                                        <Check size={12} />
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+
+                                            {activeExt && (
+                                                <div className={`px-3 py-2 rounded-xl text-[11px] border ${
+                                                    isBright ? 'bg-accent/10 border-accent/30 text-zinc-800' : 'bg-accent/10 border-accent/30 text-accent/90'
+                                                }`}>
+                                                    {t('cfg.privacy.vaultProviderExtActiveNote', { name: activeExt.name || activeExt.id }, `QVault autofill, save-password prompts, and passkey interception are paused while ${activeExt.name || activeExt.id} is active.`)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* QVault in Ghost & Tor Spaces */}
                                 <SettingCard 
                                     icon={Key} 
-                                    title={t('cfg.privacy.qvaultPrivateTitle', null, 'QVault in Ghost & Tor Spaces')} 
-                                    description={t('cfg.privacy.qvaultPrivateDesc', null, 'Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy.')}
+                                    title={applyVaultName(t('cfg.privacy.qvaultPrivateTitle', null, 'QVault in Ghost & Tor Spaces'))} 
+                                    description={applyVaultName(t('cfg.privacy.qvaultPrivateDesc', null, 'Allow inline autofill of saved passwords while in private spaces. Password save prompts are always suppressed for privacy.'))}
+                                    badge={activeVaultExt ? activeVaultName : null}
                                 >
                                     <SettingToggle 
                                         isChecked={allowVaultInGhostTor} 
                                         onToggle={() => {
                                             const next = !allowVaultInGhostTor;
                                             setAllowVaultInGhostTor(next);
-                                            showToast(next ? t('cfg.privacy.toastQvaultEnabled', null, 'QVault autofill enabled in private spaces') : t('cfg.privacy.toastQvaultDisabled', null, 'QVault autofill disabled in private spaces'));
+                                            showToast(applyVaultName(next ? t('cfg.privacy.toastQvaultEnabled', null, 'QVault autofill enabled in private spaces') : t('cfg.privacy.toastQvaultDisabled', null, 'QVault autofill disabled in private spaces')));
                                         }} 
                                     />
                                 </SettingCard>
@@ -4626,13 +4766,13 @@ const SettingsModalContent = () => {
                                                 {t('cfg.privacy.passkeyProviderTitle', null, 'Passkey Provider')}
                                             </p>
                                             <p className={`text-[11px] mt-0.5 leading-snug ${isBright ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                {t('cfg.privacy.passkeyProviderDesc', null, 'Choose whether websites use QVault passkeys first or always route directly to your Hardware / System Security Key (YubiKey, FIDO2, Windows Hello, Touch ID, Phone QR).')}
+                                                {applyVaultName(t('cfg.privacy.passkeyProviderDesc', null, 'Choose whether websites use QVault passkeys first or always route directly to your Hardware / System Security Key (YubiKey, FIDO2, Windows Hello, Touch ID, Phone QR).'))}
                                             </p>
                                         </div>
                                     </div>
                                     <SlidingPillSwitcher
                                         options={[
-                                            { id: 'qvault', label: t('cfg.privacy.passkeyModeQvault', null, 'QVault'), icon: ShieldCheck },
+                                            { id: 'qvault', label: activeVaultExt ? activeVaultName : t('cfg.privacy.passkeyModeQvault', null, 'QVault'), icon: ShieldCheck },
                                             { id: 'hardware', label: t('cfg.privacy.passkeyModeHardware', null, 'Hardware / System Key'), icon: Usb }
                                         ]}
                                         value={settings.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault'}
@@ -4641,7 +4781,7 @@ const SettingsModalContent = () => {
                                             showToast(
                                                 mode === 'hardware'
                                                     ? t('cfg.privacy.toastPasskeyModeHardware', null, 'Passkey Provider: Always use Hardware / System Security Key')
-                                                    : t('cfg.privacy.toastPasskeyModeQvault', null, 'Passkey Provider: QVault (with Hardware Key fallback)')
+                                                    : applyVaultName(t('cfg.privacy.toastPasskeyModeQvault', null, 'Passkey Provider: QVault (with Hardware Key fallback)'))
                                             );
                                         }}
                                         isBright={isBright}
@@ -4652,7 +4792,7 @@ const SettingsModalContent = () => {
                                 <SettingCard
                                     icon={Usb}
                                     title={t('cfg.privacy.passkeyFallbackTitle', null, 'Automatic Hardware Key Fallback')}
-                                    description={t('cfg.privacy.passkeyFallbackDesc', null, 'Automatically fall back to YubiKey, FIDO2, OS biometrics, or Phone QR when QVault has no matching passkey, is locked/unavailable in Ghost or Tor, or a site requests unsupported algorithms.')}
+                                    description={applyVaultName(t('cfg.privacy.passkeyFallbackDesc', null, 'Automatically fall back to YubiKey, FIDO2, OS biometrics, or Phone QR when QVault has no matching passkey, is locked/unavailable in Ghost or Tor, or a site requests unsupported algorithms.'))}
                                     badge={settings.passkeyProviderMode === 'hardware' ? t('cfg.privacy.passkeyFallbackAlwaysActive', null, 'Always Active') : null}
                                 >
                                     <SettingToggle
@@ -4686,7 +4826,7 @@ const SettingsModalContent = () => {
                                     </div>
                                     {neverSaveDomains.length === 0 ? (
                                         <div className={`text-center text-xs italic py-3 rounded-xl border ${isBright ? 'text-zinc-500 bg-black/[0.02] border-black/[0.07]' : 'text-zinc-400 bg-white/[0.02] border-white/[0.06]'}`}>
-                                            {t('cfg.privacy.neverSavedEmpty', null, 'No sites excluded. QVault will offer to save logins across all websites.')}
+                                            {applyVaultName(t('cfg.privacy.neverSavedEmpty', null, 'No sites excluded. QVault will offer to save logins across all websites.'))}
                                         </div>
                                     ) : (
                                         <div className="flex flex-wrap gap-2 mt-2">

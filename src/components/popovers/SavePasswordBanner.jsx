@@ -39,6 +39,7 @@ export default function SavePasswordBanner() {
 
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
+    const vaultProvider = useUIStore(state => state.settings?.vaultProvider || 'qvault');
     const activeSpace = useTabStore(state => state.activeSpace);
     const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
     const biometricLabel = getBiometricLabel(t);
@@ -84,7 +85,7 @@ export default function SavePasswordBanner() {
         };
     }, [pendingSavePrompt, pinEnabled]);
 
-    if (!displayedPrompt) return null;
+    if (!displayedPrompt || vaultProvider.startsWith('ext:')) return null;
 
     const { domain, url, isUpdate, existingId } = displayedPrompt;
 

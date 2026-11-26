@@ -20,6 +20,7 @@ function detectIsOAuthPopup() {
     return false;
 }
 let isOAuthPopup = detectIsOAuthPopup();
+const isExtensionPage = typeof window !== 'undefined' && window.location && window.location.protocol === 'chrome-extension:';
 
 function isGoogleAuthTarget(urlOrHost) {
     if (!urlOrHost) return false;
@@ -248,13 +249,13 @@ try {
         window.location.hostname.includes('challenges.cloudflare.com') ||
         window.location.pathname.includes('/cdn-cgi/challenge-platform')
     );
-    if (!isChallengeFrame && typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
+    if (!isExtensionPage && !isChallengeFrame && typeof webFrame !== 'undefined' && webFrame.executeJavaScript) {
         webFrame.executeJavaScript(stealthChromeScript).catch(() => {});
     }
 } catch (_) {}
 
 // Synchronously bridge window.alert, window.confirm, and window.prompt to QBrowse in-tab UI
-if (!isOAuthPopup && !isGoogleAuth) {
+if (!isExtensionPage && !isOAuthPopup && !isGoogleAuth) {
     try {
         const dialogInfo = ipcRenderer.sendSync('get-dialog-port');
         const dialogPort = (dialogInfo && typeof dialogInfo === 'object') ? dialogInfo.port : dialogInfo;
@@ -1258,6 +1259,7 @@ try {
                     return {
                         passkeyProviderMode: cfg.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
                         passkeyHardwareFallback: cfg.passkeyHardwareFallback !== false,
+                        vaultProvider: typeof cfg.vaultProvider === 'string' ? cfg.vaultProvider : 'qvault',
                         isEphemeral: Boolean(cfg.isEphemeral)
                     };
                 }
@@ -1265,6 +1267,7 @@ try {
             return {
                 passkeyProviderMode: 'qvault',
                 passkeyHardwareFallback: true,
+                vaultProvider: 'qvault',
                 isEphemeral: false
             };
         },
@@ -1550,6 +1553,7 @@ const injectMainWorldPasskeyOverride = () => {
                                 return {
                                     passkeyProviderMode: cfg.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
                                     passkeyHardwareFallback: cfg.passkeyHardwareFallback !== false,
+                                    vaultProvider: typeof cfg.vaultProvider === 'string' ? cfg.vaultProvider : 'qvault',
                                     isEphemeral: Boolean(cfg.isEphemeral)
                                 };
                             }
@@ -1558,6 +1562,7 @@ const injectMainWorldPasskeyOverride = () => {
                     return {
                         passkeyProviderMode: 'qvault',
                         passkeyHardwareFallback: true,
+                        vaultProvider: 'qvault',
                         isEphemeral: false
                     };
                 };
@@ -1700,21 +1705,21 @@ const injectMainWorldPasskeyOverride = () => {
                     if (typeof window.PublicKeyCredential !== 'undefined') {
                         window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async function() {
                             const cfg = getPasskeyConfig();
-                            if (cfg.passkeyProviderMode === 'hardware' && origIsUVPAA) {
+                            if ((cfg.passkeyProviderMode === 'hardware' || (cfg.vaultProvider || '').startsWith('ext:')) && origIsUVPAA) {
                                 try { return await origIsUVPAA(); } catch (_) {}
                             }
                             return true;
                         };
                         window.PublicKeyCredential.isConditionalMediationAvailable = async function() {
                             const cfg = getPasskeyConfig();
-                            if (cfg.passkeyProviderMode === 'hardware' && origIsConditionalAvailable) {
+                            if ((cfg.passkeyProviderMode === 'hardware' || (cfg.vaultProvider || '').startsWith('ext:')) && origIsConditionalAvailable) {
                                 try { return await origIsConditionalAvailable(); } catch (_) { return false; }
                             }
                             return false;
                         };
                         window.PublicKeyCredential.getClientCapabilities = async function() {
                             const cfg = getPasskeyConfig();
-                            if (cfg.passkeyProviderMode === 'hardware' && origGetCapabilities) {
+                            if ((cfg.passkeyProviderMode === 'hardware' || (cfg.vaultProvider || '').startsWith('ext:')) && origGetCapabilities) {
                                 try {
                                     const nativeCaps = await origGetCapabilities();
                                     if (nativeCaps && typeof nativeCaps === 'object') {
@@ -1966,8 +1971,8 @@ const injectMainWorldPasskeyOverride = () => {
                         const cfg = getPasskeyConfig();
                         const pk = options.publicKey;
 
-                        // Rule 1: User configured Hardware / System Key as primary provider
-                        if (cfg.passkeyProviderMode === 'hardware') {
+                        // Rule 1: User configured Hardware / System Key or an extension vault as primary provider
+                        if (cfg.passkeyProviderMode === 'hardware' || (cfg.vaultProvider || '').startsWith('ext:')) {
                             return await invokeNativeCreate(options);
                         }
 
@@ -2134,8 +2139,8 @@ const injectMainWorldPasskeyOverride = () => {
 
                         const cfg = getPasskeyConfig();
 
-                        // Rule 1 & Rule 7: When provider mode is 'hardware', forward all get calls (including mediation: 'conditional') directly to native WebAuthn
-                        if (cfg.passkeyProviderMode === 'hardware') {
+                        // Rule 1 & Rule 7: When provider mode is 'hardware' or an extension vault is active, forward all get calls directly to native WebAuthn
+                        if (cfg.passkeyProviderMode === 'hardware' || (cfg.vaultProvider || '').startsWith('ext:')) {
                             return await invokeNativeGet(options);
                         }
 
@@ -2317,8 +2322,10 @@ const injectMainWorldPasskeyOverride = () => {
     } catch(err) {}
 };
 
-injectMainWorldPasskeyOverride();
-if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', injectMainWorldPasskeyOverride);
+if (!isExtensionPage) {
+    injectMainWorldPasskeyOverride();
+    if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', injectMainWorldPasskeyOverride);
+}
 
 // --- LIVE MEDIA SESSION & PLAYBACK MONITOR ---
 let lastMediaStateKey = '';
@@ -3467,7 +3474,7 @@ window.addEventListener('hashchange', () => {
 });
 
 ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded, excludeMedia } = {}) => {
-    if (isAppShellWindow()) {
+    if (isExtensionPage || isAppShellWindow()) {
         if (document.documentElement) {
             document.documentElement.classList.remove('qbrowse-smart-dark-active');
             document.documentElement.classList.remove('qbrowse-smart-dark-exclude-media');
@@ -3481,7 +3488,7 @@ ipcRenderer.on('apply-smart-dark', (event, { isForceDark, isExcluded, excludeMed
 });
 
 // Immediately query main process on preload startup for top-level frames so state is ready before DOM ready
-if (typeof window !== 'undefined' && window === window.top && !isAppShellWindow()) {
+if (typeof window !== 'undefined' && window === window.top && !isExtensionPage && !isAppShellWindow()) {
     try {
         ipcRenderer.invoke('get-smart-dark-state', window.location.href)
             .then(state => {
@@ -4633,7 +4640,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
 // --- QVAULT INLINE AUTOFILL & CREDENTIAL SUBMISSION ENGINE ---
 // ============================================================================
 (function initQVaultEngine() {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (typeof window === 'undefined' || typeof document === 'undefined' || isExtensionPage) return;
 
     let qvaultMatches = [];
     const activeBadgeMap = new Map(); // input element -> badge DOM element

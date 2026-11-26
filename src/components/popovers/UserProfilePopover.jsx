@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
     User, ShieldCheck, RefreshCw, LogOut, Key, 
     Check, Camera, Edit3, Globe, Image as ImageIcon,
-    Lock, ArrowRight, Sliders, Palette, Layers, History, 
+    Lock, ArrowRight, Sliders, Palette, Layers, History, Puzzle, 
     Cloud, UploadCloud, DownloadCloud, Trash2, Download, Upload,
     ChevronDown, ChevronUp, Plus, ExternalLink,
     Laptop, Monitor, Fingerprint, AlertCircle,
@@ -14,6 +14,7 @@ import useTabStore, { isValidSyncTab, getCleanTabTitle } from '../../store/useTa
 import useVaultStore from '../../store/useVaultStore';
 import { isLinuxPlatform } from '../../utils/platform';
 import useHistoryStore from '../../store/useHistoryStore';
+import useExtensionStore from '../../store/useExtensionStore';
 import useProfileStore from '../../store/useProfileStore';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import { useTranslation } from '../../i18n/index';
@@ -120,6 +121,11 @@ export default function UserProfilePopover({ isClosing }) {
     const vaultCount = isVaultUnlocked ? (passwordsList?.length ?? vaultItemCount ?? 0) : (vaultItemCount || 0);
     const pinnedCount = useTabStore(state => state.pinnedTabs?.length || 0);
     const historyCount = useHistoryStore(state => state.history?.length || 0);
+    const extensionsList = useExtensionStore(state => state.extensions);
+    const extensionsCount = useMemo(
+        () => (extensionsList || []).filter((ext) => ext && (ext.source === 'cws' || /^[a-p]{32}$/i.test(String(ext.id || '')))).length,
+        [extensionsList]
+    );
 
     useEffect(() => {
         syncVaultStatus?.();
@@ -813,7 +819,8 @@ export default function UserProfilePopover({ isClosing }) {
                                             },
                                             { key: 'tabs', label: t('pop.profile.openTabs', null, 'Open Tabs'), count: t('pop.profile.localTabsCount', { count: totalLocalActiveTabs }, '{count} local tabs'), icon: Layers },
                                             { key: 'settings', label: t('pop.profile.settingsTheme', null, 'Settings & Theme'), count: t('pop.profile.preferences', null, 'Preferences'), icon: Palette },
-                                            { key: 'history', label: t('pop.profile.browsingHistory', null, 'Browsing History'), count: t('pop.profile.entriesCount', { count: historyCount }, '{count} entries'), icon: History }
+                                            { key: 'history', label: t('pop.profile.browsingHistory', null, 'Browsing History'), count: t('pop.profile.entriesCount', { count: historyCount }, '{count} entries'), icon: History },
+                                            { key: 'extensions', label: t('pop.profile.syncExtensions', null, 'Extensions'), count: t('pop.profile.syncExtensionsDesc', { count: extensionsCount }, '{count} extensions'), icon: Puzzle }
                                         ].map((cat) => {
                                             const Icon = cat.icon;
                                             const isEnabled = syncCategories ? syncCategories[cat.key] !== false : true;

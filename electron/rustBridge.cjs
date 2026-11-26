@@ -57,11 +57,21 @@ function isAvailable() {
   }
 }
 
+function extDownloadAndUnpackCws(extId, chromeVersion, destRoot) {
+  return getAddon().extDownloadAndUnpackCws(extId, chromeVersion, destRoot);
+}
+
+function extInspectUnpacked(dirPath) {
+  return getAddon().extInspectUnpacked(dirPath);
+}
+
 module.exports = new Proxy(
   {
     getAddon,
     isAvailable,
     resolveNativeBinaryPath,
+    extDownloadAndUnpackCws,
+    extInspectUnpacked,
   },
   {
     get(target, prop) {

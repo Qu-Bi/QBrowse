@@ -128,9 +128,62 @@ export default function Sidebar() {
     const [editingSplitGroupKey, setEditingSplitGroupKey] = React.useState(null);
     const [editingSplitGroupDraft, setEditingSplitGroupDraft] = React.useState('');
 
+    const NARROW_BREAKPOINT = 900;
     const activeProfileId = useProfileStore(state => state.activeProfileId);
+    const [isNarrowViewport, setIsNarrowViewport] = React.useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth < NARROW_BREAKPOINT : false
+    );
+    const prevNarrowRef = useRef(isNarrowViewport);
+    const autoCollapsedByResizeRef = useRef(false);
+
+    React.useEffect(() => {
+        if (!isSidebarHidden) {
+            autoCollapsedByResizeRef.current = false;
+        }
+    }, [isSidebarHidden]);
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        let rafId = null;
+        const handleResize = () => {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                const narrow = window.innerWidth < NARROW_BREAKPOINT;
+                if (narrow !== prevNarrowRef.current) {
+                    setIsNarrowViewport(narrow);
+                    const uiState = useUIStore.getState();
+                    if (narrow && !prevNarrowRef.current) {
+                        if (!uiState.isSidebarHidden) {
+                            autoCollapsedByResizeRef.current = true;
+                            uiState.setIsSidebarHidden(true);
+                        } else {
+                            autoCollapsedByResizeRef.current = false;
+                        }
+                    } else if (!narrow && prevNarrowRef.current) {
+                        if (autoCollapsedByResizeRef.current) {
+                            autoCollapsedByResizeRef.current = false;
+                            uiState.setIsSidebarHidden(false);
+                        }
+                    }
+                    prevNarrowRef.current = narrow;
+                }
+            });
+        };
+        window.addEventListener('resize', handleResize);
+        return () => {
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            window.removeEventListener('resize', handleResize);
+        };
+    }, []);
+
+    const isFloatingOverlay = isChromeHidden || isNarrowViewport;
+    const isOverlayVisible = isChromeHidden ? isSidebarPeeking : !isSidebarHidden;
     const isPeeking = isChromeHidden && isSidebarPeeking;
     const isActuallyHidden = isChromeHidden ? !isPeeking : isSidebarHidden;
+    const clampedSidebarWidth = isNarrowViewport && typeof window !== 'undefined'
+        ? Math.min(uiScale === 'compact' ? 240 : 256, Math.max(200, window.innerWidth - 24))
+        : (uiScale === 'compact' ? 240 : 256);
     const peekLeaveTimeoutRef = useRef(null);
 
     const handleSidebarMouseEnter = () => {
@@ -602,7 +655,7 @@ export default function Sidebar() {
         const renderActionButtons = (size = 'normal') => {
             const isCompactSize = size === 'compact';
             return (
-                <div className={`hidden md:flex opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] absolute ${
+                <div className={`flex opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] absolute ${
                     isCompactSize ? 'right-1.5 p-0.5' : 'right-2 p-1'
                 } gap-0.5 ${
                     isBright 
@@ -687,20 +740,20 @@ export default function Sidebar() {
                     }`}
                 >
                     {renderDropIndicator()}
-                    <div className="flex items-center gap-2 w-full justify-center md:justify-start pointer-events-none pr-7">
+                    <div className="flex items-center gap-2 w-full justify-start pointer-events-none pr-7">
                         {isSelected && (
                             <span className="w-3.5 h-3.5 rounded-full bg-accent text-black flex items-center justify-center shrink-0 shadow-xs">
                                 <Check size={9} strokeWidth={3} />
                             </span>
                         )}
                         {renderTabIcon(12)}
-                        <span className={`text-xs truncate hidden md:block transition-colors duration-150 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-normal'}`}>
+                        <span className={`text-xs truncate block transition-colors duration-150 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-normal'}`}>
                             {tabTitle}
                         </span>
                     </div>
 
                     {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
-                        <div className="absolute right-2 opacity-100 group-hover:opacity-0 transition-opacity duration-150 md:flex hidden pointer-events-none">
+                        <div className="absolute right-2 opacity-100 group-hover:opacity-0 transition-opacity duration-150 flex pointer-events-none">
                             {tab.isMuted ? <VolumeX size={11} className="text-red-400" /> : <Volume2 size={11} className="text-accent opacity-80 animate-pulse" />}
                         </div>
                     )}
@@ -742,13 +795,13 @@ export default function Sidebar() {
                         }`}>
                             {renderTabIcon(13)}
                         </div>
-                        <span className={`text-xs truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
+                        <span className={`text-xs truncate block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
                             {tabTitle}
                         </span>
                     </div>
 
                     {/* Bottom row: Subtle domain badge */}
-                    <div className="hidden md:flex items-center justify-between w-full mt-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.05] pointer-events-none">
+                    <div className="flex items-center justify-between w-full mt-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.05] pointer-events-none">
                         <span className={`text-[10px] font-mono px-1.5 py-0.5 ${isSquare ? 'rounded-none' : 'rounded'} border truncate max-w-[130px] ${
                             isBright ? 'bg-black/[0.03] text-zinc-600 border-black/[0.06]' : 'bg-white/[0.04] text-white/60 border-white/[0.06]'
                         }`}>
@@ -766,7 +819,7 @@ export default function Sidebar() {
                     </div>
 
                     {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
-                        <div className="absolute top-2.5 right-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
+                        <div className="absolute top-2.5 right-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-200 flex pointer-events-none">
                             {tab.isMuted ? <VolumeX size={13} className="text-red-400" /> : <Volume2 size={13} className="text-accent opacity-80 animate-pulse" />}
                         </div>
                     )}
@@ -802,20 +855,20 @@ export default function Sidebar() {
                 } : undefined}
             >
                 {renderDropIndicator()}
-                <div className="flex items-center gap-2.5 w-full justify-center md:justify-start pointer-events-none pr-8">
+                <div className="flex items-center gap-2.5 w-full justify-start pointer-events-none pr-8">
                     {isSelected && (
                         <span className="w-4 h-4 rounded-full bg-accent text-black flex items-center justify-center shrink-0 shadow-xs">
                             <Check size={10} strokeWidth={3} />
                         </span>
                     )}
                     {renderTabIcon(14)}
-                    <span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate hidden md:block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
+                    <span className={`${uiScale === 'compact' ? 'text-xs' : 'text-sm'} truncate block transition-colors duration-200 ${tab.active ? (isBright ? 'font-bold text-zinc-950' : 'font-semibold text-accent') : 'font-medium'}`}>
                         {tabTitle}
                     </span>
                 </div>
 
                 {!tab.suspended && !tab.isClosing && tab.url && tab.url !== 'about:blank' && (tab.isAudioPlaying || tab.isAudible || tab.isMuted) && (
-                    <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 md:flex hidden pointer-events-none">
+                    <div className="absolute right-3 opacity-100 group-hover:opacity-0 transition-opacity duration-200 flex pointer-events-none">
                         {tab.isMuted ? <VolumeX size={14} className="text-red-400" /> : <Volume2 size={14} className="text-accent opacity-80 animate-pulse" />}
                     </div>
                 )}
@@ -973,7 +1026,7 @@ export default function Sidebar() {
                                 else if (e.key === 'Escape') cancelGroupRename();
                             }}
                             onBlur={commitGroupRename}
-                            className={`hidden md:block w-full min-w-0 px-1.5 py-0.5 rounded text-[10px] font-semibold outline-none border ${
+                            className={`block w-full min-w-0 px-1.5 py-0.5 rounded text-[10px] font-semibold outline-none border ${
                                 isBright
                                     ? 'bg-white text-zinc-900 border-accent/60 placeholder:text-zinc-400'
                                     : 'bg-black/40 text-white border-accent/60 placeholder:text-white/35'
@@ -983,7 +1036,7 @@ export default function Sidebar() {
                         <span
                             onDoubleClick={startGroupRename}
                             title={isParked ? `${displayGroupLabel} • Click to open • Double-click to rename` : `${displayGroupLabel} • Double-click to rename`}
-                            className={`hidden md:inline text-[10px] font-bold ${groupName ? 'tracking-normal' : 'uppercase tracking-wider'} truncate ${
+                            className={`inline text-[10px] font-bold ${groupName ? 'tracking-normal' : 'uppercase tracking-wider'} truncate ${
                                 isParked ? (isBright ? 'text-zinc-600' : 'text-white/55') : 'text-accent'
                             }`}
                         >
@@ -991,7 +1044,7 @@ export default function Sidebar() {
                         </span>
                     )}
                 </div>
-                <div className="hidden md:flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center gap-0.5 shrink-0">
                     {!isEditingGroup && (
                         <button
                             type="button"
@@ -1066,19 +1119,19 @@ export default function Sidebar() {
                                 }`}
                             >
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className={`hidden md:inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-mono font-bold rounded shrink-0 ${
+                                    <span className={`inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-mono font-bold rounded shrink-0 ${
                                         isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/55')
                                     }`}>
                                         {slotIdx + 1}
                                     </span>
                                     {renderMiniFavicon(tabObj, 12)}
-                                    <span className="text-xs truncate hidden md:block">{getTabLabel(tabObj)}</span>
+                                    <span className="text-xs truncate block">{getTabLabel(tabObj)}</span>
                                 </div>
                                 {tabObj && (
                                     <button
                                         type="button"
                                         onClick={(e) => handleSlotClose(e, slotIdx, tabObj)}
-                                        className="opacity-0 group-hover/slot:opacity-100 p-0.5 rounded hover:bg-white/10 transition shrink-0 hidden md:flex"
+                                        className="opacity-0 group-hover/slot:opacity-100 p-0.5 rounded hover:bg-white/10 transition shrink-0 flex"
                                         title={t('nav.closeTab', null, 'Close Tab')}
                                     >
                                         <X size={10} />
@@ -1128,17 +1181,17 @@ export default function Sidebar() {
                                     <div className="flex items-center justify-between gap-1.5 min-w-0">
                                         <div className="flex items-center gap-1.5 min-w-0">
                                             {renderMiniFavicon(tabObj, 12)}
-                                            <span className={`text-[11px] font-semibold truncate hidden md:block ${isSlotFocused && !isBright ? 'text-accent' : ''}`}>
+                                            <span className={`text-[11px] font-semibold truncate block ${isSlotFocused && !isBright ? 'text-accent' : ''}`}>
                                                 {getTabLabel(tabObj)}
                                             </span>
                                         </div>
-                                        <span className={`hidden md:inline text-[9px] font-mono font-bold px-1 rounded shrink-0 ${
+                                        <span className={`inline text-[9px] font-mono font-bold px-1 rounded shrink-0 ${
                                             isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-500' : 'bg-white/[0.08] text-white/50')
                                         }`}>
                                             {renderSplitGroupSlotBadge(slotIdx)}
                                         </span>
                                     </div>
-                                    <div className="hidden md:flex items-center justify-between mt-1 text-[9px] font-mono opacity-60 truncate">
+                                    <div className="flex items-center justify-between mt-1 text-[9px] font-mono opacity-60 truncate">
                                         <span className="truncate">{domainStr || (tabObj ? 'tab' : 'pick')}</span>
                                         {tabObj && (
                                             <button
@@ -1170,7 +1223,7 @@ export default function Sidebar() {
                 {renderGroupHeader(false)}
                 <div className="relative flex flex-col gap-1 pl-2">
                     {/* Vertical Accent Connector Rail */}
-                    <div className={`hidden md:block absolute left-0.5 top-2 bottom-2 w-[2px] rounded-full pointer-events-none ${
+                    <div className={`block absolute left-0.5 top-2 bottom-2 w-[2px] rounded-full pointer-events-none ${
                         isParked ? (isBright ? 'bg-black/15' : 'bg-white/15') : 'bg-accent/65'
                     }`} />
                     {Array.from({ length: slotCount }, (_, slotIdx) => {
@@ -1194,9 +1247,9 @@ export default function Sidebar() {
                             >
                                 <div className="flex items-center gap-2 min-w-0 pr-1">
                                     {renderMiniFavicon(tabObj, 13)}
-                                    <span className="text-xs truncate hidden md:block">{getTabLabel(tabObj)}</span>
+                                    <span className="text-xs truncate block">{getTabLabel(tabObj)}</span>
                                 </div>
-                                <div className="hidden md:flex items-center gap-1 shrink-0">
+                                <div className="flex items-center gap-1 shrink-0">
                                     <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
                                         isSlotFocused ? 'bg-accent text-zinc-950' : (isBright ? 'bg-black/[0.06] text-zinc-600' : 'bg-white/[0.08] text-white/55')
                                     }`}>
@@ -1323,6 +1376,13 @@ export default function Sidebar() {
 
     return (
         <>
+        {isNarrowViewport && !isChromeHidden && isOverlayVisible && (
+            <div
+                className="fixed inset-0 z-[99979] bg-transparent"
+                onClick={() => useUIStore.getState().setIsSidebarHidden(true)}
+                aria-hidden="true"
+            />
+        )}
         <aside 
             id="qbrowse-sidebar"
             onContextMenu={(e) => {
@@ -1342,25 +1402,29 @@ export default function Sidebar() {
                 ? 'liquid-glass-bright text-zinc-900 sidebar-light' 
                 : 'liquid-glass-dark text-white/90 sidebar-dark'
         } ${
-            isChromeHidden
-                ? `!fixed ${sidebarPosition === 'right' ? '!right-3' : '!left-3'} !top-3 !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl`
+            isFloatingOverlay
+                ? `!fixed ${sidebarPosition === 'right' ? '!right-3' : '!left-3'} ${isChromeHidden ? '!top-3' : '!top-[68px]'} !bottom-3 !z-[99980] shadow-[0_25px_70px_rgba(0,0,0,0.75)] backdrop-blur-3xl`
                 : (isSidebarHidden ? 'is-hidden pointer-events-none' : '')
         }`}
-        style={isChromeHidden ? {
+        style={isFloatingOverlay ? {
             position: 'fixed',
             left: sidebarPosition === 'right' ? 'auto' : '12px',
             right: sidebarPosition === 'right' ? '12px' : 'auto',
-            top: '12px',
+            top: isChromeHidden ? '12px' : '68px',
             bottom: '12px',
-            width: uiScale === 'compact' ? 240 : 256,
-            maxWidth: uiScale === 'compact' ? 240 : 256,
+            width: clampedSidebarWidth,
+            maxWidth: clampedSidebarWidth,
             zIndex: 99980,
-            transform: isSidebarPeeking 
+            transform: isOverlayVisible
                 ? 'translateX(0)' 
                 : (sidebarPosition === 'right' ? 'translateX(calc(100% + 24px))' : 'translateX(calc(-100% - 24px))'),
-            opacity: isSidebarPeeking ? 1 : 0,
-            pointerEvents: isSidebarPeeking ? 'auto' : 'none',
-            transition: isReducedMotion ? 'none' : 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
+            opacity: isOverlayVisible ? 1 : 0,
+            pointerEvents: isOverlayVisible ? 'auto' : 'none',
+            transition: isReducedMotion
+                ? 'none'
+                : (isOverlayVisible
+                    ? 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease'
+                    : 'transform 0.18s cubic-bezier(0.4, 0, 1, 1), opacity 0.15s ease'),
             willChange: 'transform, opacity'
         } : {
             width: isSidebarHidden ? 0 : (uiScale === 'compact' ? 240 : 256),
@@ -1372,11 +1436,11 @@ export default function Sidebar() {
             pointerEvents: isSidebarHidden ? 'none' : 'auto',
             transition: isReducedMotion ? 'none' : (isSidebarHidden
                 ? (sidebarPosition === 'right'
-                    ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease'
-                    : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease')
+                    ? 'width 0.18s cubic-bezier(0.4, 0, 1, 1), max-width 0.18s cubic-bezier(0.4, 0, 1, 1), margin-left 0.18s cubic-bezier(0.4, 0, 1, 1), opacity 0.15s ease'
+                    : 'width 0.18s cubic-bezier(0.4, 0, 1, 1), max-width 0.18s cubic-bezier(0.4, 0, 1, 1), margin-right 0.18s cubic-bezier(0.4, 0, 1, 1), opacity 0.15s ease')
                 : (sidebarPosition === 'right'
-                    ? 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease'
-                    : 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease')),
+                    ? 'width 0.24s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.24s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease'
+                    : 'width 0.24s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.24s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease')),
             willChange: sidebarPosition === 'right' ? 'width, max-width, margin-left, opacity' : 'width, max-width, margin-right, opacity'
         }}
         onMouseEnter={handleSidebarMouseEnter}
@@ -1386,14 +1450,18 @@ export default function Sidebar() {
             <div 
                 className="sidebar-inner h-full flex flex-col flex-shrink-0"
                 style={{
-                    width: uiScale === 'compact' ? 240 : 256,
-                    minWidth: uiScale === 'compact' ? 240 : 256,
-                    transform: (!isChromeHidden && isSidebarHidden) 
+                    width: clampedSidebarWidth,
+                    minWidth: clampedSidebarWidth,
+                    transform: (!isFloatingOverlay && isSidebarHidden) 
                         ? (sidebarPosition === 'right' ? 'translateX(100%)' : 'translateX(-100%)') 
                         : 'translateX(0)',
-                    opacity: (!isChromeHidden && isSidebarHidden) ? 0 : 1,
-                    transition: isReducedMotion ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
-                    pointerEvents: (!isChromeHidden && isSidebarHidden) ? 'none' : 'auto',
+                    opacity: (!isFloatingOverlay && isSidebarHidden) ? 0 : 1,
+                    transition: isReducedMotion
+                        ? 'none'
+                        : ((!isFloatingOverlay && isSidebarHidden)
+                            ? 'transform 0.18s cubic-bezier(0.4, 0, 1, 1), opacity 0.15s ease, width 0.18s cubic-bezier(0.4, 0, 1, 1), min-width 0.18s cubic-bezier(0.4, 0, 1, 1)'
+                            : 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, width 0.24s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.24s cubic-bezier(0.16, 1, 0.3, 1)'),
+                    pointerEvents: (!isFloatingOverlay && isSidebarHidden) ? 'none' : 'auto',
                     willChange: 'transform, opacity'
                 }}
             >
@@ -1545,7 +1613,7 @@ export default function Sidebar() {
                         </div>
                     );
                 })()}
-                <div className="hidden md:flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
+                <div className="flex gap-1.5 text-[color:var(--sidebar-text-muted)] items-center flex-row" style={{ WebkitAppRegion: 'no-drag' }}>
                     <button 
                         onClick={() => togglePopover('user')} 
                         className={`w-[25px] h-[25px] rounded-full flex items-center justify-center border transition-all duration-200 hover:scale-110 active:scale-90 cursor-pointer relative ${
@@ -1591,7 +1659,7 @@ export default function Sidebar() {
                 </div>
             </div>
 
-            <div className={`px-4 ${uiScale === 'compact' ? 'py-2.5 gap-1.5' : 'py-4 gap-2'} hidden md:grid grid-cols-4 border-b border-[color:var(--sidebar-border)] relative z-10`}>
+            <div className={`px-4 ${uiScale === 'compact' ? 'py-2.5 gap-1.5' : 'py-4 gap-2'} grid grid-cols-4 border-b border-[color:var(--sidebar-border)] relative z-10`}>
                 {(getPinnedTabsForSpace ? getPinnedTabsForSpace(activeSpace) : pinnedTabs).map((pin) => {
                     const tabs = getTabsForSpace ? getTabsForSpace(activeSpace) : (activeSpace === 'personal' ? privateTabs : activeSpace === 'work' ? workTabs : (activeSpace === 'ghost' ? ghostTabs : torTabs));
                     const pinTabs = (tabs || []).filter(t => isTabForPin(t, pin));
@@ -1786,14 +1854,14 @@ export default function Sidebar() {
                                                 ? (sp.id === 'work' ? 'border-blue-400 border-dashed bg-blue-500/10 py-1' : 'border-accent border-dashed bg-accent-10 py-1') 
                                                 : 'border-transparent'
                                         }`}>
-                                            <h3 className="hidden md:block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest truncate">
+                                            <h3 className="block text-[10px] uppercase font-bold text-[color:var(--sidebar-text-muted)] tracking-widest truncate">
                                                 {getSpaceDisplayName(sp)}
                                             </h3>
                                             <button 
                                                 onClick={() => handleNewTab()} 
                                                 onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} 
                                                 onAuxClick={handleNewTabAuxClick} 
-                                                className="hidden md:flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md shrink-0" 
+                                                className="flex text-[color:var(--sidebar-text-muted)] hover:text-accent transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[color:var(--sidebar-bg-hover)] rounded-md shrink-0" 
                                                 title={t('chrome.newTabInSpaceTooltip', { space: getSpaceDisplayName(sp) }, `New Tab in ${getSpaceDisplayName(sp)} (CMD+T) • Middle-click for background`)}
                                             >
                                                 <Plus size={12} strokeWidth={2.5} />
@@ -1814,9 +1882,9 @@ export default function Sidebar() {
                                                         } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] hover:border-accent/40 hover:shadow-[0_0_15px_var(--accent-20)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} 
                                                         title={t('chrome.newTabBtnTooltip', null, 'New Tab (CMD+T) • Middle-click for background')}
                                                     >
-                                                        <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                        <div className="flex items-center gap-3 w-full justify-start pointer-events-none pr-8">
                                                             <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                            <span className="text-sm font-medium truncate hidden md:block italic">{t('nav.newTab', null, 'New Tab')}</span>
+                                                            <span className="text-sm font-medium truncate block italic">{t('nav.newTab', null, 'New Tab')}</span>
                                                         </div>
                                                     </button>
                                                 );
@@ -1846,10 +1914,10 @@ export default function Sidebar() {
                             >
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-ghost' ? 'border-[#a855f7] border-dashed bg-[#a855f7]/10 py-1' : 'border-transparent'}`}>
                                     <div className="flex items-center gap-1.5">
-                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">{t('chrome.incognitoTabs', null, 'Incognito Tabs')}</h3>
+                                        <h3 className="block text-[10px] uppercase font-bold text-[#a855f7]/60 tracking-widest">{t('chrome.incognitoTabs', null, 'Incognito Tabs')}</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title={t('chrome.newIncognitoTabTooltip', null, 'New Incognito Tab (CMD+T) • Middle-click for background')}>
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="flex text-[#a855f7]/50 hover:text-[#a855f7] transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-[#a855f7]/10 rounded-md" title={t('chrome.newIncognitoTabTooltip', null, 'New Incognito Tab (CMD+T) • Middle-click for background')}>
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1865,9 +1933,9 @@ export default function Sidebar() {
                                             } ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : frameCurvature === 'cohesive' ? 'rounded-xl' : (uiScale === 'compact' ? 'rounded-lg' : 'rounded-xl')
                                             } bg-[color:var(--sidebar-bg-hover)] border border-[color:var(--sidebar-border)] border-dashed text-[color:var(--sidebar-text-muted)] hover:text-[color:var(--sidebar-text-hover)] cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title={t('chrome.newIncognitoTabTooltip', null, 'New Incognito Tab (CMD+T) • Middle-click for background')}>
-                                                <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                <div className="flex items-center gap-3 w-full justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                    <span className="text-sm font-medium truncate hidden md:block italic">{t('chrome.newIncognitoTab', null, 'New Incognito Tab')}</span>
+                                                    <span className="text-sm font-medium truncate block italic">{t('chrome.newIncognitoTab', null, 'New Incognito Tab')}</span>
                                                 </div>
                                             </button>
                                         );
@@ -1896,17 +1964,17 @@ export default function Sidebar() {
                                 <div className={`flex items-center justify-between mb-2 pl-2 pr-1 mt-1 transition-all rounded-lg border ${dragOverItem === 'root-tor' ? 'border-purple-400 border-dashed bg-purple-500/10 py-1' : 'border-transparent'}`}>
                                     <div className="flex items-center gap-1.5">
                                         <span className={`w-1.5 h-1.5 rounded-full ${torStatus === 'connected' ? 'bg-purple-400 shadow-[0_0_6px_#c084fc]' : 'bg-amber-400'}`}></span>
-                                        <h3 className="hidden md:block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">{t('chrome.torTabs', null, 'Tor Tabs')}</h3>
+                                        <h3 className="block text-[10px] uppercase font-bold text-purple-400/80 tracking-widest">{t('chrome.torTabs', null, 'Tor Tabs')}</h3>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button 
                                             onClick={() => useTorStore.getState().toggleTorEnabled(false, { fallbackSpace: 'ghost' })}
-                                            className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10 cursor-pointer" 
+                                            className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10 cursor-pointer" 
                                             title={t('chrome.turnOffTorTooltip', null, 'Turn off Tor and return to Ghost mode')}
                                         >
                                             <Ghost size={11} /> {t('chrome.ghostShort', null, 'Ghost')}
                                         </button>
-                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="hidden md:flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title={t('chrome.newTorTabTooltip', null, 'New Tor Tab (CMD+T) • Middle-click for background')}>
+                                        <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className="flex text-purple-400/60 hover:text-purple-300 transition-all duration-200 hover:scale-115 active:scale-90 p-1 hover:bg-purple-500/10 rounded-md" title={t('chrome.newTorTabTooltip', null, 'New Tor Tab (CMD+T) • Middle-click for background')}>
                                             <Plus size={12} strokeWidth={2.5} />
                                         </button>
                                     </div>
@@ -1920,9 +1988,9 @@ export default function Sidebar() {
                                             <button onClick={() => handleNewTab()} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }} onAuxClick={handleNewTabAuxClick} className={`group relative flex items-center justify-between p-3 ${
                                                 frameCurvature === 'square' ? 'rounded-none !rounded-none' : 'rounded-xl'
                                             } bg-purple-500/5 border border-purple-500/20 border-dashed text-purple-300/60 hover:text-purple-200 cursor-pointer transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] w-full shadow-sm animate-pop-in`} title={t('chrome.newTorTabTooltip', null, 'New Tor Tab (CMD+T) • Middle-click for background')}>
-                                                <div className="flex items-center gap-3 w-full justify-center md:justify-start pointer-events-none pr-8">
+                                                <div className="flex items-center gap-3 w-full justify-start pointer-events-none pr-8">
                                                     <Plus size={14} className="flex-shrink-0 opacity-50 transition-transform duration-200 group-hover:rotate-90" />
-                                                    <span className="text-sm font-medium truncate hidden md:block italic">{t('chrome.newTorTab', null, 'New Tor Tab')}</span>
+                                                    <span className="text-sm font-medium truncate block italic">{t('chrome.newTorTab', null, 'New Tor Tab')}</span>
                                                 </div>
                                             </button>
                                         );
@@ -2032,7 +2100,7 @@ export default function Sidebar() {
                                 title={t('chrome.copyUrls', null, 'Copy URLs')}
                             >
                                 <Copy size={11} />
-                                <span className="hidden md:inline">Copy</span>
+                                <span className="inline">Copy</span>
                             </button>
                             {selectedTabIds.length >= 2 && selectedTabIds.length <= 4 && (
                                 <button
@@ -2041,7 +2109,7 @@ export default function Sidebar() {
                                     title={selectedTabIds.length >= 3 ? t('chrome.splitQuadSelected', null, 'Open in 2×2 Quad Split') : t('chrome.splitViewSelected', null, 'Open in Split View')}
                                 >
                                     <Columns size={11} />
-                                    <span className="hidden md:inline">{selectedTabIds.length >= 3 ? 'Quad' : 'Split'}</span>
+                                    <span className="inline">{selectedTabIds.length >= 3 ? 'Quad' : 'Split'}</span>
                                 </button>
                             )}
                             <button
@@ -2050,7 +2118,7 @@ export default function Sidebar() {
                                 title={t('chrome.suspendSelected', null, 'Suspend selected tabs')}
                             >
                                 <Moon size={11} />
-                                <span className="hidden md:inline">Sleep</span>
+                                <span className="inline">Sleep</span>
                             </button>
                             <button
                                 onClick={() => bulkToggleMuteTabs(selectedTabIds)}
@@ -2058,7 +2126,7 @@ export default function Sidebar() {
                                 title={allSelectedMuted ? t('chrome.unmuteSelected', null, 'Unmute selected tabs') : t('chrome.muteSelected', null, 'Mute selected tabs')}
                             >
                                 {allSelectedMuted ? <Volume2 size={11} /> : <VolumeX size={11} />}
-                                <span className="hidden md:inline">{allSelectedMuted ? 'Unmute' : 'Mute'}</span>
+                                <span className="inline">{allSelectedMuted ? 'Unmute' : 'Mute'}</span>
                             </button>
                             <button
                                 onClick={() => bulkCloseTabs(selectedTabIds)}
@@ -2066,7 +2134,7 @@ export default function Sidebar() {
                                 title={t('chrome.closeSelected', null, 'Close selected tabs')}
                             >
                                 <Trash2 size={11} />
-                                <span className="hidden md:inline">Close</span>
+                                <span className="inline">Close</span>
                             </button>
                         </div>
                     </div>
@@ -2345,7 +2413,7 @@ export default function Sidebar() {
                                 >
                                     {getSpaceIcon(sp.icon, { size: showSpaceLabels ? 14 : 15, className: 'shrink-0 pointer-events-none' })}
                                     {showSpaceLabels && (
-                                        <span className="hidden md:inline truncate select-none pointer-events-none">{getSpaceDisplayName(sp)}</span>
+                                        <span className="inline truncate select-none pointer-events-none">{getSpaceDisplayName(sp)}</span>
                                     )}
                                 </div>
                             );

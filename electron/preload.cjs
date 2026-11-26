@@ -449,6 +449,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
     rustMergeHistory: (localHistory, remoteHistory) => ipcRenderer.sendSync('rust-merge-history', { localHistory, remoteHistory }),
     rustParseGifInfo: (buffer) => ipcRenderer.sendSync('rust-parse-gif-info', buffer),
     rustExtractArticle: (html, url) => ipcRenderer.sendSync('rust-extract-article', { html, url }),
-    rustParseVault: (text, filename) => ipcRenderer.sendSync('rust-parse-vault', { text, filename })
+    rustParseVault: (text, filename) => ipcRenderer.sendSync('rust-parse-vault', { text, filename }),
+
+    // Extensions Engine
+    extList: (profileId) => ipcRenderer.invoke('ext-list', { profileId }),
+    extPreviewCws: (extId, profileId) => ipcRenderer.invoke('ext-preview-cws', { extId, profileId }),
+    extConfirmInstallCws: (extId, stagedPath, profileId) => ipcRenderer.invoke('ext-confirm-install-cws', { extId, stagedPath, profileId }),
+    extInstallCwsDirect: (extId, opts, profileId) => ipcRenderer.invoke('ext-install-cws-direct', { extId, opts, profileId }),
+    extPickUnpackedFolder: () => ipcRenderer.invoke('ext-pick-unpacked-folder'),
+    extInstallUnpacked: (dirPath, profileId) => ipcRenderer.invoke('ext-install-unpacked', { dirPath, profileId }),
+    extSetEnabled: (extId, enabled, profileId) => ipcRenderer.invoke('ext-set-enabled', { extId, enabled, profileId }),
+    extSetPinned: (extId, pinned, profileId) => ipcRenderer.invoke('ext-set-pinned', { extId, pinned, profileId }),
+    extReload: (extId, profileId) => ipcRenderer.invoke('ext-reload', { extId, profileId }),
+    extRemove: (extId, profileId) => ipcRenderer.invoke('ext-remove', { extId, profileId }),
+    extTriggerActionClick: (extId, tabInfo, profileId) => ipcRenderer.invoke('ext-trigger-action-click', { extId, tabInfo, profileId }),
+    extTriggerContextMenu: (extId, menuItemId, info, profileId) => ipcRenderer.invoke('ext-trigger-context-menu', { extId, menuItemId, info, profileId }),
+    extOpenOptions: (extId, profileId) => ipcRenderer.invoke('ext-open-options', { extId, profileId }),
+    extSyncTabs: (windowId, tabs) => ipcRenderer.invoke('ext-sync-tabs', { windowId, tabs }),
+    onExtListChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('ext-list-changed', handler);
+        return () => ipcRenderer.removeListener('ext-list-changed', handler);
+    },
+    onExtActionStateChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('ext-action-state-changed', handler);
+        return () => ipcRenderer.removeListener('ext-action-state-changed', handler);
+    },
+    onExtContextMenusChanged: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('ext-context-menus-changed', handler);
+        return () => ipcRenderer.removeListener('ext-context-menus-changed', handler);
+    },
+    onExtTabCommand: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('ext-tab-command', handler);
+        return () => ipcRenderer.removeListener('ext-tab-command', handler);
+    }
 });
 

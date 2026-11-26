@@ -1,6 +1,33 @@
 // Modular domain translations: tools namespace (ToolHub, AI, DevTools, Passkeys, etc.)
 
 const en = {
+    extensions: {
+            "title": "Extensions",
+            "loadUnpacked": "Load Unpacked",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Paste Chrome Web Store URL or Extension ID...",
+            "installBtn": "Install",
+            "emptyTitle": "No extensions installed",
+            "emptyDesc": "Install from Chrome Web Store or load an unpacked extension.",
+            "unpin": "Unpin from toolbar",
+            "pin": "Pin to toolbar",
+            "options": "Options",
+            "reload": "Reload",
+            "disable": "Disable",
+            "enable": "Enable",
+            "remove": "Remove",
+            "installConfirmTitle": "Add Extension?",
+            "requestedPermissions": "Requested Permissions",
+            "noSpecialPermissions": "No special permissions requested.",
+            "addExtension": "Add Extension",
+            "unpackedLoaded": "Unpacked extension loaded",
+            "installedToast": "Extension added to QBrowse",
+            "cwsInstalledBar": "Extension installed in QBrowse",
+            "cwsAvailableBar": "Chrome Web Store extension detected",
+            "installedBadge": "Installed",
+            "installPreviewFailed": "Could not load extension details",
+            "addToQBrowse": "Add to QBrowse"
+    },
     common: {
         incognito: "Incognito",
         selectOption: "Select option...",
@@ -1396,6 +1423,33 @@ const en = {
 };
 
 const pl = {
+    extensions: {
+            "title": "Rozszerzenia",
+            "loadUnpacked": "Załaduj rozpakowane",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Wklej URL Chrome Web Store lub ID rozszerzenia...",
+            "installBtn": "Zainstaluj",
+            "emptyTitle": "Brak zainstalowanych rozszerzeń",
+            "emptyDesc": "Zainstaluj z Chrome Web Store lub załaduj rozpakowane rozszerzenie.",
+            "unpin": "Odepnij z paska narzędzi",
+            "pin": "Przypnij do paska narzędzi",
+            "options": "Opcje",
+            "reload": "Odśwież",
+            "disable": "Wyłącz",
+            "enable": "Włącz",
+            "remove": "Usuń",
+            "installConfirmTitle": "Dodać rozszerzenie?",
+            "requestedPermissions": "Wymagane uprawnienia",
+            "noSpecialPermissions": "Brak specjalnych uprawnień.",
+            "addExtension": "Dodaj rozszerzenie",
+            "unpackedLoaded": "Załadowano rozpakowane rozszerzenie",
+            "installedToast": "Rozszerzenie dodane do QBrowse",
+            "cwsInstalledBar": "Rozszerzenie zainstalowane w QBrowse",
+            "cwsAvailableBar": "Wykryto rozszerzenie Chrome Web Store",
+            "installedBadge": "Zainstalowano",
+            "installPreviewFailed": "Nie udało się pobrać szczegółów rozszerzenia",
+            "addToQBrowse": "Dodaj do QBrowse"
+    },
     common: {
         incognito: "Incognito",
         selectOption: "Wybierz opcję...",
@@ -2791,6 +2845,33 @@ const pl = {
 };
 
 const fr = {
+    extensions: {
+            "title": "Extensions",
+            "loadUnpacked": "Charger non empaquetée",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Coller l’URL Chrome Web Store ou l’ID...",
+            "installBtn": "Installer",
+            "emptyTitle": "Aucune extension installée",
+            "emptyDesc": "Installez depuis le Chrome Web Store ou chargez une extension non empaquetée.",
+            "unpin": "Désépingler de la barre",
+            "pin": "Épingler à la barre",
+            "options": "Options",
+            "reload": "Recharger",
+            "disable": "Désactiver",
+            "enable": "Activer",
+            "remove": "Supprimer",
+            "installConfirmTitle": "Ajouter l’extension ?",
+            "requestedPermissions": "Autorisations demandées",
+            "noSpecialPermissions": "Aucune autorisation spéciale demandée.",
+            "addExtension": "Ajouter l’extension",
+            "unpackedLoaded": "Extension non empaquetée chargée",
+            "installedToast": "Extension ajoutée à QBrowse",
+            "cwsInstalledBar": "Extension installée dans QBrowse",
+            "cwsAvailableBar": "Extension Chrome Web Store détectée",
+            "installedBadge": "Installée",
+            "installPreviewFailed": "Impossible de charger les détails de l’extension",
+            "addToQBrowse": "Ajouter à QBrowse"
+    },
     common: {
         incognito: "Navigation privée",
         selectOption: "Sélectionner une option...",
@@ -4186,6 +4267,33 @@ const fr = {
 };
 
 const de = {
+    extensions: {
+            "title": "Erweiterungen",
+            "loadUnpacked": "Entpackte laden",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Chrome Web Store-URL oder Erweiterungs-ID einfügen...",
+            "installBtn": "Installieren",
+            "emptyTitle": "Keine Erweiterungen installiert",
+            "emptyDesc": "Aus dem Chrome Web Store installieren oder entpackte Erweiterung laden.",
+            "unpin": "Von Symbolleiste lösen",
+            "pin": "An Symbolleiste anheften",
+            "options": "Optionen",
+            "reload": "Neu laden",
+            "disable": "Deaktivieren",
+            "enable": "Aktivieren",
+            "remove": "Entfernen",
+            "installConfirmTitle": "Erweiterung hinzufügen?",
+            "requestedPermissions": "Angeforderte Berechtigungen",
+            "noSpecialPermissions": "Keine besonderen Berechtigungen erforderlich.",
+            "addExtension": "Erweiterung hinzufügen",
+            "unpackedLoaded": "Entpackte Erweiterung geladen",
+            "installedToast": "Erweiterung zu QBrowse hinzugefügt",
+            "cwsInstalledBar": "Erweiterung in QBrowse installiert",
+            "cwsAvailableBar": "Chrome Web Store-Erweiterung erkannt",
+            "installedBadge": "Installiert",
+            "installPreviewFailed": "Erweiterungsdetails konnten nicht geladen werden",
+            "addToQBrowse": "Zu QBrowse hinzufügen"
+    },
     common: {
         incognito: "Inkognito",
         selectOption: "Option auswählen...",
@@ -5581,6 +5689,33 @@ const de = {
 };
 
 const es = {
+    extensions: {
+            "title": "Extensiones",
+            "loadUnpacked": "Cargar descomprimida",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Pega la URL de Chrome Web Store o el ID...",
+            "installBtn": "Instalar",
+            "emptyTitle": "No hay extensiones instaladas",
+            "emptyDesc": "Instala desde Chrome Web Store o carga una extensión descomprimida.",
+            "unpin": "Desanclar de la barra",
+            "pin": "Fijar en la barra",
+            "options": "Opciones",
+            "reload": "Recargar",
+            "disable": "Desactivar",
+            "enable": "Activar",
+            "remove": "Eliminar",
+            "installConfirmTitle": "¿Añadir extensión?",
+            "requestedPermissions": "Permisos solicitados",
+            "noSpecialPermissions": "No se solicitan permisos especiales.",
+            "addExtension": "Añadir extensión",
+            "unpackedLoaded": "Extensión descomprimida cargada",
+            "installedToast": "Extensión añadida a QBrowse",
+            "cwsInstalledBar": "Extensión instalada en QBrowse",
+            "cwsAvailableBar": "Extensión de Chrome Web Store detectada",
+            "installedBadge": "Instalada",
+            "installPreviewFailed": "No se pudieron cargar los detalles",
+            "addToQBrowse": "Añadir a QBrowse"
+    },
     common: {
         incognito: "Incógnito",
         selectOption: "Seleccionar opción...",
@@ -6976,6 +7111,33 @@ const es = {
 };
 
 const pt = {
+    extensions: {
+            "title": "Extensões",
+            "loadUnpacked": "Carregar sem pacote",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Cole o URL da Chrome Web Store ou ID...",
+            "installBtn": "Instalar",
+            "emptyTitle": "Nenhuma extensão instalada",
+            "emptyDesc": "Instale da Chrome Web Store ou carregue uma extensão sem pacote.",
+            "unpin": "Desafixar da barra",
+            "pin": "Fixar na barra",
+            "options": "Opções",
+            "reload": "Recarregar",
+            "disable": "Desativar",
+            "enable": "Ativar",
+            "remove": "Remover",
+            "installConfirmTitle": "Adicionar extensão?",
+            "requestedPermissions": "Permissões solicitadas",
+            "noSpecialPermissions": "Nenhuma permissão especial solicitada.",
+            "addExtension": "Adicionar extensão",
+            "unpackedLoaded": "Extensão sem pacote carregada",
+            "installedToast": "Extensão adicionada ao QBrowse",
+            "cwsInstalledBar": "Extensão instalada no QBrowse",
+            "cwsAvailableBar": "Extensão da Chrome Web Store detectada",
+            "installedBadge": "Instalada",
+            "installPreviewFailed": "Não foi possível carregar os detalhes",
+            "addToQBrowse": "Adicionar ao QBrowse"
+    },
     common: {
         incognito: "Anônimo",
         selectOption: "Selecionar opção...",
@@ -8371,6 +8533,33 @@ const pt = {
 };
 
 const zh = {
+    extensions: {
+            "title": "扩展程序",
+            "loadUnpacked": "加载已解压的扩展",
+            "chromeWebStore": "Chrome 应用商店",
+            "installPlaceholder": "粘贴 Chrome 应用商店链接或扩展 ID...",
+            "installBtn": "安装",
+            "emptyTitle": "未安装扩展程序",
+            "emptyDesc": "从 Chrome 应用商店安装或加载已解压的扩展程序。",
+            "unpin": "从工具栏取消固定",
+            "pin": "固定到工具栏",
+            "options": "选项",
+            "reload": "重新加载",
+            "disable": "停用",
+            "enable": "启用",
+            "remove": "移除",
+            "installConfirmTitle": "添加扩展程序？",
+            "requestedPermissions": "请求的权限",
+            "noSpecialPermissions": "未请求特殊权限。",
+            "addExtension": "添加扩展程序",
+            "unpackedLoaded": "已加载解压的扩展程序",
+            "installedToast": "扩展程序已添加到 QBrowse",
+            "cwsInstalledBar": "已在 QBrowse 中安装该扩展程序",
+            "cwsAvailableBar": "检测到 Chrome 应用商店扩展程序",
+            "installedBadge": "已安装",
+            "installPreviewFailed": "无法加载扩展程序详情",
+            "addToQBrowse": "添加到 QBrowse"
+    },
     common: {
         incognito: "无痕模式",
         selectOption: "选择选项...",
@@ -9766,6 +9955,33 @@ const zh = {
 };
 
 const ja = {
+    extensions: {
+            "title": "拡張機能",
+            "loadUnpacked": "パッケージ化されていない拡張を読み込む",
+            "chromeWebStore": "Chrome ウェブストア",
+            "installPlaceholder": "Chrome ウェブストアのURLまたはIDを貼り付け...",
+            "installBtn": "インストール",
+            "emptyTitle": "拡張機能がありません",
+            "emptyDesc": "Chrome ウェブストアからインストールするか、展開済み拡張を読み込みます。",
+            "unpin": "ツールバーから固定解除",
+            "pin": "ツールバーに固定",
+            "options": "オプション",
+            "reload": "再読み込み",
+            "disable": "無効にする",
+            "enable": "有効にする",
+            "remove": "削除",
+            "installConfirmTitle": "拡張機能を追加しますか？",
+            "requestedPermissions": "要求された権限",
+            "noSpecialPermissions": "特別な権限は要求されていません。",
+            "addExtension": "拡張機能を追加",
+            "unpackedLoaded": "展開済み拡張機能を読み込みました",
+            "installedToast": "拡張機能を QBrowse に追加しました",
+            "cwsInstalledBar": "QBrowse にインストール済み",
+            "cwsAvailableBar": "Chrome ウェブストアの拡張機能を検出",
+            "installedBadge": "インストール済み",
+            "installPreviewFailed": "拡張機能の詳細を読み込めませんでした",
+            "addToQBrowse": "QBrowse に追加"
+    },
     common: {
         incognito: "シークレット",
         selectOption: "オプションを選択...",
@@ -11161,6 +11377,33 @@ const ja = {
 };
 
 const ru = {
+    extensions: {
+            "title": "Расширения",
+            "loadUnpacked": "Загрузить распакованное",
+            "chromeWebStore": "Интернет-магазин Chrome",
+            "installPlaceholder": "Вставьте URL магазина Chrome или ID...",
+            "installBtn": "Установить",
+            "emptyTitle": "Нет установленных расширений",
+            "emptyDesc": "Установите из магазина Chrome или загрузите распакованное расширение.",
+            "unpin": "Открепить от панели",
+            "pin": "Закрепить на панели",
+            "options": "Настройки",
+            "reload": "Обновить",
+            "disable": "Отключить",
+            "enable": "Включить",
+            "remove": "Удалить",
+            "installConfirmTitle": "Добавить расширение?",
+            "requestedPermissions": "Запрашиваемые разрешения",
+            "noSpecialPermissions": "Специальные разрешения не требуются.",
+            "addExtension": "Добавить расширение",
+            "unpackedLoaded": "Распакованное расширение загружено",
+            "installedToast": "Расширение добавлено в QBrowse",
+            "cwsInstalledBar": "Расширение установлено в QBrowse",
+            "cwsAvailableBar": "Обнаружено расширение из Chrome Web Store",
+            "installedBadge": "Установлено",
+            "installPreviewFailed": "Не удалось загрузить сведения о расширении",
+            "addToQBrowse": "Добавить в QBrowse"
+    },
     common: {
         incognito: "Инкогнито",
         selectOption: "Выберите вариант...",
@@ -12556,6 +12799,33 @@ const ru = {
 };
 
 const it = {
+    extensions: {
+            "title": "Estensioni",
+            "loadUnpacked": "Carica non pacchettizzata",
+            "chromeWebStore": "Chrome Web Store",
+            "installPlaceholder": "Incolla URL Chrome Web Store o ID estensione...",
+            "installBtn": "Installa",
+            "emptyTitle": "Nessuna estensione installata",
+            "emptyDesc": "Installa dal Chrome Web Store o carica un’estensione non pacchettizzata.",
+            "unpin": "Rimuovi dalla barra",
+            "pin": "Fissa nella barra",
+            "options": "Opzioni",
+            "reload": "Ricarica",
+            "disable": "Disattiva",
+            "enable": "Attiva",
+            "remove": "Rimuovi",
+            "installConfirmTitle": "Aggiungere estensione?",
+            "requestedPermissions": "Autorizzazioni richieste",
+            "noSpecialPermissions": "Nessuna autorizzazione speciale richiesta.",
+            "addExtension": "Aggiungi estensione",
+            "unpackedLoaded": "Estensione non pacchettizzata caricata",
+            "installedToast": "Estensione aggiunta a QBrowse",
+            "cwsInstalledBar": "Estensione installata in QBrowse",
+            "cwsAvailableBar": "Estensione Chrome Web Store rilevata",
+            "installedBadge": "Installata",
+            "installPreviewFailed": "Impossibile caricare i dettagli",
+            "addToQBrowse": "Aggiungi a QBrowse"
+    },
     common: {
         incognito: "Incognito",
         selectOption: "Seleziona opzione...",
@@ -13951,6 +14221,33 @@ const it = {
 };
 
 const uk = {
+    extensions: {
+            "title": "Розширення",
+            "loadUnpacked": "Завантажити розпаковане",
+            "chromeWebStore": "Веб-магазин Chrome",
+            "installPlaceholder": "Вставте URL Chrome Web Store або ID...",
+            "installBtn": "Встановити",
+            "emptyTitle": "Немає встановлених розширень",
+            "emptyDesc": "Встановіть із Chrome Web Store або завантажте розпаковане розширення.",
+            "unpin": "Відкріпити з панелі",
+            "pin": "Закріпити на панелі",
+            "options": "Параметри",
+            "reload": "Перезавантажити",
+            "disable": "Вимкнути",
+            "enable": "Увімкнути",
+            "remove": "Видалити",
+            "installConfirmTitle": "Додати розширення?",
+            "requestedPermissions": "Запитувані дозволи",
+            "noSpecialPermissions": "Спеціальні дозволи не потрібні.",
+            "addExtension": "Додати розширення",
+            "unpackedLoaded": "Розпаковане розширення завантажено",
+            "installedToast": "Розширення додано до QBrowse",
+            "cwsInstalledBar": "Розширення встановлено в QBrowse",
+            "cwsAvailableBar": "Виявлено розширення Chrome Web Store",
+            "installedBadge": "Встановлено",
+            "installPreviewFailed": "Не вдалося завантажити деталі розширення",
+            "addToQBrowse": "Додати до QBrowse"
+    },
     common: {
         incognito: "Інкогніто",
         selectOption: "Оберіть опцію...",
@@ -15346,6 +15643,33 @@ const uk = {
 };
 
 const ko = {
+    extensions: {
+            "title": "확장 프로그램",
+            "loadUnpacked": "압축 해제된 확장 로드",
+            "chromeWebStore": "Chrome 웹 스토어",
+            "installPlaceholder": "Chrome 웹 스토어 URL 또는 ID 붙여넣기...",
+            "installBtn": "설치",
+            "emptyTitle": "설치된 확장 프로그램 없음",
+            "emptyDesc": "Chrome 웹 스토어에서 설치하거나 압축 해제된 확장을 로드하세요.",
+            "unpin": "도구 모음에서 고정 해제",
+            "pin": "도구 모음에 고정",
+            "options": "옵션",
+            "reload": "새로고침",
+            "disable": "사용 안 함",
+            "enable": "사용",
+            "remove": "제거",
+            "installConfirmTitle": "확장 프로그램을 추가할까요?",
+            "requestedPermissions": "요청된 권한",
+            "noSpecialPermissions": "특별한 권한이 필요하지 않습니다.",
+            "addExtension": "확장 프로그램 추가",
+            "unpackedLoaded": "압축 해제된 확장 로드됨",
+            "installedToast": "QBrowse에 확장 프로그램 추가됨",
+            "cwsInstalledBar": "QBrowse에 설치됨",
+            "cwsAvailableBar": "Chrome 웹 스토어 확장 감지됨",
+            "installedBadge": "설치됨",
+            "installPreviewFailed": "확장 프로그램 정보를 불러올 수 없습니다",
+            "addToQBrowse": "QBrowse에 추가"
+    },
     common: {
         incognito: "시크릿",
         selectOption: "옵션 선택...",

@@ -6,6 +6,7 @@ import useVaultStore from './useVaultStore';
 import useTabStore, { isValidSyncTab, getCleanTabTitle } from './useTabStore';
 import { stripEphemeralTabMediaFields } from '../utils/mediaStateHelpers.js';
 import useHistoryStore from './useHistoryStore';
+import useExtensionStore from './useExtensionStore';
 import { saveCustomPresetsToStorage, setSavedPresetId } from '../utils/experiencePresets';
 import { auth, db } from '../services/firebase';
 import { 
@@ -642,7 +643,8 @@ let lastSyncedSignatures = {
     tabs: '',
     pinnedTabs: '',
     history: '',
-    presets: ''
+    presets: '',
+    extensions: ''
 };
 
 let lastObservedTabSig = '';
@@ -1923,11 +1925,12 @@ const useSyncStore = create((set, get) => ({
     autoSyncIntervalMinutes: 15,
 
     syncCategories: (() => {
+        const defaults = { vault: true, settings: true, tabs: true, history: true, extensions: true };
         try {
             const stored = localStorage.getItem('qbrowse_sync_categories');
-            if (stored) return JSON.parse(stored);
+            if (stored) return { ...defaults, ...JSON.parse(stored) };
         } catch(e) {}
-        return { vault: true, settings: true, tabs: true, history: true };
+        return defaults;
     })(),
 
     toggleSyncCategory: (categoryKey) => {
@@ -2631,7 +2634,7 @@ const useSyncStore = create((set, get) => ({
     logout: async () => {
         get().stopListening();
         get().stopAutoSync();
-        lastSyncedSignatures = { settings: '', vault: '', tabs: '', pinnedTabs: '', history: '', presets: '' };
+        lastSyncedSignatures = { settings: '', vault: '', tabs: '', pinnedTabs: '', history: '', presets: '', extensions: '' };
         lastLocalWriteIso = '';
         hasSyncedThisSession = false;
         sessionSyncedUid = '';
@@ -2808,6 +2811,7 @@ const useSyncStore = create((set, get) => ({
                 const remoteEffectiveTabsUpdatedAt = Math.max(remoteTabsUpdatedAt, remotePinnedUpdatedAt);
                 const remotePresetsUpdatedAt = parseTimestampMs(existingData.presets?.updatedAt) || remoteSettingsUpdatedAt;
                 const remoteHistoryUpdatedAt = parseTimestampMs(existingData.history?.updatedAt);
+                const remoteExtensionsUpdatedAt = parseTimestampMs(existingData.extensions?.updatedAt);
                 const remoteVaultUpdatedAt = Math.max(
                     parseTimestampMs(existingData.vault?.updatedAt),
                     parseTimestampMs(existingData.vaultDeletedIds?.updatedAt)
@@ -2820,6 +2824,7 @@ const useSyncStore = create((set, get) => ({
                     || remoteEffectiveTabsUpdatedAt > localTabsUpdatedAt
                     || remotePresetsUpdatedAt > localPresetsUpdatedAt
                     || remoteHistoryUpdatedAt > 0
+                    || remoteExtensionsUpdatedAt > 0
                     || remoteVaultUpdatedAt > 0;
 
                 if (shouldInspectRemote) {
@@ -3005,6 +3010,16 @@ const useSyncStore = create((set, get) => ({
                                 if (Array.isArray(remoteHistoryRaw)) {
                                     pulledRemoteHistory = normalizeRemoteHistoryItems(remoteHistoryRaw);
                                     useHistoryStore.getState().mergeRemoteHistory(pulledRemoteHistory);
+                                }
+                            } catch (_) {}
+                        }
+
+                        // 0f. Extensions sync pull
+                        if (syncCategories?.extensions !== false && existingData.extensions?.encrypted) {
+                            try {
+                                const remoteExtensions = await decryptData(existingData.extensions.encrypted, masterPassword);
+                                if (Array.isArray(remoteExtensions)) {
+                                    await useExtensionStore.getState().reconcileSyncedExtensions?.(remoteExtensions);
                                 }
                             } catch (_) {}
                         }
@@ -3239,6 +3254,28 @@ const useSyncStore = create((set, get) => ({
                     const encryptedHistory = await encryptData(historyPayload, masterPassword);
                     rootBatchUpdate.history = { encrypted: encryptedHistory, updatedAt: nowIso };
                     updatedSigs.history = historySig;
+                }
+            }
+
+            // 5. Sync CWS Extensions
+            if (syncCategories?.extensions !== false) {
+                const rawExtensions = useExtensionStore.getState()?.extensions || [];
+                const extensionsPayload = rawExtensions
+                    .filter((ext) => ext && (ext.source === 'cws' || /^[a-p]{32}$/i.test(String(ext.id || ''))))
+                    .map((ext) => ({
+                        id: String(ext.id).toLowerCase(),
+                        enabled: ext.enabled !== false,
+                        pinned: Boolean(ext.pinned),
+                        name: ext.name || '',
+                        version: ext.version || ''
+                    }))
+                    .sort((a, b) => a.id.localeCompare(b.id));
+                const extensionsSig = JSON.stringify(extensionsPayload.map(e => `${e.id}|${e.enabled ? 1 : 0}|${e.pinned ? 1 : 0}|${e.version || ''}`));
+                totalItems += extensionsPayload.length;
+                if (!silent || extensionsSig !== lastSyncedSignatures.extensions) {
+                    const encryptedExtensions = await encryptData(extensionsPayload, masterPassword);
+                    rootBatchUpdate.extensions = { encrypted: encryptedExtensions, updatedAt: nowIso };
+                    updatedSigs.extensions = extensionsSig;
                 }
             }
 
@@ -4414,6 +4451,16 @@ const useSyncStore = create((set, get) => ({
                     } catch(e) {}
                 }
 
+                // Sync Extensions
+                if (syncCategories?.extensions !== false && data.extensions?.encrypted) {
+                    try {
+                        const remoteExtensions = await decryptData(data.extensions.encrypted, masterPassword);
+                        if (Array.isArray(remoteExtensions)) {
+                            await useExtensionStore.getState().reconcileSyncedExtensions?.(remoteExtensions);
+                        }
+                    } catch(e) {}
+                }
+
                 hasAppliedInitialCloudSnapshot = true;
 
                 // Update local watcher signatures so incoming cloud changes never echo back a sync
@@ -4461,10 +4508,10 @@ const useSyncStore = create((set, get) => ({
 
             const masterPass = await loadWrappedPassphrase();
             const lastSync = localStorage.getItem(syncKey) || null;
-            let cats = { vault: true, settings: true, tabs: true, history: true };
+            let cats = { vault: true, settings: true, tabs: true, history: true, extensions: true };
             try {
                 const storedCats = localStorage.getItem(catKey);
-                if (storedCats) cats = JSON.parse(storedCats);
+                if (storedCats) cats = { ...cats, ...JSON.parse(storedCats) };
             } catch(e) {}
 
             set({

@@ -295,6 +295,7 @@ const defaultSettings = {
     // Passkey & Hardware Security Key Routing
     passkeyProviderMode: 'qvault', // 'qvault' (QVault with hardware fallback) | 'hardware' (Always use Hardware / System Key)
     passkeyHardwareFallback: true, // Automatically fall back to Hardware/OS authenticator when QVault has no matching passkey or is unavailable
+    vaultProvider: 'qvault', // 'qvault' | 'ext:<extensionId>'
 
     // Network Privacy & Background Services Kill Switch
     strictOfflineMode: false,
@@ -369,6 +370,9 @@ const loadSettings = () => {
             }
             if (typeof parsed.passkeyHardwareFallback !== 'boolean') {
                 parsed.passkeyHardwareFallback = true;
+            }
+            if (typeof parsed.vaultProvider !== 'string' || (!/^qvault$|^ext:[a-zA-Z0-9_-]{1,64}$/.test(parsed.vaultProvider))) {
+                parsed.vaultProvider = 'qvault';
             }
             const merged = { ...defaultSettings, ...parsed };
             try {
@@ -3036,7 +3040,8 @@ const useUIStore = create((set, get) => ({
       if (window.electronAPI.syncPasskeySettings) {
         window.electronAPI.syncPasskeySettings({
           passkeyProviderMode: 'qvault',
-          passkeyHardwareFallback: true
+          passkeyHardwareFallback: true,
+          vaultProvider: 'qvault'
         });
       }
     }
@@ -3066,10 +3071,11 @@ const useUIStore = create((set, get) => ({
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, newSettings[key]);
           }
-          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback') && window.electronAPI?.syncPasskeySettings) {
+          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback' || key === 'vaultProvider') && window.electronAPI?.syncPasskeySettings) {
               window.electronAPI.syncPasskeySettings({
                   passkeyProviderMode: newSettings.passkeyProviderMode || 'qvault',
-                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false
+                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false,
+                  vaultProvider: newSettings.vaultProvider || 'qvault'
               });
           }
           return { settings: newSettings };
@@ -3103,10 +3109,11 @@ const useUIStore = create((set, get) => ({
           if (window.electronAPI && window.electronAPI.saveSetting) {
               window.electronAPI.saveSetting(key, value);
           }
-          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback') && window.electronAPI?.syncPasskeySettings) {
+          if ((key === 'passkeyProviderMode' || key === 'passkeyHardwareFallback' || key === 'vaultProvider') && window.electronAPI?.syncPasskeySettings) {
               window.electronAPI.syncPasskeySettings({
                   passkeyProviderMode: newSettings.passkeyProviderMode || 'qvault',
-                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false
+                  passkeyHardwareFallback: newSettings.passkeyHardwareFallback !== false,
+                  vaultProvider: newSettings.vaultProvider || 'qvault'
               });
           }
           if (typeof key === 'string' && key.startsWith('appFont')) {
@@ -4474,7 +4481,8 @@ export const syncInitialSettingsToElectron = () => {
       if (window.electronAPI.syncPasskeySettings) {
         window.electronAPI.syncPasskeySettings({
           passkeyProviderMode: state.settings?.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault',
-          passkeyHardwareFallback: state.settings?.passkeyHardwareFallback !== false
+          passkeyHardwareFallback: state.settings?.passkeyHardwareFallback !== false,
+          vaultProvider: state.settings?.vaultProvider || 'qvault'
         });
       }
       if (window.electronAPI.syncTextHighlightState) {

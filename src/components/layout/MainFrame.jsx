@@ -6,7 +6,7 @@ import {
     Music, SkipBack, SkipForward, ExternalLink, Maximize, WifiOff,
     RefreshCw, Ghost, MonitorPlay, ShieldCheck, Zap, Check, FileText, ArrowLeftRight, Globe,
     ZoomIn, RotateCcw, AlertCircle, Info, Sliders, Camera, Copy,
-    Columns, LayoutGrid, SplitSquareHorizontal, SplitSquareVertical, Layers, Sparkles, CornerDownLeft, Plus
+    Columns, LayoutGrid, SplitSquareHorizontal, SplitSquareVertical, Layers, Sparkles, CornerDownLeft, Plus, Puzzle, Loader2
 } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses, getLiquidGlassCardClasses } from '../common/ContextMenuProvider';
 import ElementEraserHUD from '../common/ElementEraserHUD';
@@ -104,6 +104,8 @@ function getToastIcon(message, isBright = false) {
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useHistoryStore from '../../store/useHistoryStore';
+import useExtensionStore, { extractCwsExtensionId } from '../../store/useExtensionStore';
+import useProfileStore from '../../store/useProfileStore';
 import { topSites } from '../../utils/topSites';
 import TopBar from './TopBar';
 import WebViewContainer from './WebViewContainer';
@@ -122,6 +124,7 @@ import HomepageOmnibox from '../features/HomepageOmnibox';
 
 const QVaultPopover = React.lazy(() => import('../popovers/QVaultPopover'));
 const TorCircuitPopover = React.lazy(() => import('../popovers/TorCircuitPopover'));
+const ExtensionsPopover = React.lazy(() => import('../popovers/ExtensionsPopover'));
 const ReaderModeOverlay = React.lazy(() => import('../features/ReaderModeOverlay'));
 
 function LazyPopoverGate({ when, children }) {
@@ -320,6 +323,118 @@ const DownloadPopup = () => {
     );
 };
 
+const CwsExtensionPopup = () => {
+    const { t } = useTranslation();
+    const theme = useUIStore(state => state.theme);
+    const activeDownloadPopup = useUIStore(state => state.activeDownloadPopup);
+    const showToast = useUIStore(state => state.showToast);
+    const activeSpace = useTabStore(state => state.activeSpace);
+    const getTabsForSpace = useTabStore(state => state.getTabsForSpace);
+    const privateTabs = useTabStore(state => state.privateTabs);
+    const workTabs = useTabStore(state => state.workTabs);
+    const ghostTabs = useTabStore(state => state.ghostTabs);
+    const torTabs = useTabStore(state => state.torTabs);
+    const customSpaceTabs = useTabStore(state => state.customSpaceTabs);
+    const installedExtensions = useExtensionStore(state => state.extensions);
+    const activeProfileId = useProfileStore(state => state.activeProfileId);
+    const isBright = theme === 'light' && activeSpace !== 'ghost' && activeSpace !== 'tor';
+
+    const [dismissedCwsExtId, setDismissedCwsExtId] = useState(null);
+    const [isClosing, setIsClosing] = useState(false);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const closeTimerRef = useRef(null);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, []);
+
+    const activeTabs = getTabsForSpace(activeSpace) || [];
+    const activeTab = activeTabs.find(tab => tab.active) || activeTabs[0];
+    const activeUrl = activeTab?.url || '';
+    const isCwsDetailUrl = /^https:\/\/chrome(?:webstore\.google|\.google)\.com\/(?:webstore\/)?detail\//i.test(activeUrl);
+    const cwsExtId = isCwsDetailUrl ? extractCwsExtensionId(activeUrl) : null;
+
+    if (!cwsExtId || dismissedCwsExtId === cwsExtId) return null;
+
+    const isAlreadyInstalled = (installedExtensions || []).some(e => e.id === cwsExtId);
+
+    const handleDismiss = (e) => {
+        if (e) e.stopPropagation();
+        if (isClosing) return;
+        setIsClosing(true);
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = setTimeout(() => {
+            setDismissedCwsExtId(cwsExtId);
+            setIsClosing(false);
+            closeTimerRef.current = null;
+        }, 180);
+    };
+
+    return (
+        <div
+            id="cws-extension-popup"
+            key={`cws-popup-${cwsExtId}`}
+            onClick={e => e.stopPropagation()}
+            style={getLiquidGlassInlineStyle(isBright)}
+            className={`absolute ${activeDownloadPopup ? 'top-[116px]' : 'top-4'} right-5 w-72 rounded-2xl p-1.5 select-none outline-none origin-top-right z-[65000] transition-[top] duration-200 ${getLiquidGlassSurfaceClasses(isBright)} ${isClosing ? 'animate-slide-up-fade-out pointer-events-none' : 'animate-slide-down-fade'}`}
+        >
+            <div className={`flex items-center justify-between px-2.5 py-1 text-xs font-semibold border-b mb-1 ${isBright ? 'text-zinc-600 border-black/[0.08]' : 'text-white/60 border-white/[0.08]'}`}>
+                <div className="flex items-center gap-2 truncate">
+                    <Puzzle size={13} className="text-accent flex-shrink-0" />
+                    <span className="truncate">{t('tools.extensions.chromeWebStore', null, 'Chrome Web Store')}</span>
+                </div>
+                <button
+                    onClick={handleDismiss}
+                    className={`p-1 rounded-lg transition cursor-pointer ${isBright ? 'text-zinc-600 hover:text-zinc-950 hover:bg-black/[0.06]' : 'text-white/55 hover:text-white hover:bg-white/10'}`}
+                    title={t('common.close', null, 'Close')}
+                >
+                    <X size={12} />
+                </button>
+            </div>
+
+            <div className={`px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 transition ${getLiquidGlassCardClasses(isBright)}`}>
+                <span className={`text-xs font-medium truncate ${isBright ? 'text-zinc-900' : 'text-white/95'}`}>
+                    {isAlreadyInstalled
+                        ? t('tools.extensions.cwsInstalledShort', null, 'Installed in QBrowse')
+                        : t('tools.extensions.cwsDetectedShort', null, 'Extension detected')}
+                </span>
+                {isAlreadyInstalled ? (
+                    <span className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 shrink-0 animate-pop-in ${
+                        isBright ? 'bg-emerald-500/15 text-emerald-700' : 'bg-emerald-500/20 text-emerald-300'
+                    }`}>
+                        <Check size={11} />
+                        {t('tools.extensions.installedBadge', null, 'Installed')}
+                    </span>
+                ) : (
+                    <button
+                        disabled={isPreviewLoading}
+                        onClick={async () => {
+                            if (isPreviewLoading) return;
+                            setIsPreviewLoading(true);
+                            try {
+                                const res = await useExtensionStore.getState().previewCwsInstall(cwsExtId, activeProfileId);
+                                if (res?.ok && useUIStore.getState().activePopover !== 'extensions') {
+                                    useUIStore.getState().togglePopover('extensions');
+                                } else if (!res?.ok) {
+                                    showToast(res?.error || t('tools.extensions.installPreviewFailed', null, 'Could not load extension details'));
+                                }
+                            } finally {
+                                setIsPreviewLoading(false);
+                            }
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-accent text-black hover:brightness-110 active:scale-95 transition-all duration-150 cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0 disabled:opacity-70 shadow-xs"
+                    >
+                        {isPreviewLoading && <Loader2 size={11} className="animate-spin" />}
+                        <span>{t('tools.extensions.addToQBrowse', null, 'Add to QBrowse')}</span>
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export default function MainFrame() {
     const { t, resolvedLanguage, intlLocale } = useTranslation();
     const isFullscreen = useUIStore(state => state.isFullscreen);
@@ -396,9 +511,9 @@ export default function MainFrame() {
     const sidebarPosition = useUIStore(state => state.settings?.sidebarPosition || 'left');
     const isSplitLeft = sidebarPosition === 'right';
 
-    const darkmodeAnchor = usePopoverAnchor('#tour-darkmode-trigger', 320, { defaultRight: 128 });
-    const adblockAnchor = usePopoverAnchor('#tour-shield-trigger', 288, { defaultRight: 48 });
-    const downloadsAnchor = usePopoverAnchor('#tour-downloads-trigger', 320, { defaultRight: 24 });
+    const darkmodeAnchor = usePopoverAnchor('#tour-darkmode-trigger', 320, { defaultRight: 128, enabled: activePopover === 'darkmode' });
+    const adblockAnchor = usePopoverAnchor('#tour-shield-trigger', 288, { defaultRight: 48, enabled: activePopover === 'adblock' });
+    const downloadsAnchor = usePopoverAnchor('#tour-downloads-trigger', 320, { defaultRight: 24, enabled: activePopover === 'downloads' });
 
     const [darkPopoverInput, setDarkPopoverInput] = useState('');
     const [hoveredThemePreview, setHoveredThemePreview] = useState(null);
@@ -428,6 +543,70 @@ export default function MainFrame() {
 
     const isIncognito = activeSpace === 'ghost';
     const isTor = activeSpace === 'tor';
+
+    const installedExtensions = useExtensionStore(state => state.extensions);
+    const activeProfileId = useProfileStore(state => state.activeProfileId);
+
+    // Initialize Extension listeners & handle ext-tab-command
+    useEffect(() => {
+        const unsubExt = useExtensionStore.getState().initListeners();
+
+        const handleTabCmd = (cmd) => {
+            const cmdType = cmd?.type || cmd?.action;
+            if (!cmd || !cmdType) return;
+            const tabStore = useTabStore.getState();
+            const resolveTabId = (id) => {
+                if (typeof id === 'number') {
+                    return tabStore.getTabIdByWebContentsId?.(id) || id;
+                }
+                return id;
+            };
+            if (cmdType === 'create' || cmdType === 'windows.create') {
+                const urls = Array.isArray(cmd.url) ? cmd.url : [cmd.url || ''];
+                urls.forEach((u, idx) => {
+                    tabStore.handleNewTab(u || '', idx === 0 ? cmd.active !== false : false);
+                });
+            } else if (cmdType === 'update' && cmd.tabId != null) {
+                const targetId = resolveTabId(cmd.tabId);
+                if (cmd.url) {
+                    tabStore.handleNavigateTab(targetId, cmd.url);
+                }
+                if (cmd.active && typeof tabStore.setActiveTab === 'function') {
+                    tabStore.setActiveTab(targetId);
+                }
+            } else if (cmdType === 'remove') {
+                const ids = Array.isArray(cmd.tabIds) ? cmd.tabIds : (cmd.tabId != null ? [cmd.tabId] : []);
+                ids.forEach((id) => {
+                    const targetId = resolveTabId(id);
+                    if (targetId != null) tabStore.handleCloseTab(targetId);
+                });
+            } else if (cmdType === 'reload') {
+                const targetId = cmd.tabId != null ? resolveTabId(cmd.tabId) : null;
+                const wv = targetId && typeof window !== 'undefined' ? window.qbrowseWebviews?.[targetId] : null;
+                if (wv && typeof wv.reload === 'function') {
+                    wv.reload();
+                } else {
+                    useUIStore.getState().refresh?.();
+                }
+            }
+        };
+
+        const unsubCmd = window.electronAPI?.onExtTabCommand?.(handleTabCmd);
+        const onWindowCmd = (e) => handleTabCmd(e?.detail);
+        window.addEventListener('ext-tab-command', onWindowCmd);
+
+        return () => {
+            if (typeof unsubExt === 'function') unsubExt();
+            if (typeof unsubCmd === 'function') unsubCmd();
+            window.removeEventListener('ext-tab-command', onWindowCmd);
+        };
+    }, []);
+
+    // Sync active space tabs to main process for chrome.tabs API
+    useEffect(() => {
+        const activeTabs = getTabsForSpace(activeSpace) || [];
+        useExtensionStore.getState().syncTabsToMain(activeTabs);
+    }, [activeSpace, privateTabs, workTabs, ghostTabs, torTabs, customSpaceTabs, getTabsForSpace]);
     const isBright = theme === 'light' && !isIncognito && !isTor;
 
     const getEffectiveLeftTab = (tabs) => {
@@ -553,6 +732,27 @@ export default function MainFrame() {
     const [toastCenterX, setToastCenterX] = useState(() => (typeof window !== 'undefined' ? window.innerWidth / 2 : 0));
 
     useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        let resizeEndTimer = null;
+        const handleWindowResizing = () => {
+            document.documentElement.classList.add('is-window-resizing');
+            if (resizeEndTimer) clearTimeout(resizeEndTimer);
+            resizeEndTimer = setTimeout(() => {
+                document.documentElement.classList.remove('is-window-resizing');
+                resizeEndTimer = null;
+            }, 140);
+        };
+        window.addEventListener('resize', handleWindowResizing);
+        return () => {
+            window.removeEventListener('resize', handleWindowResizing);
+            if (resizeEndTimer) clearTimeout(resizeEndTimer);
+            document.documentElement.classList.remove('is-window-resizing');
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!toast && !isToastClosing) return undefined;
+
         const updateToastCenter = () => {
             const el = viewportFrameRef.current;
             if (el) {
@@ -567,17 +767,27 @@ export default function MainFrame() {
             }
         };
 
+        let rafId = null;
+        const scheduleToastCenter = () => {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                updateToastCenter();
+            });
+        };
+
         updateToastCenter();
-        window.addEventListener('resize', updateToastCenter);
+        window.addEventListener('resize', scheduleToastCenter);
 
         let ro = null;
         if (typeof ResizeObserver !== 'undefined' && viewportFrameRef.current) {
-            ro = new ResizeObserver(updateToastCenter);
+            ro = new ResizeObserver(scheduleToastCenter);
             ro.observe(viewportFrameRef.current);
         }
 
         return () => {
-            window.removeEventListener('resize', updateToastCenter);
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            window.removeEventListener('resize', scheduleToastCenter);
             if (ro) ro.disconnect();
         };
     }, [toast, isToastClosing, sidebarPosition]);
@@ -1261,6 +1471,10 @@ export default function MainFrame() {
             <LazyPopoverGate when={activePopover === 'tor' || (isPopoverClosing && activePopover === 'tor')}>
                 <TorCircuitPopover isClosing={isPopoverClosing} />
             </LazyPopoverGate>
+            <LazyPopoverGate when={activePopover === 'extensions' || (isPopoverClosing && activePopover === 'extensions')}>
+                <ExtensionsPopover isClosing={isPopoverClosing} />
+            </LazyPopoverGate>
+
             {((activePopover && activePopover !== 'user' && activePopover !== 'userProfile') || (isPopoverClosing && activePopover !== 'user' && activePopover !== 'userProfile')) && (
                 <div className="absolute inset-0 z-[50] bg-transparent" onClick={closePopover} />
             )}
@@ -1337,6 +1551,7 @@ export default function MainFrame() {
                                 }`}
                         >
                             <DownloadPopup />
+                            <CwsExtensionPopup />
                             <PermissionPromptPopup />
                             <FindInPageBar />
                             <ScreenshotBar />

@@ -8,11 +8,12 @@ import {
     HelpCircle, RotateCcw, RotateCw, Scissors, Clipboard, CheckSquare,
     Code, Terminal, Briefcase, User, EyeOff, Shield, FolderOpen, Plus,
     CornerDownLeft, ChevronRight, ArrowRightLeft, Bookmark, Check, ShieldCheck,
-    SlidersHorizontal, Settings, Rocket, Compass, Coffee, Folder, Heart, GitBranch
+    SlidersHorizontal, Settings, Rocket, Compass, Coffee, Folder, Heart, GitBranch, Puzzle
 } from 'lucide-react';
 import useUIStore from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import useAIStore from '../../store/useAIStore';
+import useExtensionStore from '../../store/useExtensionStore';
 import { useAnnotationStore, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { isTabForPin, getPinHomeUrl, isSamePinHomeUrl } from '../../utils/pinnedAppHelpers';
 import { buildSearchEngineUrl, getSearchEngineById, isLikelyWebUrl } from '../../utils/searchEngines';
@@ -559,6 +560,7 @@ function HighlightSwatches({ onSelectColor }) {
 }
 
 export const TOPBAR_EXTENSION_ICONS = [
+    { id: 'extensions', label: 'Extensions', labelKey: 'pop.ctx.extExtensions' },
     { id: 'splitview', label: 'Split View', labelKey: 'pop.ctx.extSplitView' },
     { id: 'theme', label: 'Theme & Smart Dark', labelKey: 'pop.ctx.extTheme' },
     { id: 'shield', label: 'QShield Tracker Blocker', labelKey: 'pop.ctx.extShield' },
@@ -611,6 +613,7 @@ export default function ContextMenuProvider({ children }) {
     
     const showToast = useUIStore(state => state.showToast);
     const theme = useUIStore(state => state.theme);
+    const extContextMenus = useExtensionStore(state => state.contextMenus) || [];
 
     // Tab store methods
     const activeSpace = useTabStore(state => state.activeSpace);
@@ -1383,6 +1386,47 @@ export default function ContextMenuProvider({ children }) {
                                 <MenuDivider />
                             </>
                         )}
+
+                        {/* Registered Extension Context Menus */}
+                        {(() => {
+                            const matchingExtItems = extContextMenus.filter((item) => {
+                                if (!item || !item.title || item.visible === false) return false;
+                                const ctxs = Array.isArray(item.contexts) && item.contexts.length > 0 ? item.contexts : ['page'];
+                                if (ctxs.includes('all')) return true;
+                                if (hasSelection && ctxs.includes('selection')) return true;
+                                if (linkURL && ctxs.includes('link')) return true;
+                                if (hasImage && ctxs.includes('image')) return true;
+                                if (isEditable && ctxs.includes('editable')) return true;
+                                if (ctxs.includes('page')) return true;
+                                return false;
+                            });
+                            if (matchingExtItems.length === 0) return null;
+                            return (
+                                <>
+                                    {matchingExtItems.map((item) => (
+                                        <MenuItem
+                                            key={`ext-ctx-${item.extId || 'ext'}-${item.id}`}
+                                            icon={Puzzle}
+                                            label={selectionText ? item.title.replace(/%s/g, selectionText.slice(0, 24)) : item.title}
+                                            disabled={item.enabled === false}
+                                            onClick={() => {
+                                                window.electronAPI?.extContextMenuClick?.(item.id, {
+                                                    extId: item.extId,
+                                                    pageUrl: pageURL,
+                                                    linkUrl: linkURL,
+                                                    srcUrl: srcURL,
+                                                    selectionText,
+                                                    mediaType: cm.mediaType,
+                                                    editable: Boolean(isEditable)
+                                                });
+                                                closeContextMenu();
+                                            }}
+                                        />
+                                    ))}
+                                    <MenuDivider />
+                                </>
+                            );
+                        })()}
 
                         <MenuItem
                             icon={Terminal}

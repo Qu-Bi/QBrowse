@@ -10,6 +10,7 @@ const performanceEngine = require('./performanceEngine.cjs');
 const rustBridge = require('./rustBridge.cjs');
 const githubEngine = require('./githubEngine.cjs');
 const { PermissionManager } = require('./permissionEngine.cjs');
+const extensionEngine = require('./extensionEngine.cjs');
 const {
     DEFAULT_DARK_EXCLUSIONS,
     normalizeWhitelist,
@@ -109,8 +110,15 @@ let liveTextHighlightState = {
 };
 let livePasskeyState = {
     passkeyProviderMode: null,
-    passkeyHardwareFallback: null
+    passkeyHardwareFallback: null,
+    vaultProvider: null
 };
+
+const VALID_VAULT_PROVIDER_RE = /^(qvault|ext:[a-zA-Z0-9_-]{1,64})$/;
+
+function normalizeVaultProvider(val) {
+    return (typeof val === 'string' && VALID_VAULT_PROVIDER_RE.test(val)) ? val : 'qvault';
+}
 
 function resolvePasskeyConfig(sender) {
     const providerMode = (livePasskeyState.passkeyProviderMode === 'hardware' || livePasskeyState.passkeyProviderMode === 'qvault')
@@ -119,6 +127,9 @@ function resolvePasskeyConfig(sender) {
     const hardwareFallback = typeof livePasskeyState.passkeyHardwareFallback === 'boolean'
         ? livePasskeyState.passkeyHardwareFallback
         : (settingsStore?.passkeyHardwareFallback !== false);
+    const vaultProvider = livePasskeyState.vaultProvider
+        ? normalizeVaultProvider(livePasskeyState.vaultProvider)
+        : normalizeVaultProvider(settingsStore?.vaultProvider);
     let isEphemeral = false;
     try {
         if (sender && sender.session && typeof sender.session.isPersistent === 'function') {
@@ -128,6 +139,7 @@ function resolvePasskeyConfig(sender) {
     return {
         passkeyProviderMode: providerMode,
         passkeyHardwareFallback: hardwareFallback,
+        vaultProvider,
         isEphemeral
     };
 }
@@ -557,7 +569,8 @@ protocol.registerSchemesAsPrivileged([
     { scheme: 'qbrowse', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: 'qbrowse-media', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
     { scheme: 'qbrowse-local', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
-    { scheme: 'qbrowse-thumb', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+    { scheme: 'qbrowse-thumb', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'qbrowse-ext-rpc', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true } }
 ]);
 
 function stripWindowsExtendedPrefix(p) {
@@ -1372,6 +1385,7 @@ try {
 } catch (_) {}
 livePasskeyState.passkeyProviderMode = settingsStore.passkeyProviderMode === 'hardware' ? 'hardware' : 'qvault';
 livePasskeyState.passkeyHardwareFallback = settingsStore.passkeyHardwareFallback !== false;
+livePasskeyState.vaultProvider = normalizeVaultProvider(settingsStore.vaultProvider);
 if (settingsStore.hardware === false) {
     try { app.disableHardwareAcceleration(); } catch (_) {}
 }
@@ -1880,8 +1894,8 @@ function createWindow(options = {}) {
     },
     width: options.width || 1580,
     height: options.height || 1000,
-    minWidth: 1280,
-    minHeight: 820,
+    minWidth: 480,
+    minHeight: 400,
     show: false,
     backgroundColor: '#0a0a0c',
     icon: resolveAppIconPath(),
@@ -2633,16 +2647,50 @@ function createWindow(options = {}) {
                     adblockEngine.injectCosmetics(contents, targetUrl, settingsStore);
                 }
             };
+            const resolveWebviewProfileId = () => {
+                try {
+                    const ses = contents.session;
+                    if (!ses) return 'default';
+                    if (ses === session.fromPartition('ghost') || ses === session.fromPartition('tor')) {
+                        return null;
+                    }
+                    for (const pid of Object.keys(extensionEngine.registry || {})) {
+                        if (ses === session.fromPartition(extensionEngine.getProfilePartition(pid))) {
+                            return pid;
+                        }
+                    }
+                    return 'default';
+                } catch (_) {
+                    return 'default';
+                }
+            };
 
             contents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
                 if (isMainFrame !== false && url && url !== 'about:blank') {
                     latestActiveWebviewUrl = url;
+                    const pid = resolveWebviewProfileId();
+                    if (pid) {
+                        extensionEngine.notifyNavigation(pid, 'did-start-navigation', {
+                            tabId: contents.id,
+                            url,
+                            isInPlace,
+                            isMainFrame
+                        });
+                    }
                 }
             });
             contents.on('did-navigate', (event, url) => {
                 if (url && url !== 'about:blank') {
                     latestActiveWebviewUrl = url;
                     injectCosmeticsNow(url);
+                    const pid = resolveWebviewProfileId();
+                    if (pid) {
+                        extensionEngine.notifyNavigation(pid, 'did-navigate', {
+                            tabId: contents.id,
+                            url,
+                            isMainFrame: true
+                        });
+                    }
                 }
             });
             contents.on('did-navigate-in-page', (event, url, isMainFrame) => {
@@ -2650,10 +2698,38 @@ function createWindow(options = {}) {
                 if (url && url !== 'about:blank') {
                     latestActiveWebviewUrl = url;
                     injectCosmeticsNow(url);
+                    const pid = resolveWebviewProfileId();
+                    if (pid) {
+                        extensionEngine.notifyNavigation(pid, 'did-navigate-in-page', {
+                            tabId: contents.id,
+                            url,
+                            isMainFrame: true
+                        });
+                    }
                 }
             });
             contents.on('dom-ready', () => {
                 injectCosmeticsNow();
+                const pid = resolveWebviewProfileId();
+                const url = contents.getURL() || '';
+                if (pid && url && url !== 'about:blank') {
+                    extensionEngine.notifyNavigation(pid, 'dom-ready', {
+                        tabId: contents.id,
+                        url,
+                        isMainFrame: true
+                    });
+                }
+            });
+            contents.on('did-finish-load', () => {
+                const pid = resolveWebviewProfileId();
+                const url = contents.getURL() || '';
+                if (pid && url && url !== 'about:blank') {
+                    extensionEngine.notifyNavigation(pid, 'did-finish-load', {
+                        tabId: contents.id,
+                        url,
+                        isMainFrame: true
+                    });
+                }
             });
         }
 
@@ -3960,6 +4036,14 @@ app.whenReady().then(async () => {
   // 1a. Initialize native high-performance adblock engine
   adblockEngine.init(app, settingsStore, mainWindow).catch(err => {
       console.warn('[AdblockEngine] Init warning:', err.message);
+  });
+
+  // 1a-ext. Initialize Chrome MV3/MV2 extension engine (strictly isolated to profile sessions)
+  extensionEngine.init(app, rustBridge, {
+      getBrowserWindows: () => browserWindows,
+      getMainWindow: () => mainWindow
+  }).catch(err => {
+      console.warn('[ExtensionEngine] Init warning:', err.message);
   });
 
   // 1b. Apply configured Secure DNS (DoH) / Custom DNS host resolver
@@ -6071,6 +6155,10 @@ ipcMain.on('sync-passkey-settings', (event, data = {}) => {
         livePasskeyState.passkeyHardwareFallback = data.passkeyHardwareFallback;
         settingsStore.passkeyHardwareFallback = data.passkeyHardwareFallback;
     }
+    if (typeof data.vaultProvider === 'string' && VALID_VAULT_PROVIDER_RE.test(data.vaultProvider)) {
+        livePasskeyState.vaultProvider = data.vaultProvider;
+        settingsStore.vaultProvider = data.vaultProvider;
+    }
     scheduleSettingsDiskFlush();
 });
 
@@ -7536,6 +7624,9 @@ ipcMain.handle('save-setting', (event, data) => {
                 if (k === 'passkeyHardwareFallback' && typeof v === 'boolean') {
                     livePasskeyState.passkeyHardwareFallback = v;
                 }
+                if (k === 'vaultProvider' && typeof v === 'string' && VALID_VAULT_PROVIDER_RE.test(v)) {
+                    livePasskeyState.vaultProvider = v;
+                }
             }
         });
         scheduleSettingsDiskFlush();
@@ -7573,6 +7664,9 @@ ipcMain.handle('save-setting', (event, data) => {
         }
         if (rawKey === 'passkeyHardwareFallback' && typeof rawValue === 'boolean') {
             livePasskeyState.passkeyHardwareFallback = rawValue;
+        }
+        if (rawKey === 'vaultProvider' && typeof rawValue === 'string' && VALID_VAULT_PROVIDER_RE.test(rawValue)) {
+            livePasskeyState.vaultProvider = rawValue;
         }
         scheduleSettingsDiskFlush();
         if (rawKey === 'isForceDark' || rawKey === 'darkExclusions' || rawKey === 'darkExcludeMedia') {
@@ -9231,6 +9325,86 @@ ipcMain.on('rust-parse-vault', (event, { text, filename } = {}) => {
     } catch {
         event.returnValue = null;
     }
+});
+
+// --- Extension Engine Shell IPCs ---
+ipcMain.handle('ext-list', async (event, { profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-list');
+    return await extensionEngine.listExtensions(profileId);
+});
+
+ipcMain.handle('ext-preview-cws', async (event, { extId, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-preview-cws');
+    return await extensionEngine.previewCwsExtension(extId, profileId);
+});
+
+ipcMain.handle('ext-confirm-install-cws', async (event, { extId, stagedPath, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-confirm-install-cws');
+    return await extensionEngine.confirmInstallCws(extId, stagedPath, profileId);
+});
+
+ipcMain.handle('ext-install-cws-direct', async (event, { extId, opts, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-install-cws-direct');
+    return await extensionEngine.installCwsDirect(extId, opts, profileId);
+});
+
+ipcMain.handle('ext-pick-unpacked-folder', async (event) => {
+    assertTrustedAppShell(event, 'ext-pick-unpacked-folder');
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    const result = await dialog.showOpenDialog(win, {
+        title: 'Select Unpacked Extension Folder',
+        properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { canceled: true, path: null };
+    }
+    return { canceled: false, path: result.filePaths[0] };
+});
+
+ipcMain.handle('ext-install-unpacked', async (event, { dirPath, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-install-unpacked');
+    return await extensionEngine.installUnpackedExtension(dirPath, profileId);
+});
+
+ipcMain.handle('ext-set-enabled', async (event, { extId, enabled, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-set-enabled');
+    return await extensionEngine.setExtensionEnabled(extId, enabled, profileId);
+});
+
+ipcMain.handle('ext-set-pinned', async (event, { extId, pinned, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-set-pinned');
+    return await extensionEngine.setExtensionPinned(extId, pinned, profileId);
+});
+
+ipcMain.handle('ext-reload', async (event, { extId, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-reload');
+    return await extensionEngine.reloadExtension(extId, profileId);
+});
+
+ipcMain.handle('ext-remove', async (event, { extId, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-remove');
+    return await extensionEngine.removeExtension(extId, profileId);
+});
+
+ipcMain.handle('ext-trigger-action-click', async (event, { extId, tabInfo, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-trigger-action-click');
+    return await extensionEngine.triggerActionClick(extId, tabInfo, profileId);
+});
+
+ipcMain.handle('ext-trigger-context-menu', async (event, { extId, menuItemId, info, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-trigger-context-menu');
+    return await extensionEngine.triggerContextMenuClick(extId, menuItemId, info, profileId);
+});
+
+ipcMain.handle('ext-open-options', async (event, { extId, profileId } = {}) => {
+    assertTrustedAppShell(event, 'ext-open-options');
+    const url = extensionEngine.getOptionsUrl(extId, profileId);
+    return { url };
+});
+
+ipcMain.handle('ext-sync-tabs', async (event, { windowId, tabs } = {}) => {
+    assertTrustedAppShell(event, 'ext-sync-tabs');
+    return extensionEngine.syncTabs(windowId, tabs);
 });
 
 if (process.env.QBROWSE_SMOKE_TEST === '1') {

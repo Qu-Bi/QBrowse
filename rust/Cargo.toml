@@ -11,12 +11,13 @@ members = [
   "crates/qbrowse-sys",
   "crates/qbrowse-ai",
   "crates/qbrowse-tor",
+  "crates/qbrowse-extensions",
   "crates/qbrowse-napi",
   "crates/qbrowse-installer",
 ]
 
 [workspace.package]
-version = "1.5.1"
+version = "1.6.0"
 edition = "2021"
 license = "MIT"
 

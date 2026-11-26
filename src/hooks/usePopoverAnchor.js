@@ -16,7 +16,8 @@ export default function usePopoverAnchor(triggerSelector, popoverWidth = 320, op
         defaultRight = 16,
         defaultLeft = null,
         defaultTop = 64,
-        align = 'center' // 'center' | 'right' | 'left'
+        align = 'center', // 'center' | 'right' | 'left'
+        enabled = true
     } = options;
 
     const hiddenTopBarIcons = useUIStore(state => state.settings?.hiddenTopBarIcons);
@@ -132,26 +133,37 @@ export default function usePopoverAnchor(triggerSelector, popoverWidth = 320, op
     }, [triggerSelector, fallbackSelector, popoverWidth, defaultRight, defaultLeft, defaultTop, align, topBarPosition, sidebarPosition]);
 
     useLayoutEffect(() => {
+        if (!enabled) return undefined;
+
         updatePosition();
 
+        let rafId = null;
+        const scheduleUpdate = () => {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                updatePosition();
+            });
+        };
+
         // Listen to window resize and orientation events
-        window.addEventListener('resize', updatePosition);
+        window.addEventListener('resize', scheduleUpdate);
 
         // Also observe main element size changes
         const mainEl = document.getElementById('qbrowse-main-frame') || document.querySelector('main');
         let resizeObserver = null;
         if (mainEl && typeof ResizeObserver !== 'undefined') {
-            resizeObserver = new ResizeObserver(() => {
-                updatePosition();
-            });
+            resizeObserver = new ResizeObserver(scheduleUpdate);
             resizeObserver.observe(mainEl);
         }
 
         return () => {
-            window.removeEventListener('resize', updatePosition);
+            if (rafId !== null) cancelAnimationFrame(rafId);
+            window.removeEventListener('resize', scheduleUpdate);
             if (resizeObserver) resizeObserver.disconnect();
         };
     }, [
+        enabled,
         updatePosition,
         hiddenTopBarIcons,
         uiScale,

@@ -324,6 +324,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const [initialUrl] = useState(() => {
         let u = tab.url;
         if (!u || u === 'about:blank') return 'about:blank';
+        if (u.startsWith('chrome-extension://')) {
+            return u;
+        }
         if (space === 'tor' && useTorStore.getState().status !== 'connected') {
             return 'about:blank';
         }
@@ -421,9 +424,15 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     }, [showSwitcher, isActive, isSpaceActive, tab.id, tab.isClosing, tab.url]);
 
     // Helper to push matching credentials (locked or unlocked) to webview
+    const vaultProvider = useUIStore(state => state.settings?.vaultProvider || 'qvault');
     const pushVaultMatchesToWebview = async (targetWv = wvRef.current) => {
         const wv = targetWv;
         if (!wv || !isDomReadyRef.current || !tab.url || tab.url === 'about:blank' || tab.url.startsWith('qbrowse://')) return;
+        const currentVaultProvider = useUIStore.getState().settings?.vaultProvider || 'qvault';
+        if (currentVaultProvider.startsWith('ext:')) {
+            try { wv.send('qvault-matching-credentials', []); } catch (_) {}
+            return;
+        }
         const vaultState = useVaultStore.getState();
         const isGhostOrTor = space === 'ghost' || space === 'tor';
         if (isGhostOrTor && !vaultState.allowVaultInGhostTor) {
@@ -456,7 +465,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     // Push matching credentials to webview when vault unlocks or URL/space changes
     useEffect(() => {
         pushVaultMatchesToWebview();
-    }, [isVaultUnlocked, vaultPasswords, allowVaultInGhostTor, tab.url, space]);
+    }, [isVaultUnlocked, vaultPasswords, allowVaultInGhostTor, vaultProvider, tab.url, space]);
 
     // CSS for custom scrollbars
     const customScrollbarCSS = `
@@ -1184,6 +1193,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 }
                 setActiveNoteCard(null);
             } else if (e.channel === 'qvault-credentials-submitted') {
+                if ((useUIStore.getState().settings?.vaultProvider || 'qvault').startsWith('ext:')) {
+                    return;
+                }
                 const data = e.args && e.args[0];
                 if (data && data.password) {
                     const vaultState = useVaultStore.getState();
