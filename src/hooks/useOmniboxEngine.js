@@ -32,6 +32,7 @@ import {
     isLikelyWebUrl
 } from '../utils/searchEngines';
 import { isBackgroundServiceAllowed } from '../utils/networkPrivacy';
+import { safeEvalMath } from '../utils/safeMath';
 
 export const availableCommands = [
     { id: 'ls', title: 'List open tabs (Mission Control)', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
@@ -434,11 +435,10 @@ export default function useOmniboxEngine({
         if (smartCalc === false) return null;
         const q = inputValue.trim();
         if (/^[-+]?[0-9.()]+(?:[\s+\-*/]+[0-9.()]+)+$/.test(q)) {
-            try {
-                // eslint-disable-next-line no-new-func
-                const res = new Function(`return (${q})`)();
-                if (isFinite(res)) return { isMath: true, url: `= ${res}`, title: t('chrome.omniboxCalculatorExpr', { expr: q }, `Calculator: ${q}`), score: 10000 };
-            } catch (e) { }
+            const res = safeEvalMath(q);
+            if (typeof res === 'number' && Number.isFinite(res)) {
+                return { isMath: true, url: `= ${res}`, title: t('chrome.omniboxCalculatorExpr', { expr: q }, `Calculator: ${q}`), score: 10000 };
+            }
         }
         return null;
     }, [inputValue, smartCalc]);

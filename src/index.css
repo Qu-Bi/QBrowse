@@ -186,6 +186,51 @@ h1.text-\[8rem\].font-black.tracking-tighter {
   animation: popOutSpring 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
 }
 
+@keyframes colorPopoverIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes colorPopoverOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.94) translateY(-4px);
+  }
+}
+
+@keyframes colorSwatchPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-color-popover-in {
+  animation: colorPopoverIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-color-popover-out {
+  animation: colorPopoverOut 0.15s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+.animate-color-swatch {
+  animation: colorSwatchPop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* Apple visionOS & macOS Fluid Modal System */
 @keyframes modalBackdropEnter {
   0% { opacity: 0; }

@@ -24,7 +24,8 @@ export default {
         confirm: "Подтвердить",
         all: "Все",
         enabled: "Включено",
-        disabled: "Отключено"
+        disabled: "Отключено",
+        clearSelection: "Снять выделение (Esc)"
     },
     nav: {
         newTab: "Новая вкладка",
@@ -76,7 +77,8 @@ export default {
             engine: "Движок и скорость",
             adblock: "Щиты и блокировка рекламы",
             about: "О браузере и системе",
-            language: "Язык и регион"
+            language: "Язык и регион",
+            shortcuts: "Горячие клавиши"
         },
         categories: {
             preferences: "Основные",

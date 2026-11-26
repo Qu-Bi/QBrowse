@@ -30,6 +30,7 @@ import {
     parseKeywordQuery,
     isLikelyWebUrl
 } from '../../utils/searchEngines';
+import { safeEvalMath } from '../../utils/safeMath';
 
 const availableCommands = [
     { id: 'ls', title: 'List open tabs (Mission Control)', cmd: 'ls', icon: Layers, color: 'text-blue-400' },
@@ -455,11 +456,10 @@ export default function Omnibox() {
         if (smartCalc === false) return null;
         const q = searchQuery.trim();
         if (/^[-+]?[0-9.()]+(?:[\s+\-*/]+[0-9.()]+)+$/.test(q)) {
-            try {
-                // eslint-disable-next-line no-new-func
-                const res = new Function(`return (${q})`)();
-                if (isFinite(res)) return { isMath: true, url: `= ${res}`, title: `Calculator: ${q}`, score: 10000 };
-            } catch (e) { }
+            const res = safeEvalMath(q);
+            if (typeof res === 'number' && Number.isFinite(res)) {
+                return { isMath: true, url: `= ${res}`, title: `Calculator: ${q}`, score: 10000 };
+            }
         }
         return null;
     })();

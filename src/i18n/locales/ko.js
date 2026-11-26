@@ -24,7 +24,8 @@ export default {
         confirm: "확인",
         all: "전체",
         enabled: "활성화됨",
-        disabled: "비활성화됨"
+        disabled: "비활성화됨",
+        clearSelection: "선택 해제 (Esc)"
     },
     nav: {
         newTab: "새 탭",
@@ -76,7 +77,8 @@ export default {
             engine: "엔진 및 성능",
             adblock: "보호 및 광고 차단",
             about: "QBrowse 정보",
-            language: "언어 및 지역"
+            language: "언어 및 지역",
+            shortcuts: "키보드 단축키"
         },
         categories: {
             preferences: "기본 설정",

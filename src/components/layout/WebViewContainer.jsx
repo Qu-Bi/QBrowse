@@ -9,7 +9,7 @@ import useTorStore from '../../store/useTorStore';
 import { useAnnotationStore, normalizeAnnotationUrl, HIGHLIGHT_COLORS } from '../../store/useAnnotationStore';
 import { handleEscapeDismissal } from '../../hooks/useGlobalShortcuts';
 import { checkIsArticle, CHECK_ARTICLE_DOM_SCRIPT } from '../../utils/readerExtractor';
-import { X, StickyNote, Trash2, Copy, Check } from 'lucide-react';
+import { X, StickyNote, Trash2, Copy, Check, ArrowLeft, ArrowRight } from 'lucide-react';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import FlagsPage from '../pages/FlagsPage';
 import LocalFileViewer from '../pages/LocalFileViewer';
@@ -103,6 +103,8 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
     const [activeNoteCard, setActiveNoteCard] = useState(null);
     const [selectionPill, setSelectionPill] = useState(null);
     const [pillCopied, setPillCopied] = useState(false);
+    const [swipeHud, setSwipeHud] = useState(null);
+    const swipeClearTimerRef = useRef(null);
     const isPillActionPendingRef = useRef(false);
     const activeNoteCardRef = useRef(null);
     activeNoteCardRef.current = activeNoteCard;
@@ -115,6 +117,9 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
 
     useEffect(() => {
         return () => {
+            if (swipeClearTimerRef.current) {
+                clearTimeout(swipeClearTimerRef.current);
+            }
             const ui = useUIStore.getState();
             if (ui.htmlFullscreenTabId === tab.id) {
                 ui.setHtmlFullscreen(tab.id, false);
@@ -905,6 +910,41 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 } else if (action === 'forward' && wv.canGoForward && wv.canGoForward()) {
                     wv.goForward();
                 }
+            } else if (e.channel === 'touchpad-swipe-progress') {
+                if (useUIStore.getState().settings?.touchpadSwipeNavigation === false) {
+                    if (swipeClearTimerRef.current) clearTimeout(swipeClearTimerRef.current);
+                    setSwipeHud(null);
+                    return;
+                }
+                const payload = e.args && e.args[0];
+                const direction = payload?.direction === 'forward' ? 'forward' : (payload?.direction === 'back' ? 'back' : null);
+                const phase = payload?.phase;
+                if (!direction || !phase) return;
+                const canNavigate = direction === 'back'
+                    ? Boolean(wv.canGoBack && wv.canGoBack())
+                    : Boolean(wv.canGoForward && wv.canGoForward());
+                if (!canNavigate) {
+                    if (swipeClearTimerRef.current) clearTimeout(swipeClearTimerRef.current);
+                    setSwipeHud(null);
+                    return;
+                }
+                if (phase === 'move') {
+                    const progress = Math.min(1, Math.max(0, Number(payload.progress) || 0));
+                    setSwipeHud({ direction, progress, ready: progress >= 1 });
+                    if (swipeClearTimerRef.current) clearTimeout(swipeClearTimerRef.current);
+                    swipeClearTimerRef.current = setTimeout(() => {
+                        setSwipeHud(null);
+                    }, 500);
+                } else if (phase === 'commit') {
+                    if (swipeClearTimerRef.current) clearTimeout(swipeClearTimerRef.current);
+                    setSwipeHud(null);
+                    focusThisSplitPane();
+                    if (direction === 'back') wv.goBack();
+                    else wv.goForward();
+                } else if (phase === 'cancel') {
+                    if (swipeClearTimerRef.current) clearTimeout(swipeClearTimerRef.current);
+                    setSwipeHud(null);
+                }
             } else if (e.channel === 'qbrowse-drm-unsupported') {
                 const errorData = e.args && e.args[0];
                 setGenericDrmError(errorData || { keySystem: 'widevine' });
@@ -947,7 +987,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 if (space === 'ghost' || space === 'tor') return;
                 const data = e.args && e.args[0];
                 if (data) {
-                    console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.rpId || data.hostname);
+                    if (window.__qbrowseDebugLogs) console.log("[QVault WebAuthn] Received webauthn-credential-created in UI:", data.rpId || data.hostname);
                     const effectiveRpId = data.rpId || data.hostname;
                     useVaultStore.getState().addNewItem({
                         type: 'passkey',
@@ -967,7 +1007,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                             created: Date.now()
                         }
                     }).then(() => {
-                        console.log("[QVault WebAuthn] Passkey saved successfully to vault for", effectiveRpId);
+                        if (window.__qbrowseDebugLogs) console.log("[QVault WebAuthn] Passkey saved successfully to vault for", effectiveRpId);
                         useUIStore.getState().showToast(tStatic('chrome.toastPasskeySaved', { host: effectiveRpId }, `Saved QVault passkey for ${effectiveRpId}!`));
                     }).catch(err => {
                         console.error("[QVault WebAuthn] Failed to save passkey:", err);
@@ -1152,13 +1192,13 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     // 1. Never prompt to save in Ghost / Tor spaces for user privacy
                     const isGhostOrTor = space === 'ghost' || space === 'tor';
                     if (isGhostOrTor) {
-                        console.log('[QVault] Suppressing save password prompt in private space:', space);
+                        if (window.__qbrowseDebugLogs) console.log('[QVault] Suppressing save password prompt in private space:', space);
                         return;
                     }
 
                     // 2. Check never-save domains list
                     if ((vaultState.neverSaveDomains || []).some(d => d === domain)) {
-                        console.log('[QVault] Domain excluded from password saving:', domain);
+                        if (window.__qbrowseDebugLogs) console.log('[QVault] Domain excluded from password saving:', domain);
                         return;
                     }
 
@@ -1172,7 +1212,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                         });
                         if (existing) {
                             if (existing.password === data.password) {
-                                console.log('[QVault] Exact credential already saved in vault, ignoring prompt.');
+                                if (window.__qbrowseDebugLogs) console.log('[QVault] Exact credential already saved in vault, ignoring prompt.');
                                 return;
                             }
                             isUpdate = true;
@@ -1309,7 +1349,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
             const isKnownAppProtocol = Boolean(e.validatedURL && window.electronAPI?.isAppProtocol?.(e.validatedURL));
             if (e.errorCode === -302 || isKnownAppProtocol) {
                 // net::ERR_UNKNOWN_URL_SCHEME (-302): Handled via desktop application protocol handoff
-                console.log(`[WebView ${tab.id}] Handled ERR_UNKNOWN_URL_SCHEME for app protocol:`, e.validatedURL);
+                if (window.__qbrowseDebugLogs) console.log(`[WebView ${tab.id}] Handled ERR_UNKNOWN_URL_SCHEME for app protocol:`, e.validatedURL);
                 if (e.validatedURL && window.electronAPI?.openAppProtocol) {
                     window.electronAPI.openAppProtocol(e.validatedURL);
                 }
@@ -1347,7 +1387,7 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                     setTimeout(() => {
                         try {
                             if (wvRef.current && typeof wvRef.current.loadURL === 'function' && tab.url && tab.url !== 'about:blank') {
-                                console.log(`[WebView ${tab.id}] Auto-recovering crashed render process...`);
+                                if (window.__qbrowseDebugLogs) console.log(`[WebView ${tab.id}] Auto-recovering crashed render process...`);
                                 wvRef.current.loadURL(tab.url).catch(() => {});
                             }
                         } catch (_) {}
@@ -1364,15 +1404,6 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
         };
 
         const handleNewWindow = (e) => {
-            try {
-                window.electronAPI?.logToTerminal?.(`[WebView ${tab.id}] new-window intercepted`, {
-                    url: e.url || '(empty)',
-                    disposition: e.disposition,
-                    frameName: e.frameName || '(none)',
-                    features: e.features || '(none)'
-                });
-            } catch (_) {}
-
             // Distinguish genuine OAuth/Auth popup requests from regular link clicks
             const featLower = (e.features || '').toLowerCase();
             const hasNoOpener = featLower.includes('noopener') || featLower.includes('noreferrer');
@@ -2212,6 +2243,24 @@ const WebViewItem = React.memo(({ tab, space, activeProfileId, isVisible, isActi
                 plugins="true"
                 webpreferences={space === 'tor' && torSecurityLevel === 'safest' ? "javascript=no,autoplayPolicy=no-user-gesture-required,plugins=no" : "autoplayPolicy=no-user-gesture-required,plugins=yes"}
             />
+            {swipeHud && shouldShow && (
+                <div
+                    className={`pointer-events-none absolute top-1/2 -translate-y-1/2 z-40 w-10 h-10 rounded-full flex items-center justify-center border backdrop-blur-md transition-[border-color,box-shadow,color] duration-150 ${
+                        swipeHud.direction === 'back' ? 'left-3' : 'right-3'
+                    } ${getLiquidGlassSurfaceClasses(isBright)} ${
+                        swipeHud.ready
+                            ? 'border-[color:var(--accent)] shadow-[0_0_18px_var(--accent)] text-accent'
+                            : (isBright ? 'border-black/15 text-zinc-800 shadow-lg' : 'border-white/20 text-white/85 shadow-xl')
+                    }`}
+                    style={{
+                        ...getLiquidGlassInlineStyle(isBright),
+                        opacity: 0.35 + 0.65 * swipeHud.progress,
+                        transform: `translateX(${(swipeHud.direction === 'back' ? 1 : -1) * swipeHud.progress * 12}px) scale(${swipeHud.ready ? 1.06 : 0.94 + 0.06 * swipeHud.progress})`
+                    }}
+                >
+                    {swipeHud.direction === 'back' ? <ArrowLeft size={18} strokeWidth={2.25} /> : <ArrowRight size={18} strokeWidth={2.25} />}
+                </div>
+            )}
             {activeNoteCard && shouldShow && typeof document !== 'undefined' && createPortal(
                 <>
                     <div

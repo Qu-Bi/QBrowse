@@ -12288,6 +12288,45 @@ const ko = {
     }
 };
 
+
+// Inject ColorPalettePicker & sub-tab keys across all 12 locales
+Object.assign(en,{colorPicker:{"openPicker":"Open Color Palette","palette":"Color Palette","hexPlaceholder":"D4BC94","reset":"Reset"}});
+Object.assign(en.appearance,{subTabs:{"theme":"Theme & Colors","presets":"Presets","wallpaper":"Wallpaper","smartDark":"Smart Dark","effects":"Effects"}});
+Object.assign(en.layout,{subTabs:{"panels":"Panels & Bars","window":"Window & Style","behavior":"Behavior"},touchpadSwipeTitle:"Touchpad Swipe Navigation (Back / Forward)",touchpadSwipeDesc:"Swipe left or right with two fingers on your touchpad to navigate back and forward in page history."});
+Object.assign(pl,{colorPicker:{"openPicker":"Otwórz paletę kolorów","palette":"Paleta kolorów","hexPlaceholder":"D4BC94","reset":"Resetuj"}});
+Object.assign(pl.appearance,{subTabs:{"theme":"Motyw i kolory","presets":"Predefiniowane","wallpaper":"Tapeta","smartDark":"Smart Dark","effects":"Efekty"}});
+Object.assign(pl.layout,{subTabs:{"panels":"Panele i paski","window":"Okno i styl","behavior":"Zachowanie"},touchpadSwipeTitle:"Nawigacja gestem gładzika (Wstecz / Dalej)",touchpadSwipeDesc:"Przesuń dwoma palcami w lewo lub w prawo na gładziku, aby cofać i przechodzić dalej w historii strony."});
+Object.assign(fr,{colorPicker:{"openPicker":"Ouvrir la palette de couleurs","palette":"Palette de couleurs","hexPlaceholder":"D4BC94","reset":"Réinitialiser"}});
+Object.assign(fr.appearance,{subTabs:{"theme":"Thème et couleurs","presets":"Préréglages","wallpaper":"Fond d'écran","smartDark":"Sombre intelligent","effects":"Effets"}});
+Object.assign(fr.layout,{subTabs:{"panels":"Panneaux et barres","window":"Fenêtre et style","behavior":"Comportement"},touchpadSwipeTitle:"Navigation par glissement du pavé tactile (Précédent / Suivant)",touchpadSwipeDesc:"Glissez à gauche ou à droite avec deux doigts sur le pavé tactile pour naviguer dans l'historique."});
+Object.assign(de,{colorPicker:{"openPicker":"Farbpalette öffnen","palette":"Farbpalette","hexPlaceholder":"D4BC94","reset":"Zurücksetzen"}});
+Object.assign(de.appearance,{subTabs:{"theme":"Design & Farben","presets":"Vorlagen","wallpaper":"Hintergrund","smartDark":"Smart Dark","effects":"Effekte"}});
+Object.assign(de.layout,{subTabs:{"panels":"Leisten & Felder","window":"Fenster & Stil","behavior":"Verhalten"},touchpadSwipeTitle:"Touchpad-Wischgesten (Zurück / Vorwärts)",touchpadSwipeDesc:"Wischen Sie mit zwei Fingern auf dem Touchpad nach links oder rechts, um im Seitenverlauf vor und zurück zu navigieren."});
+Object.assign(es,{colorPicker:{"openPicker":"Abrir paleta de colores","palette":"Paleta de colores","hexPlaceholder":"D4BC94","reset":"Restablecer"}});
+Object.assign(es.appearance,{subTabs:{"theme":"Tema y colores","presets":"Preajustes","wallpaper":"Fondo","smartDark":"Oscuro inteligente","effects":"Efectos"}});
+Object.assign(es.layout,{subTabs:{"panels":"Paneles y barras","window":"Ventana y estilo","behavior":"Comportamiento"},touchpadSwipeTitle:"Navegación gestual en panel táctil (Atrás / Adelante)",touchpadSwipeDesc:"Desliza dos dedos a la izquierda o derecha en el panel táctil para navegar atrás y adelante en el historial."});
+Object.assign(pt,{colorPicker:{"openPicker":"Abrir paleta de cores","palette":"Paleta de cores","hexPlaceholder":"D4BC94","reset":"Redefinir"}});
+Object.assign(pt.appearance,{subTabs:{"theme":"Tema e cores","presets":"Predefinições","wallpaper":"Papel de parede","smartDark":"Escuro inteligente","effects":"Efeitos"}});
+Object.assign(pt.layout,{subTabs:{"panels":"Painéis e barras","window":"Janela e estilo","behavior":"Comportamento"},touchpadSwipeTitle:"Navegação por gesto no touchpad (Voltar / Avançar)",touchpadSwipeDesc:"Deslize com dois dedos para a esquerda ou direita no touchpad para navegar no histórico da página."});
+Object.assign(zh,{colorPicker:{"openPicker":"打开调色板","palette":"调色板","hexPlaceholder":"D4BC94","reset":"重置"}});
+Object.assign(zh.appearance,{subTabs:{"theme":"主题与颜色","presets":"预设","wallpaper":"壁纸","smartDark":"智能深色","effects":"特效"}});
+Object.assign(zh.layout,{subTabs:{"panels":"面板与栏","window":"窗口与样式","behavior":"行为"},touchpadSwipeTitle:"触控板滑动导航（后退 / 前进）",touchpadSwipeDesc:"在触控板上用双指向左或向右滑动，即可在页面历史记录中后退和前进。"});
+Object.assign(ja,{colorPicker:{"openPicker":"カラーパレットを開く","palette":"カラーパレット","hexPlaceholder":"D4BC94","reset":"リセット"}});
+Object.assign(ja.appearance,{subTabs:{"theme":"テーマと色","presets":"プリセット","wallpaper":"壁紙","smartDark":"スマートダーク","effects":"エフェクト"}});
+Object.assign(ja.layout,{subTabs:{"panels":"パネルとバー","window":"ウィンドウとスタイル","behavior":"動作"},touchpadSwipeTitle:"タッチパッドスワイプナビゲーション（戻る / 進む）",touchpadSwipeDesc:"タッチパッドで2本指を左右にスワイプして、ページ履歴を戻ったり進んだりします。"});
+Object.assign(ru,{colorPicker:{"openPicker":"Открыть палитру цветов","palette":"Палитра цветов","hexPlaceholder":"D4BC94","reset":"Сбросить"}});
+Object.assign(ru.appearance,{subTabs:{"theme":"Тема и цвета","presets":"Пресеты","wallpaper":"Обои","smartDark":"Умная тёмная","effects":"Эффекты"}});
+Object.assign(ru.layout,{subTabs:{"panels":"Панели и бары","window":"Окно и стиль","behavior":"Поведение"},touchpadSwipeTitle:"Навигация жестами тачпада (Назад / Вперёд)",touchpadSwipeDesc:"Проведите двумя пальцами влево или вправо по тачпаду для перехода назад и вперёд по истории."});
+Object.assign(it,{colorPicker:{"openPicker":"Apri tavolozza colori","palette":"Tavolozza colori","hexPlaceholder":"D4BC94","reset":"Ripristina"}});
+Object.assign(it.appearance,{subTabs:{"theme":"Tema e colori","presets":"Predefiniti","wallpaper":"Sfondo","smartDark":"Scuro intelligente","effects":"Effetti"}});
+Object.assign(it.layout,{subTabs:{"panels":"Pannelli e barre","window":"Finestra e stile","behavior":"Comportamento"},touchpadSwipeTitle:"Navigazione a scorrimento touchpad (Indietro / Avanti)",touchpadSwipeDesc:"Scorri a sinistra o a destra con due dita sul touchpad per navigare avanti e indietro nella cronologia."});
+Object.assign(uk,{colorPicker:{"openPicker":"Відкрити палітру кольорів","palette":"Палітра кольорів","hexPlaceholder":"D4BC94","reset":"Скинути"}});
+Object.assign(uk.appearance,{subTabs:{"theme":"Тема й кольори","presets":"Пресети","wallpaper":"Шпалери","smartDark":"Розумна темна","effects":"Ефекти"}});
+Object.assign(uk.layout,{subTabs:{"panels":"Панелі та бари","window":"Вікно та стиль","behavior":"Поведінка"},touchpadSwipeTitle:"Навігація жестами тачпада (Назад / Вперед)",touchpadSwipeDesc:"Проведіть двома пальцями ліворуч або праворуч на тачпаді для переходу назад і вперед в історії сторінки."});
+Object.assign(ko,{colorPicker:{"openPicker":"색상 팔레트 열기","palette":"색상 팔레트","hexPlaceholder":"D4BC94","reset":"초기화"}});
+Object.assign(ko.appearance,{subTabs:{"theme":"테마 및 색상","presets":"프리셋","wallpaper":"배경화면","smartDark":"스마트 다크","effects":"효과"}});
+Object.assign(ko.layout,{subTabs:{"panels":"패널 및 바","window":"창 및 스타일","behavior":"동작"},touchpadSwipeTitle:"터치패드 스와이프 탐색 (뒤로 / 앞으로)",touchpadSwipeDesc:"터치패드에서 두 손가락으로 왼쪽이나 오른쪽으로 스와이프하여 페이지 기록을 뒤로 또는 앞으로 이동합니다."});
+
 export default {
     en, pl, fr, de, es, pt, zh, ja, ru, it, uk, ko
 };

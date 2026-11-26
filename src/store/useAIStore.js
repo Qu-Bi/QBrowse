@@ -5,6 +5,17 @@ import useTabStore from './useTabStore';
 import useUIStore from './useUIStore';
 import { t } from '../i18n/index';
 
+let cachedAiAuthToken = null;
+async function getAiAuthHeaders() {
+    if (!cachedAiAuthToken && typeof window !== 'undefined' && typeof window.electronAPI?.getAiAuthToken === 'function') {
+        try {
+            const token = await window.electronAPI.getAiAuthToken();
+            if (token) cachedAiAuthToken = token;
+        } catch (_) {}
+    }
+    return cachedAiAuthToken ? { Authorization: `Bearer ${cachedAiAuthToken}` } : {};
+}
+
 export const MODEL_PRESETS = [
     {
         id: 'gemma-4-e2b',
@@ -604,7 +615,7 @@ const useAIStore = create((set, get) => ({
                 try {
                     response = await fetch('http://127.0.0.1:8080/v1/chat/completions', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...(await getAiAuthHeaders()) },
                         signal: abortController.signal,
                         body: JSON.stringify({
                             messages: apiMessages,
@@ -793,12 +804,13 @@ const useAIStore = create((set, get) => ({
         const { currentAbortController } = get();
         if (currentAbortController) {
             try {
-                const slotsRes = await fetch('http://127.0.0.1:8080/slots');
+                const authHeaders = await getAiAuthHeaders();
+                const slotsRes = await fetch('http://127.0.0.1:8080/slots', { headers: authHeaders });
                 if (slotsRes.ok) {
                     const slotsData = await slotsRes.json();
                     for (const slot of slotsData) {
                         if (slot.state === 1 || slot.state === 2) {
-                            await fetch(`http://127.0.0.1:8080/slots/${slot.id}?action=cancel`, { method: 'POST' }).catch(() => {});
+                            await fetch(`http://127.0.0.1:8080/slots/${slot.id}?action=cancel`, { method: 'POST', headers: authHeaders }).catch(() => {});
                         }
                     }
                 }

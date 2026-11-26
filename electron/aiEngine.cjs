@@ -3,11 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const rustBridge = require('./rustBridge.cjs');
 
-// Permissive agent to bypass self-signed certificates or corporate/educational proxies (e.g. OSE network)
+const aiApiToken = crypto.randomBytes(32).toString('hex');
+
 const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
     keepAlive: true
 });
 
@@ -245,9 +246,14 @@ async function generateRealAiReplyStream(prompt, onToken, onDone) {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 60000);
 
+                const reqHeaders = { 'Content-Type': 'application/json' };
+                if (ep === `http://127.0.0.1:${serverPort}/v1/chat/completions`) {
+                    reqHeaders['Authorization'] = `Bearer ${aiApiToken}`;
+                }
+
                 const res = await fetch(ep, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: reqHeaders,
                     body: JSON.stringify({
                         messages: [{ role: 'user', content: prompt }],
                         stream: true
@@ -334,13 +340,24 @@ function startBuiltinNodeServer(port, onLog) {
     }
 
     nodeHttpServer = http.createServer((req, res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        const origin = req.headers.origin;
+        const allowedOrigins = new Set(['http://localhost:1420', 'http://127.0.0.1:1420', 'null']);
+        if (origin && allowedOrigins.has(origin)) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Vary', 'Origin');
+        }
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
         if (req.method === 'OPTIONS') {
             res.writeHead(204);
             res.end();
+            return;
+        }
+
+        if (req.headers.authorization !== `Bearer ${aiApiToken}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { message: 'Unauthorized' } }));
             return;
         }
 
@@ -357,9 +374,24 @@ function startBuiltinNodeServer(port, onLog) {
         }
 
         if (req.url === '/v1/chat/completions' && req.method === 'POST') {
+            const MAX_BODY_BYTES = 10 * 1024 * 1024;
             let body = '';
-            req.on('data', chunk => body += chunk);
+            let bodyBytes = 0;
+            let aborted = false;
+            req.on('data', chunk => {
+                if (aborted) return;
+                bodyBytes += Buffer.byteLength(chunk);
+                if (bodyBytes > MAX_BODY_BYTES) {
+                    aborted = true;
+                    res.writeHead(413, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { message: 'Payload Too Large' } }));
+                    req.destroy();
+                    return;
+                }
+                body += chunk;
+            });
             req.on('end', () => {
+                if (aborted) return;
                 try {
                     const parsed = JSON.parse(body);
                     const messages = parsed.messages || [];
@@ -503,8 +535,7 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                         'Accept': '*/*'
-                    },
-                    rejectUnauthorized: false
+                    }
                 };
                 if (url.startsWith('https')) {
                     reqOptions.agent = httpsAgent;
@@ -580,7 +611,8 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
                 '--n-gpu-layers', gpuLayers.toString(),
                 '--port', port.toString(),
                 '--host', '127.0.0.1',
-                '--parallel', '1'
+                '--parallel', '1',
+                '--api-key', aiApiToken
             ];
 
             let mmprojTarget = options.mmprojPath;
@@ -654,7 +686,9 @@ async function startLlamaServer(options = {}, onLog, onStatusChange) {
 
             // Poll /health endpoint to detect when model finishes loading into memory
             healthPollTimer = setInterval(() => {
-                fetch(`http://127.0.0.1:${port}/health`)
+                fetch(`http://127.0.0.1:${port}/health`, {
+                    headers: { 'Authorization': `Bearer ${aiApiToken}` }
+                })
                     .then(res => res.json())
                     .then(data => {
                         if (data && data.status === 'ok') {
@@ -857,8 +891,7 @@ async function updateEngine(onStatusChange = null) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*'
-                },
-                rejectUnauthorized: false
+                }
             };
             if (url.startsWith('https')) {
                 reqOptions.agent = httpsAgent;
@@ -1003,8 +1036,7 @@ function downloadModel(modelUrl, targetFilename, onProgress) {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QBrowse/1.0 Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*'
-                },
-                rejectUnauthorized: false
+                }
             };
             if (url.startsWith('https')) {
                 reqOptions.agent = httpsAgent;
@@ -1150,6 +1182,7 @@ module.exports = {
     downloadModel,
     cancelModelDownload,
     getModelsDir,
+    getAiApiToken: () => aiApiToken,
     MODEL_PRESETS,
     TARGET_ENGINE_TAG,
     TARGET_ENGINE_BUILD

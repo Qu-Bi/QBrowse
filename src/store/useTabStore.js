@@ -458,26 +458,46 @@ const useTabStore = create((set, get) => ({
       useUIStore.getState().showToast(t('stores.tab.unpinned', { title: pinTitle }, `Unpinned "${pinTitle}"`));
   },
 
-  activatePinnedApp: (pin, anchorRect = null) => {
+  activatePinnedApp: (pin, anchorRect = null, options = {}) => {
       if (!pin || !pin.id) return;
       const space = get().activeSpace || 'personal';
       const tabs = get().getTabsForSpace(space) || [];
       const setTabs = (updater) => get().setTabsForSpace(space, updater);
       const ui = useUIStore.getState();
 
-      const pinTabs = tabs
-          .filter(t => isTabForPin(t, pin) && !t.isClosing)
-          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
-      const activeTabInStack = pinTabs.find(t => t.active);
+      const pinTabsInOrder = tabs.filter(t => isTabForPin(t, pin) && !t.isClosing);
+      const pinTabsByMru = [...pinTabsInOrder].sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
+      const activeTabInStack = pinTabsInOrder.find(t => t.active);
+
+      if (options.openPopupOnly && anchorRect) {
+          if (ui.activePinnedStack?.pin?.id === pin.id) {
+              ui.closePinnedStack();
+          } else {
+              ui.setActivePinnedStack({ pin, rect: anchorRect });
+          }
+          return;
+      }
 
       // If Split View is active, normal click on a pinned app parks Split View and focuses the pin standalone
       if (!ui.isSplitView && activeTabInStack) {
-          if (pinTabs.length > 1) {
-              if (ui.activePinnedStack?.pin?.id === pin.id) {
-                  ui.closePinnedStack();
-              } else if (anchorRect) {
-                  ui.setActivePinnedStack({ pin, rect: anchorRect });
-              }
+          if (pinTabsInOrder.length > 1) {
+              const currentIdx = pinTabsInOrder.findIndex(t => t.id === activeTabInStack.id);
+              const nextTab = pinTabsInOrder[(currentIdx + 1) % pinTabsInOrder.length];
+              const nowTs = Date.now();
+              setTabs(tabs.map(t => ({
+                  ...t,
+                  active: t.id === nextTab.id,
+                  suspended: t.id === nextTab.id ? false : t.suspended,
+                  lastActiveAt: (t.id === nextTab.id || t.id === activeTabInStack.id) ? nowTs : t.lastActiveAt
+              })));
+              ui.setCurrentUrl(nextTab.url || '');
+              ui.closePinnedStack();
+              setTimeout(() => {
+                  const wv = window.qbrowseWebviews ? window.qbrowseWebviews[nextTab.id] : null;
+                  if (wv && typeof wv.focus === 'function') {
+                      try { wv.focus(); } catch (_) {}
+                  }
+              }, 30);
               return;
           }
           // Single dedicated tab already active: reset to home URL if navigated away, else toggle stack popup
@@ -499,8 +519,8 @@ const useTabStore = create((set, get) => ({
           ui.parkOrCloseSplitViewForTabSwitch?.({ instant: true });
       }
 
-      if (pinTabs.length > 0) {
-          const targetTab = pinTabs[0];
+      if (pinTabsInOrder.length > 0) {
+          const targetTab = pinTabsByMru[0];
           const nowTs = Date.now();
           setTabs(tabs.map(t => ({
               ...t,
@@ -933,6 +953,30 @@ const useTabStore = create((set, get) => ({
     });
   },
 
+  getTabIdByWebContentsId: (webContentsId) => {
+    if (!webContentsId) return null;
+    const state = get();
+    const lists = [
+      state.privateTabs,
+      state.workTabs,
+      state.ghostTabs,
+      state.torTabs,
+      ...Object.values(state.customSpaceTabs || {})
+    ];
+    for (const list of lists) {
+      const found = (list || []).find(t => t.webContentsId === webContentsId);
+      if (found) return found.id;
+    }
+    if (typeof window !== 'undefined' && window.qbrowseWebviews) {
+      for (const [tabId, wv] of Object.entries(window.qbrowseWebviews)) {
+        try {
+          if (wv?.getWebContentsId?.() === webContentsId) return tabId;
+        } catch (_) {}
+      }
+    }
+    return null;
+  },
+
   setTabNavigatedToDocument: (tabId) => {
     if (!tabId) return;
     const updateList = (list) => (list || []).map(t => t.id === tabId ? { ...t, hasNavigatedToDocument: true } : t);
@@ -1017,7 +1061,9 @@ const useTabStore = create((set, get) => ({
                 const isOrphaned = isExplicitDownloadTab || (isBlankOrNeverNavigated && (tab.isOpenedByNewWindow || !tab.url || tab.url === 'about:blank'));
 
                 if (isOrphaned) {
-                    console.log(`[TabStore] Automatically closing orphaned download tab ${tab.id} (${tab.title || tab.url})`);
+                    if (typeof window !== 'undefined' && window.__qbrowseDebugLogs) {
+                        console.log(`[TabStore] Automatically closing orphaned download tab ${tab.id} (${tab.title || tab.url})`);
+                    }
                     
                     // Mark as orphaned download so it won't be pushed into recentlyClosedTabs
                     tab.isOrphanedDownload = true;

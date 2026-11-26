@@ -1,4 +1,7 @@
 const { ipcRenderer, contextBridge, webFrame } = require('electron');
+
+const DEBUG_LOGS = typeof process !== 'undefined' && process.env && process.env.QBROWSE_DEBUG_LOGS === '1';
+const debugLog = (...args) => { if (DEBUG_LOGS) console.log(...args); };
  
 // Safely wrap sendToHost so preload functions gracefully whether running inside a <webview> or a popup BrowserWindow
 const origSendToHost = typeof ipcRenderer.sendToHost === 'function' ? ipcRenderer.sendToHost.bind(ipcRenderer) : null;
@@ -410,6 +413,112 @@ window.addEventListener('mouseup', (e) => {
         ipcRenderer.sendToHost('webview-mouse-nav', 'forward');
     }
 }, true);
+
+// 2-finger horizontal touchpad overscroll swipe navigation (top frame only)
+if (typeof window !== 'undefined' && window === window.top) {
+    const SWIPE_THRESHOLD = 160;
+    let lastHorizScrollAt = 0;
+    let postCommitCooldownUntil = 0;
+    let accumX = 0;
+    let idleTimer = null;
+    let rafPending = false;
+    let pendingPayload = null;
+
+    const sendSwipeProgress = (payload) => {
+        try {
+            ipcRenderer.sendToHost('touchpad-swipe-progress', payload);
+        } catch (_) {}
+    };
+
+    const scheduleMoveProgress = (payload) => {
+        pendingPayload = payload;
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+            rafPending = false;
+            if (pendingPayload) {
+                sendSwipeProgress(pendingPayload);
+                pendingPayload = null;
+            }
+        });
+    };
+
+    const cancelSwipe = () => {
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+        }
+        pendingPayload = null;
+        if (accumX !== 0) {
+            const direction = accumX < 0 ? 'back' : 'forward';
+            accumX = 0;
+            sendSwipeProgress({ direction, progress: 0, phase: 'cancel' });
+        }
+    };
+
+    const canAncestorScrollHorizontally = (target, deltaX) => {
+        let el = target && target.nodeType === 1
+            ? target
+            : (target && target.parentElement ? target.parentElement : null);
+        const root = document.scrollingElement || document.documentElement;
+        while (el) {
+            const isRoot = el === root || el === document.documentElement;
+            let canOverflow = false;
+            if (isRoot) {
+                canOverflow = el.scrollWidth > el.clientWidth + 2;
+            } else {
+                const ox = window.getComputedStyle(el).overflowX;
+                canOverflow = (ox === 'auto' || ox === 'scroll' || ox === 'overlay') && el.scrollWidth > el.clientWidth + 2;
+            }
+            if (canOverflow) {
+                if (deltaX < 0 && el.scrollLeft > 1) return true;
+                if (deltaX > 0 && (el.scrollLeft + el.clientWidth) < (el.scrollWidth - 1)) return true;
+            }
+            if (el === document.documentElement) break;
+            el = el.parentElement;
+        }
+        return false;
+    };
+
+    window.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+
+        const now = Date.now();
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) * 1.2 && Math.abs(e.deltaY) > 6) {
+            cancelSwipe();
+            return;
+        }
+
+        if (canAncestorScrollHorizontally(e.target, e.deltaX)) {
+            lastHorizScrollAt = now;
+            cancelSwipe();
+            return;
+        }
+
+        if (now - lastHorizScrollAt < 600 || now < postCommitCooldownUntil) return;
+        if (!(Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.45 && Math.abs(e.deltaX) >= 2)) return;
+
+        accumX += e.deltaX;
+        const direction = accumX < 0 ? 'back' : 'forward';
+        const progress = Math.min(1.25, Math.abs(accumX) / SWIPE_THRESHOLD);
+        scheduleMoveProgress({ direction, progress, phase: 'move' });
+
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+            idleTimer = null;
+            pendingPayload = null;
+            const finalDir = accumX < 0 ? 'back' : 'forward';
+            const finalProgress = Math.min(1.25, Math.abs(accumX) / SWIPE_THRESHOLD);
+            accumX = 0;
+            if (finalProgress >= 1.0) {
+                postCommitCooldownUntil = Date.now() + 500;
+                sendSwipeProgress({ direction: finalDir, progress: 1, phase: 'commit' });
+            } else {
+                sendSwipeProgress({ direction: finalDir, progress: 0, phase: 'cancel' });
+            }
+        }, 140);
+    }, { passive: true, capture: true });
+}
 
 // Enable native Chromium visual pinch-zoom limits inside webview
 try {
@@ -1194,13 +1303,13 @@ try {
                         return cid && excludeIds.includes(cid);
                     });
                     if (hasExcluded) {
-                        console.log("[QVault WebAuthn] Excluded credential already exists in QVault for", rpId);
+                        debugLog("[QVault WebAuthn] Excluded credential already exists in QVault for", rpId);
                         return { excluded: true };
                     }
                 }
 
                 // 2. Perform explicit User Verification (UV) before generating & saving passkey
-                console.log("[QVault WebAuthn] Requesting user verification to create passkey for", rpId, username);
+                debugLog("[QVault WebAuthn] Requesting user verification to create passkey for", rpId, username);
                 const verifyRes = await ipcRenderer.invoke('vault-verify-passkey-usage', {
                     requestId: data?.requestId || undefined,
                     hostname,
@@ -1234,7 +1343,7 @@ try {
                 window.crypto.getRandomValues(randomBytes);
                 const credIdHex = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-                console.log("[QVault WebAuthn] Saving QVault passkey for", rpId, "(host:", hostname, ") Cred ID:", credIdHex);
+                debugLog("[QVault WebAuthn] Saving QVault passkey for", rpId, "(host:", hostname, ") Cred ID:", credIdHex);
 
                 // 4. Persist passkey directly in main process (works in both <webview> tabs AND OAuth popups)
                 const saveRes = await ipcRenderer.invoke('vault-save-passkey', {
@@ -1307,7 +1416,7 @@ try {
                     });
 
                     let chosen = passkeys[0];
-                    console.log("[QVault WebAuthn] Requesting user verification for passkey on", requestedRpId, chosen.username);
+                    debugLog("[QVault WebAuthn] Requesting user verification for passkey on", requestedRpId, chosen.username);
                     const verifyRes = await ipcRenderer.invoke('vault-verify-passkey-usage', {
                         requestId: data?.requestId || undefined,
                         hostname,
@@ -1360,7 +1469,7 @@ try {
                         ? normalizePasskeyCredIdToHex(chosen.passkeyData.userHandle)
                         : null;
 
-                    console.log("[QVault WebAuthn] User verified! Using QVault passkey for", requestedRpId, chosen.username);
+                    debugLog("[QVault WebAuthn] User verified! Using QVault passkey for", requestedRpId, chosen.username);
                     ipcRenderer.sendToHost('webauthn-used', { hostname: requestedRpId || hostname, username: chosen.username || '' });
                     return {
                         credIdHex,
@@ -1864,13 +1973,13 @@ const injectMainWorldPasskeyOverride = () => {
 
                         // Rule 2: Site explicitly requests a cross-platform / roaming hardware security key (YubiKey, FIDO2, NFC/USB/BLE)
                         if (pk.authenticatorSelection && pk.authenticatorSelection.authenticatorAttachment === 'cross-platform') {
-                            console.log("[QVault Passkey] cross-platform authenticator requested — routing directly to native Hardware WebAuthn");
+                            debugLog("[QVault Passkey] cross-platform authenticator requested — routing directly to native Hardware WebAuthn");
                             return await invokeNativeCreate(options);
                         }
 
                         // Rule 6: Ephemeral Ghost/Tor session where QVault cannot persist passkeys -> route to native hardware/OS authenticator when fallback enabled
                         if (cfg.isEphemeral && cfg.passkeyHardwareFallback) {
-                            console.log("[QVault Passkey] Ephemeral session — routing passkey creation to native Hardware / System WebAuthn");
+                            debugLog("[QVault Passkey] Ephemeral session — routing passkey creation to native Hardware / System WebAuthn");
                             return await invokeNativeCreate(options);
                         }
 
@@ -1892,7 +2001,7 @@ const injectMainWorldPasskeyOverride = () => {
                             const acceptsEs256 = pk.pubKeyCredParams.some(p => p && p.type === 'public-key' && Number(p.alg) === -7);
                             if (!acceptsEs256) {
                                 if (cfg.passkeyHardwareFallback) {
-                                    console.log("[QVault Passkey] Non-ES256 pubKeyCredParams — falling back to native Hardware / System WebAuthn");
+                                    debugLog("[QVault Passkey] Non-ES256 pubKeyCredParams — falling back to native Hardware / System WebAuthn");
                                     return await invokeNativeCreate(options);
                                 }
                                 throw new DOMException("None of the requested publicKeyCredParams algorithms are supported.", "NotSupportedError");
@@ -1910,7 +2019,7 @@ const injectMainWorldPasskeyOverride = () => {
                             : [];
 
                         const requestId = 'pkc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-                        console.log("[QVault Passkey] Intercepted credentials.create in Main World! rpId:", effectiveRpId, "user:", username);
+                        debugLog("[QVault Passkey] Intercepted credentials.create in Main World! rpId:", effectiveRpId, "user:", username);
 
                         const res = await runWithAbortSignal(
                             window.__qbrowse_passkey_bridge.create({
@@ -1937,11 +2046,11 @@ const injectMainWorldPasskeyOverride = () => {
                             throw makeAbortError(options.signal);
                         }
                         if (res && res.fallbackToNative) {
-                            console.log("[QVault Passkey] User selected Hardware / System Key — handing off credentials.create to native WebAuthn");
+                            debugLog("[QVault Passkey] User selected Hardware / System Key — handing off credentials.create to native WebAuthn");
                             return await invokeNativeCreate(options);
                         }
                         if (res && res.ephemeral && cfg.passkeyHardwareFallback) {
-                            console.log("[QVault Passkey] Ephemeral vault cannot persist passkey — falling back to native Hardware WebAuthn");
+                            debugLog("[QVault Passkey] Ephemeral vault cannot persist passkey — falling back to native Hardware WebAuthn");
                             return await invokeNativeCreate(options);
                         }
                         if (!res || res.denied || res.saveFailed || !res.credIdHex || !res.pubJwk) {
@@ -2069,7 +2178,7 @@ const injectMainWorldPasskeyOverride = () => {
                         const hardwareOnlyTransports = isHardwareOnlyAllowCredentials(pk.allowCredentials);
 
                         const requestId = 'pkg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-                        console.log("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", effectiveRpId, "allowCreds:", allowCredIds.length, "hwOnlyTransports:", hardwareOnlyTransports);
+                        debugLog("[QVault Passkey] Intercepted credentials.get in Main World! rpId:", effectiveRpId, "allowCreds:", allowCredIds.length, "hwOnlyTransports:", hardwareOnlyTransports);
 
                         const res = await runWithAbortSignal(
                             window.__qbrowse_passkey_bridge.get({
@@ -2093,7 +2202,7 @@ const injectMainWorldPasskeyOverride = () => {
                         }
                         // User explicitly clicked "Use Hardware / System Key" in PasskeyVerificationModal
                         if (res && res.fallbackToNative) {
-                            console.log("[QVault Passkey] User selected Hardware / System Key — handing off credentials.get to native WebAuthn");
+                            debugLog("[QVault Passkey] User selected Hardware / System Key — handing off credentials.get to native WebAuthn");
                             return await invokeNativeGet(options);
                         }
                         // User explicitly clicked Cancel -> NEVER invoke native fallback
@@ -2102,7 +2211,7 @@ const injectMainWorldPasskeyOverride = () => {
                         }
                         // Rules 4, 5, 6: No matching QVault passkey (including hardware-only transports or Ghost/Tor without vault key) -> seamlessly fall back to native WebAuthn when enabled
                         if (cfg.passkeyHardwareFallback && (!res || res.noPasskey || res.noKey)) {
-                            console.log("[QVault Passkey] No matching QVault passkey — falling back to native Hardware / System WebAuthn for", effectiveRpId);
+                            debugLog("[QVault Passkey] No matching QVault passkey — falling back to native Hardware / System WebAuthn for", effectiveRpId);
                             return await invokeNativeGet(options);
                         }
                         if (!res || res.noPasskey || res.noKey || res.conditionalIgnored || !res.credIdHex || !res.privateKey) {
@@ -2568,7 +2677,7 @@ if (typeof window !== 'undefined') {
 ipcRenderer.on('media-control-command', (event, cmdData) => {
     try {
         const cmd = typeof cmdData === 'string' ? cmdData : (cmdData ? cmdData.action : '');
-        console.log('[Preload MediaControl] Received IPC command in page:', cmd, cmdData);
+        debugLog('[Preload MediaControl] Received IPC command in page:', cmd, cmdData);
 
         if (cmd === 'exit-pip') {
             if (document.pictureInPictureElement) {
@@ -2579,7 +2688,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
         }
 
         if (window.__qbrowse_last_media_cmd && Date.now() - window.__qbrowse_last_media_cmd < 350) {
-            console.log('[Preload MediaControl] Debounced duplicate command:', cmd);
+            debugLog('[Preload MediaControl] Debounced duplicate command:', cmd);
             return;
         }
         window.__qbrowse_last_media_cmd = Date.now();
@@ -2684,7 +2793,7 @@ ipcRenderer.on('media-control-command', (event, cmdData) => {
                                 }
                             });
                     } else {
-                        console.log('[Preload MediaControl] No eligible user-facing video found for PiP.');
+                        debugLog('[Preload MediaControl] No eligible user-facing video found for PiP.');
                     }
                 }
             } catch (e) {
@@ -5049,7 +5158,7 @@ ipcRenderer.on('extract-read-aloud-text', (event) => {
             password
         };
 
-        console.log('[QVault webview_preload] Captured credential submission:', payload.domain, payload.username ? `(${payload.username})` : '(no username)');
+        debugLog('[QVault webview_preload] Captured credential submission:', payload.domain, payload.username ? `(${payload.username})` : '(no username)');
         ipcRenderer.sendToHost('qvault-credentials-submitted', payload);
     }
 

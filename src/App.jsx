@@ -313,7 +313,11 @@ export default function App() {
                 window.electronAPI.onOpenNewTab((data) => {
                     const targetUrl = typeof data === 'string' ? data : (data?.url || '');
                     const disposition = typeof data === 'object' ? data?.disposition : undefined;
-                    console.log("[App] Intercepted new window request from Electron:", { targetUrl, disposition });
+                    const openerWebContentsId = typeof data === 'object' ? data?.openerWebContentsId : undefined;
+                    const openerTabId = openerWebContentsId ? useTabStore.getState().getTabIdByWebContentsId?.(openerWebContentsId) : undefined;
+                    if (window.__qbrowseDebugLogs) {
+                        console.log("[App] Intercepted new window request from Electron:", { targetUrl, disposition });
+                    }
                     if (targetUrl && targetUrl !== 'about:blank') {
                         if (window.electronAPI?.isAppProtocol?.(targetUrl)) {
                             window.electronAPI.openAppProtocol(targetUrl);
@@ -324,7 +328,8 @@ export default function App() {
                                 useTabStore.getState().handleNewTab(targetUrl, false, {
                                     title: extractLocalFileName(targetUrl),
                                     isOpenedByNewWindow: true,
-                                    isDownloadTab: false
+                                    isDownloadTab: false,
+                                    ...(openerTabId ? { openerTabId } : {})
                                 });
                             } else {
                                 useTabStore.getState().openLocalFiles([targetUrl]);
@@ -335,7 +340,8 @@ export default function App() {
                         const makeActive = !isLikelyDownload && (disposition !== 'background-tab');
                         useTabStore.getState().handleNewTab(targetUrl, makeActive, {
                             isOpenedByNewWindow: true,
-                            isDownloadTab: isLikelyDownload
+                            isDownloadTab: isLikelyDownload,
+                            ...(openerTabId ? { openerTabId } : {})
                         });
                     }
                 });
@@ -410,7 +416,7 @@ export default function App() {
             }
             if (window.electronAPI.onDisplayMetricsChanged) {
                 window.electronAPI.onDisplayMetricsChanged((data) => {
-                    console.log("[App] Screen resolution/metrics updated:", data);
+                    if (window.__qbrowseDebugLogs) console.log("[App] Screen resolution/metrics updated:", data);
                     requestAnimationFrame(() => {
                         window.dispatchEvent(new Event('resize'));
                     });
@@ -425,7 +431,7 @@ export default function App() {
 
             if (window.electronAPI.onPasskeyPrompt) {
                 window.electronAPI.onPasskeyPrompt((promptData) => {
-                    console.log("[App] Received passkey verification prompt:", promptData);
+                    if (window.__qbrowseDebugLogs) console.log("[App] Received passkey verification prompt:", promptData);
                     useUIStore.getState().setPasskeyPrompt(promptData);
                 });
             }
@@ -455,7 +461,7 @@ export default function App() {
 
             if (window.electronAPI.onHttpAuthRequest) {
                 window.electronAPI.onHttpAuthRequest((data) => {
-                    console.log("[App] Received HTTP auth request:", data);
+                    if (window.__qbrowseDebugLogs) console.log("[App] Received HTTP auth request:", data);
                     const hostWithPort = data.host + (data.port ? `:${data.port}` : '');
                     useUIStore.getState().setActiveDialog({
                         type: 'auth',
@@ -699,7 +705,7 @@ export default function App() {
                 });
             });
 
-            if (suspendedCount > 0) {
+            if (suspendedCount > 0 && window.__qbrowseDebugLogs) {
                 console.log(`[MemorySaver] Suspended ${suspendedCount} inactive tabs to free RAM (timeout: ${effectiveTimeoutMinutes}m).`);
             }
         }, 10000);

@@ -24,7 +24,8 @@ export default {
         confirm: "Confirm",
         all: "All",
         enabled: "Enabled",
-        disabled: "Disabled"
+        disabled: "Disabled",
+        clearSelection: "Clear selection (Esc)"
     },
     nav: {
         newTab: "New Tab",
@@ -76,7 +77,8 @@ export default {
             engine: "Engine & Performance",
             adblock: "Shields & AdBlock",
             about: "About & System",
-            language: "Language & Region"
+            language: "Language & Region",
+            shortcuts: "Keyboard Shortcuts"
         },
         categories: {
             preferences: "Preferences",

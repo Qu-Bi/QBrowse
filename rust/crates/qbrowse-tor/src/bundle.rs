@@ -142,6 +142,24 @@ fn extract_zip(archive_path: &Path, canonical_dest: &Path) -> Result<Vec<PathBuf
     Ok(extracted)
 }
 
+fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else {
+                    out.push(comp);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 fn extract_tar_gz(archive_path: &Path, canonical_dest: &Path) -> Result<Vec<PathBuf>> {
     let file = File::open(archive_path)?;
     let gz = GzDecoder::new(file);
@@ -154,11 +172,60 @@ fn extract_tar_gz(archive_path: &Path, canonical_dest: &Path) -> Result<Vec<Path
         let entry_path = entry.path()?.into_owned();
         let out_path = sanitize_entry_path(canonical_dest, &entry_path)?;
 
-        if entry_type.is_symlink() || entry_type.is_hard_link() {
+        if entry_type.is_hard_link() {
             return Err(anyhow!(
-                "Unsafe link entry in Tor bundle: {}",
+                "Unsafe hard link entry in Tor bundle: {}",
                 entry_path.display()
             ));
+        }
+
+        if entry_type.is_symlink() {
+            let link_target = entry
+                .link_name()?
+                .ok_or_else(|| anyhow!("Missing symlink target for {}", entry_path.display()))?
+                .into_owned();
+
+            if link_target.as_os_str().is_empty()
+                || link_target.is_absolute()
+                || link_target
+                    .components()
+                    .any(|c| matches!(c, Component::RootDir | Component::Prefix(_)))
+            {
+                return Err(anyhow!(
+                    "Unsafe absolute symlink in Tor bundle: {} -> {}",
+                    entry_path.display(),
+                    link_target.display()
+                ));
+            }
+
+            let parent = out_path.parent().ok_or_else(|| {
+                anyhow!("Invalid symlink path in Tor bundle: {}", entry_path.display())
+            })?;
+            fs::create_dir_all(parent)?;
+            let canonical_parent = fs::canonicalize(parent)?;
+            if !canonical_parent.starts_with(canonical_dest) {
+                return Err(anyhow!("Tar symlink parent escapes destination directory"));
+            }
+
+            let resolved_target = normalize_lexical(&canonical_parent.join(&link_target));
+            if !resolved_target.starts_with(canonical_dest) || resolved_target == canonical_dest {
+                return Err(anyhow!(
+                    "Unsafe escaping symlink in Tor bundle: {} -> {}",
+                    entry_path.display(),
+                    link_target.display()
+                ));
+            }
+
+            if fs::symlink_metadata(&out_path).is_ok() {
+                let _ = fs::remove_file(&out_path);
+            }
+
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(&link_target, &out_path)?;
+                extracted.push(out_path);
+            }
+            continue;
         }
 
         if entry_type.is_dir() {
@@ -247,6 +314,74 @@ mod tests {
             zw.finish().unwrap();
         }
         assert!(extract_tor_bundle(&evil_zip, &dest_tgz).is_err());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_extract_tor_bundle_symlinks() {
+        let mut base = std::env::temp_dir();
+        base.push(format!("qbrowse_tor_symlink_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+
+        // Safe relative intra-directory symlink
+        let safe_tgz = base.join("safe-symlink.tar.gz");
+        {
+            let file = File::create(&safe_tgz).unwrap();
+            let enc = GzEncoder::new(file, Compression::default());
+            let mut builder = tar::Builder::new(enc);
+
+            let data = b"libevent-so";
+            let mut file_hdr = tar::Header::new_gnu();
+            file_hdr.set_size(data.len() as u64);
+            file_hdr.set_mode(0o755);
+            file_hdr.set_cksum();
+            builder
+                .append_data(&mut file_hdr, "tor/libevent-2.1.so.7.0.1", &data[..])
+                .unwrap();
+
+            let mut link_hdr = tar::Header::new_gnu();
+            link_hdr.set_entry_type(tar::EntryType::Symlink);
+            link_hdr.set_size(0);
+            link_hdr.set_mode(0o777);
+            link_hdr.set_cksum();
+            builder
+                .append_link(&mut link_hdr, "tor/libevent-2.1.so.7", "libevent-2.1.so.7.0.1")
+                .unwrap();
+            builder.finish().unwrap();
+        }
+        let safe_dest = base.join("safe_out");
+        let extracted = extract_tor_bundle(&safe_tgz, &safe_dest).unwrap();
+        assert!(extracted.iter().any(|p| p.ends_with("libevent-2.1.so.7.0.1")));
+        #[cfg(unix)]
+        {
+            let link_path = safe_dest.join("tor/libevent-2.1.so.7");
+            assert_eq!(
+                fs::read_link(&link_path).unwrap(),
+                PathBuf::from("libevent-2.1.so.7.0.1")
+            );
+        }
+
+        // Escaping relative symlink must be rejected
+        let evil_tgz = base.join("evil-symlink.tar.gz");
+        {
+            let file = File::create(&evil_tgz).unwrap();
+            let enc = GzEncoder::new(file, Compression::default());
+            let mut builder = tar::Builder::new(enc);
+
+            let mut link_hdr = tar::Header::new_gnu();
+            link_hdr.set_entry_type(tar::EntryType::Symlink);
+            link_hdr.set_size(0);
+            link_hdr.set_mode(0o777);
+            link_hdr.set_cksum();
+            builder
+                .append_link(&mut link_hdr, "tor/evil", "../../etc/passwd")
+                .unwrap();
+            builder.finish().unwrap();
+        }
+        let evil_dest = base.join("evil_out");
+        assert!(extract_tor_bundle(&evil_tgz, &evil_dest).is_err());
 
         let _ = fs::remove_dir_all(&base);
     }

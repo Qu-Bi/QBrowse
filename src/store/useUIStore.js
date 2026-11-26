@@ -241,6 +241,7 @@ const defaultSettings = {
     restoreTabsOnStartup: true,
     visualTabSwitcher: true, // Show Windows-style visual card switcher overlay on Ctrl+Tab
     tabSwitcherOrder: 'mru', // 'mru' (Recently Used) | 'sidebar' (Sidebar Order)
+    touchpadSwipeNavigation: true,
     playStartupSound: false,
 
     // Accessibility (EU European Accessibility Act / EN 301 549 & WCAG 2.1 AA)

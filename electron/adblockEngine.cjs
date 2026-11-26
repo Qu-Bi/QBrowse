@@ -15,6 +15,9 @@ const https = require('https');
 const http = require('http');
 const dns = require('dns');
 const rustBridge = require('./rustBridge.cjs');
+
+const DEBUG_LOGS = process.env.QBROWSE_DEBUG_LOGS === '1';
+const debugLog = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 let ipcMain = null;
 let webContents = null;
 try {
@@ -469,7 +472,7 @@ class AdblockEngine {
                 lastCacheUpdate = stats.mtimeMs || Date.now();
                 engineMode = 'native-rust';
                 activeRuleCount = 180000;
-                console.log(`[AdblockEngine] Restored native Rust Shield cache in ${(t1 - t0).toFixed(2)}ms.`);
+                debugLog(`[AdblockEngine] Restored native Rust Shield cache in ${(t1 - t0).toFixed(2)}ms.`);
 
                 if (Date.now() - lastCacheUpdate > 7 * 24 * 60 * 60 * 1000) {
                     setTimeout(() => { this.updateFilters(false); }, 30000);
@@ -480,13 +483,13 @@ class AdblockEngine {
         } catch (err) {
             try { fs.unlinkSync(this.cacheFile); } catch (_) {}
             needsFilterRefresh = true;
-            console.log('[AdblockEngine] Rebuilding Rust Shield filter cache from baseline...');
+            debugLog('[AdblockEngine] Rebuilding Rust Shield filter cache from baseline...');
         }
 
         if (needsFilterRefresh) {
             engineMode = 'native-rust';
             activeRuleCount = 2500;
-            console.log('[AdblockEngine] Native Rust Shield baseline active. Scheduling background list update...');
+            debugLog('[AdblockEngine] Native Rust Shield baseline active. Scheduling background list update...');
             setTimeout(() => {
                 this.updateFilters(false).catch(err => {
                     console.warn('[AdblockEngine] Initial background list download deferred:', err.message);
@@ -513,7 +516,7 @@ class AdblockEngine {
         const next = Boolean(active);
         if (isAdblockActive !== next) {
             isAdblockActive = next;
-            console.log(`[AdblockEngine] Adblocker ${isAdblockActive ? 'enabled' : 'disabled'}`);
+            debugLog(`[AdblockEngine] Adblocker ${isAdblockActive ? 'enabled' : 'disabled'}`);
         }
         try { rustBridge.shieldSetActive(isAdblockActive); } catch (_) {}
         if (settingsStoreRef) {
@@ -558,7 +561,7 @@ class AdblockEngine {
         }
 
         try {
-            console.log(`[AdblockEngine] Fetching remote blocklist from: ${targetUrl}`);
+            debugLog(`[AdblockEngine] Fetching remote blocklist from: ${targetUrl}`);
             const text = await downloadFilterText(targetUrl);
             if (!text || text.length === 0) {
                 return { success: false, error: 'Remote blocklist returned empty response' };
@@ -621,13 +624,13 @@ class AdblockEngine {
 
     async updateFilters(force = false) {
         if (settingsStoreRef?.strictOfflineMode === true || settingsStoreRef?.bgAllowFilterUpdates === false) {
-            console.log('[AdblockEngine] Skipping remote filter update (Strict Offline / Filter Updates disabled); using local rules.');
+            debugLog('[AdblockEngine] Skipping remote filter update (Strict Offline / Filter Updates disabled); using local rules.');
             return { success: false, skipped: true, count: activeRuleCount, message: 'Filter updates disabled by Network & Background Services settings' };
         }
         if (this.isUpdating) return { success: true, count: activeRuleCount, message: 'Update already in progress' };
 
         this.isUpdating = true;
-        console.log('[AdblockEngine] Downloading & compiling filter lists via Rust Shield...');
+        debugLog('[AdblockEngine] Downloading & compiling filter lists via Rust Shield...');
 
         try {
             const urls = FILTER_SOURCES.map(s => s.url);
@@ -645,7 +648,7 @@ class AdblockEngine {
                 const listsFetched = res.listsFetched ?? res.lists_fetched ?? urls.length;
                 const bytesTotal = res.bytesTotal ?? res.bytes_total ?? 0;
                 const mbTotal = (bytesTotal / (1024 * 1024)).toFixed(2);
-                console.log(`[AdblockEngine] Filter refresh complete: ${listsFetched}/${urls.length} lists fetched (${mbTotal} MB), cache saved in ${saveMs.toFixed(1)}ms.`);
+                debugLog(`[AdblockEngine] Filter refresh complete: ${listsFetched}/${urls.length} lists fetched (${mbTotal} MB), cache saved in ${saveMs.toFixed(1)}ms.`);
                 this.isUpdating = false;
                 return { success: true, count: activeRuleCount, updatedAt: lastCacheUpdate };
             }

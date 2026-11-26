@@ -24,7 +24,8 @@ export default {
         confirm: "Підтвердити",
         all: "Всі",
         enabled: "Увімкнено",
-        disabled: "Вимкнено"
+        disabled: "Вимкнено",
+        clearSelection: "Скасувати вибір (Esc)"
     },
     nav: {
         newTab: "Нова вкладка",
@@ -76,7 +77,8 @@ export default {
             engine: "Швидкість і продуктивність",
             adblock: "Щити та блокування реклами",
             about: "Про браузер і систему",
-            language: "Мова та регіон"
+            language: "Мова та регіон",
+            shortcuts: "Клавіатурні скорочення"
         },
         categories: {
             preferences: "Основні",

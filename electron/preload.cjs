@@ -127,6 +127,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopAiServer: () => ipcRenderer.invoke('ai-stop-server'),
     updateAiEngine: () => ipcRenderer.invoke('ai-update-engine'),
     getAiStatus: () => ipcRenderer.invoke('ai-get-status'),
+    getAiAuthToken: () => ipcRenderer.invoke('ai-get-auth-token'),
     getAiLogs: () => ipcRenderer.invoke('ai-get-logs'),
     pickAiModelFile: () => ipcRenderer.invoke('ai-pick-model-file'),
     downloadAiModel: (options) => ipcRenderer.invoke('ai-download-model', options),

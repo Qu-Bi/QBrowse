@@ -24,7 +24,8 @@ export default {
         confirm: "确认",
         all: "全部",
         enabled: "已启用",
-        disabled: "已禁用"
+        disabled: "已禁用",
+        clearSelection: "清除选择 (Esc)"
     },
     nav: {
         newTab: "新建标签页",
@@ -76,7 +77,8 @@ export default {
             engine: "引擎与性能",
             adblock: "广告拦截与防护",
             about: "关于与系统",
-            language: "语言与区域"
+            language: "语言与区域",
+            shortcuts: "键盘快捷键"
         },
         categories: {
             preferences: "首选项",

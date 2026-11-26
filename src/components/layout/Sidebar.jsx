@@ -363,7 +363,7 @@ export default function Sidebar() {
 
     const handlePinnedTabClick = (e, pin) => {
         const rect = e?.currentTarget?.getBoundingClientRect ? e.currentTarget.getBoundingClientRect() : null;
-        activatePinnedApp(pin, rect);
+        activatePinnedApp(pin, rect, { openPopupOnly: Boolean(e?.shiftKey) });
     };
 
     const handlePinnedContextMenu = (e, pin) => {
@@ -1662,13 +1662,13 @@ export default function Sidebar() {
                                     return t(
                                         'chrome.pinnedTabTooltipWithCount',
                                         { title: pin.title, countLabel },
-                                        `${pin.title} (${countLabel}) • Middle-click to open in background • Right-click for tab list`
+                                        `${pin.title} (${countLabel}) • Left-click to cycle open tabs • Middle-click to open in background • Right-click for options & tab list`
                                     );
                                 }
                                 return t(
                                     'chrome.pinnedTabTooltipNoCount',
                                     { title: pin.title },
-                                    `${pin.title} • Middle-click to open in background • Right-click for tab list`
+                                    `${pin.title} • Left-click to open • Middle-click to open in background • Right-click for options & tab list`
                                 );
                             })()}
                         >

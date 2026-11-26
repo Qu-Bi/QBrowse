@@ -24,7 +24,8 @@ export default {
         confirm: "Conferma",
         all: "Tutti",
         enabled: "Abilitato",
-        disabled: "Disabilitato"
+        disabled: "Disabilitato",
+        clearSelection: "Cancella selezione (Esc)"
     },
     nav: {
         newTab: "Nuova scheda",
@@ -76,7 +77,8 @@ export default {
             engine: "Motore e Prestazioni",
             adblock: "Protezione e Blocco annunci",
             about: "Informazioni e Sistema",
-            language: "Lingua e Regione"
+            language: "Lingua e Regione",
+            shortcuts: "Scorciatoie da tastiera"
         },
         categories: {
             preferences: "Preferenze",

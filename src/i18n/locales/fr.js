@@ -24,7 +24,8 @@ export default {
         confirm: "Confirmer",
         all: "Tout",
         enabled: "Activé",
-        disabled: "Désactivé"
+        disabled: "Désactivé",
+        clearSelection: "Effacer la sélection (Échap)"
     },
     nav: {
         newTab: "Nouvel onglet",
@@ -76,7 +77,8 @@ export default {
             engine: "Moteur & Performances",
             adblock: "Protection & Bloqueur",
             about: "À propos & Système",
-            language: "Langue & Région"
+            language: "Langue & Région",
+            shortcuts: "Raccourcis clavier"
         },
         categories: {
             preferences: "Préférences",

@@ -30,6 +30,8 @@ const {
 } = require('./linuxUpdateHelper.cjs');
 
 const APP_EDITION = 'rust';
+const DEBUG_LOGS = process.env.QBROWSE_DEBUG_LOGS === '1';
+const debugLog = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 let autoUpdater = null;
 try {
@@ -306,7 +308,7 @@ function syncOAuthWindowSmartDark(childWindow) {
         try { url = childWindow.webContents.getURL() || ''; } catch (_) {}
         const isExcluded = isUrlExcludedFromDarkMode(url, exclusions);
 
-        console.log('[Electron Main] syncOAuthWindowSmartDark -> url:', url, 'isForceDark:', isForceDark, 'isExcluded:', isExcluded);
+        debugLog('[Electron Main] syncOAuthWindowSmartDark -> url:', url, 'isForceDark:', isForceDark, 'isExcluded:', isExcluded);
         if (childWindow.webContents && typeof childWindow.webContents.setEmulatedMedia === 'function') {
             try {
                 childWindow.webContents.setEmulatedMedia({ colorScheme: isForceDark && !isExcluded ? 'dark' : getEffectiveColorScheme() });
@@ -350,7 +352,11 @@ function broadcastSmartDarkToOAuthWindows() {
 
 // Internal dialog bridge server for synchronous window.alert, confirm, and prompt calls
 const localDialogServer = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const reqOrigin = req.headers.origin;
+    if (reqOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
@@ -377,9 +383,24 @@ const localDialogServer = http.createServer((req, res) => {
     }
 
     if (req.method === 'POST' && (parsedPathname === '/dialog' || parsedPathname === '/prompt')) {
+        const MAX_DIALOG_BODY_BYTES = 64 * 1024;
         let body = '';
-        req.on('data', chunk => { body += chunk; });
+        let bodyBytes = 0;
+        let aborted = false;
+        req.on('data', chunk => {
+            if (aborted) return;
+            bodyBytes += Buffer.byteLength(chunk);
+            if (bodyBytes > MAX_DIALOG_BODY_BYTES) {
+                aborted = true;
+                res.writeHead(413, { 'Content-Type': 'text/plain' });
+                res.end('Payload Too Large');
+                req.destroy();
+                return;
+            }
+            body += chunk;
+        });
         req.on('end', () => {
+            if (aborted) return;
             try {
                 const data = JSON.parse(body || '{}');
                 const dialogId = 'dlg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -423,15 +444,19 @@ const localDialogServer = http.createServer((req, res) => {
                 });
 
                 let hostname = '';
-                try {
-                    if (data.hostname && data.hostname !== 'about:blank') {
-                        hostname = data.hostname;
-                    } else if (data.origin && data.origin !== 'about:blank') {
-                        hostname = new URL(data.origin).hostname;
-                    } else if (latestActiveWebviewUrl) {
-                        hostname = new URL(latestActiveWebviewUrl).hostname;
-                    }
-                } catch (_) {}
+                const parseHttpHostname = (rawUrl) => {
+                    if (!rawUrl || typeof rawUrl !== 'string' || rawUrl === 'about:blank') return '';
+                    try {
+                        const parsed = new URL(rawUrl);
+                        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                            return parsed.hostname || '';
+                        }
+                    } catch (_) {}
+                    return '';
+                };
+                hostname = parseHttpHostname(req.headers.origin)
+                    || parseHttpHostname(latestActiveWebviewUrl)
+                    || ((data.hostname && data.hostname !== 'about:blank') ? String(data.hostname) : '');
                 if (!hostname) hostname = 'Website';
 
                 const dialogType = data.type || (parsedPathname === '/prompt' ? 'prompt' : 'alert');
@@ -464,7 +489,7 @@ const localDialogServer = http.createServer((req, res) => {
 
 localDialogServer.listen(0, '127.0.0.1', () => {
     localDialogPort = localDialogServer.address().port;
-    console.log('[Electron Main] Local dialog server listening on port:', localDialogPort);
+    debugLog('[Electron Main] Local dialog server listening on port:', localDialogPort);
 });
 
 ipcMain.on('get-dialog-port', (event) => {
@@ -477,13 +502,13 @@ const originalShowMessageBox = dialog.showMessageBox;
 
 dialog.showMessageBoxSync = function(targetWindow, options) {
     const opts = (options && typeof options === 'object') ? options : (targetWindow && typeof targetWindow === 'object' ? targetWindow : {});
-    console.log('[Electron Main] Suppressed native message box sync:', opts.message || opts.title || opts);
+    debugLog('[Electron Main] Suppressed native message box sync:', opts.message || opts.title || opts);
     return 0; // Return OK index without opening native OS dialog
 };
 
 dialog.showMessageBox = function(targetWindow, options) {
     const opts = (options && typeof options === 'object') ? options : (targetWindow && typeof targetWindow === 'object' ? targetWindow : {});
-    console.log('[Electron Main] showMessageBox intercepted, awaiting in-tab user response:', opts.message || opts.title || opts);
+    debugLog('[Electron Main] showMessageBox intercepted, awaiting in-tab user response:', opts.message || opts.title || opts);
 
     return new Promise((resolve) => {
         const dialogId = 'msgbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -561,7 +586,8 @@ function isAuthorizedLocalPath(p) {
     }
 }
 
-ipcMain.handle('read-clipboard-text', () => {
+ipcMain.handle('read-clipboard-text', (event) => {
+    assertTrustedAppShell(event, 'read-clipboard-text');
     try {
         return clipboard.readText();
     } catch {
@@ -570,6 +596,7 @@ ipcMain.handle('read-clipboard-text', () => {
 });
 
 ipcMain.handle('write-clipboard-text', (event, text) => {
+    assertTrustedAppShell(event, 'write-clipboard-text');
     try {
         clipboard.writeText(text || '');
         return true;
@@ -649,7 +676,7 @@ ipcMain.handle('save-firebase-config', async (event, config) => {
         if (!config || typeof config !== 'object') return false;
         const userConfigPath = path.join(app.getPath('userData'), 'firebase.json');
         await fs.writeFile(userConfigPath, JSON.stringify(config, null, 2), 'utf8');
-        console.log('[Main] Saved Firebase config to:', userConfigPath);
+        debugLog('[Main] Saved Firebase config to:', userConfigPath);
         return true;
     } catch (e) {
         console.error('[Main] Failed to save Firebase config:', e);
@@ -994,6 +1021,7 @@ function isSafeExternalUrl(urlStr) {
 }
 
 ipcMain.handle('open-external', async (event, url) => {
+    assertTrustedAppShell(event, 'open-external');
     try {
         if (!isSafeExternalUrl(url)) {
             console.warn('[Security] Blocked unsafe external URL launch:', url);
@@ -1035,6 +1063,7 @@ ipcMain.handle('open-app-protocol', async (event, args = {}) => {
 });
 
 ipcMain.handle('open-with-dialog', async (event, url) => {
+    assertTrustedAppShell(event, 'open-with-dialog');
     if (!isSafeExternalUrl(url)) {
         console.warn('[Security] Blocked unsafe URL in open-with-dialog:', url);
         return false;
@@ -2018,23 +2047,42 @@ function createWindow(options = {}) {
   return win;
 }
 
-  const bypassedInsecureHosts = new Set();
+  const INSECURE_HOST_TTL_MS = 30 * 60 * 1000;
+  const bypassedInsecureHosts = new Map();
+
+  function isInsecureHostBypassed(host) {
+      if (!host) return false;
+      const now = Date.now();
+      for (const key of [host, host.replace(/^www\./, '')]) {
+          const expiresAt = bypassedInsecureHosts.get(key);
+          if (expiresAt !== undefined) {
+              if (expiresAt > now) return true;
+              bypassedInsecureHosts.delete(key);
+          }
+      }
+      return false;
+  }
 
   ipcMain.handle('allow-insecure-host', (event, hostname) => {
+      assertTrustedAppShell(event, 'allow-insecure-host');
       if (hostname && typeof hostname === 'string') {
           const clean = hostname.toLowerCase().trim();
-          bypassedInsecureHosts.add(clean);
-          bypassedInsecureHosts.add(clean.replace(/^www\./, ''));
-          bypassedInsecureHosts.add('www.' + clean.replace(/^www\./, ''));
+          const expiresAt = Date.now() + INSECURE_HOST_TTL_MS;
+          bypassedInsecureHosts.set(clean, expiresAt);
+          bypassedInsecureHosts.set(clean.replace(/^www\./, ''), expiresAt);
+          bypassedInsecureHosts.set('www.' + clean.replace(/^www\./, ''), expiresAt);
       }
       return true;
   });
 
   app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
       try {
+          if (webContents?.session === session.fromPartition('tor')) {
+              return callback(false);
+          }
           const parsed = new URL(url);
           const host = parsed.hostname.toLowerCase();
-          if (bypassedInsecureHosts.has(host) || bypassedInsecureHosts.has(host.replace(/^www\./, ''))) {
+          if (isInsecureHostBypassed(host)) {
               event.preventDefault();
               return callback(true);
           }
@@ -2049,9 +2097,9 @@ function createWindow(options = {}) {
     ipcMain.on('debug-terminal-log', (event, message, data) => {
     const timestamp = new Date().toLocaleTimeString();
     if (data !== undefined) {
-        console.log(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`, data);
+        debugLog(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`, data);
     } else {
-        console.log(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`);
+        debugLog(`\x1b[36m[QBrowse Terminal ${timestamp}]\x1b[0m ${message}`);
     }
 });
 
@@ -2087,6 +2135,17 @@ function createWindow(options = {}) {
 
         // Security: Strictly enforce sandbox and process isolation on any attached <webview>
         contents.on('will-attach-webview', (attachEvent, webPreferences, params) => {
+            const rawSrc = typeof params?.src === 'string' ? params.src.trim().toLowerCase() : '';
+            if (
+                rawSrc.startsWith('javascript:') ||
+                rawSrc.startsWith('vbscript:') ||
+                rawSrc.startsWith('qbrowse-local:') ||
+                rawSrc.startsWith('qbrowse-thumb:')
+            ) {
+                attachEvent.preventDefault();
+                return;
+            }
+
             // Guarantee our approved preload script is used
             webPreferences.preload = path.join(__dirname, 'webview_preload.cjs');
 
@@ -2195,7 +2254,7 @@ function createWindow(options = {}) {
 
         // Handle window.open: Distinguish genuine OAuth/Auth popups from normal website link navigations
         contents.setWindowOpenHandler(({ url, frameName, disposition, features }) => {
-            console.log('\x1b[33m[QBrowse Main] window.open intercepted:\x1b[0m', {
+            debugLog('\x1b[33m[QBrowse Main] window.open intercepted:\x1b[0m', {
                 url: url || '(blank/script)',
                 frameName: frameName || '(none)',
                 disposition,
@@ -2204,7 +2263,7 @@ function createWindow(options = {}) {
 
             // Detect external app protocol links (e.g. slack://, zoommtg://, discord://, spotify://)
             if (isAppProtocolUrl(url)) {
-                console.log('[Electron Main] setWindowOpenHandler launching app protocol:', url);
+                debugLog('[Electron Main] setWindowOpenHandler launching app protocol:', url);
                 shell.openExternal(url).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
                 notifyAppProtocolLaunched(url);
                 return { action: 'deny' };
@@ -2220,7 +2279,7 @@ function createWindow(options = {}) {
                 if (url && url !== 'about:blank') {
                     const targetWin = getTargetWindow();
                     if (targetWin && !targetWin.isDestroyed()) {
-                        targetWin.webContents.send('open-new-tab-url', { url, disposition });
+                        targetWin.webContents.send('open-new-tab-url', { url, disposition, openerWebContentsId: contents.id });
                     }
                 }
                 return { action: 'deny' };
@@ -2256,7 +2315,7 @@ function createWindow(options = {}) {
                         if (parsedH >= 400 && parsedH <= 1400) popupHeight = parsedH;
                     }
                 }
-                console.log('\x1b[32m[QBrowse Main] Allowing popup window for:\x1b[0m', {
+                debugLog('\x1b[32m[QBrowse Main] Allowing popup window for:\x1b[0m', {
                     url: url || '(blank/script)',
                     dimensions: `${popupWidth}x${popupHeight}`,
                     frameName: frameName || '(none)'
@@ -2296,7 +2355,7 @@ function createWindow(options = {}) {
         // Handle child windows created via window.open (e.g. OAuth popup windows)
         contents.on('did-create-window', (childWindow, details) => {
             if (!childWindow || childWindow.isDestroyed()) return;
-            console.log('\x1b[32m[QBrowse Main] Child OAuth Popup Window Created:\x1b[0m', {
+            debugLog('\x1b[32m[QBrowse Main] Child OAuth Popup Window Created:\x1b[0m', {
                 windowId: childWindow.id,
                 url: details?.url || '(empty)'
             });
@@ -2519,7 +2578,7 @@ function createWindow(options = {}) {
                 }
                 if (isAppProtocolUrl(navUrl)) {
                     event.preventDefault();
-                    console.log('[Electron Main] webview will-navigate launching app protocol:', navUrl);
+                    debugLog('[Electron Main] webview will-navigate launching app protocol:', navUrl);
                     shell.openExternal(navUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
                     notifyAppProtocolLaunched(navUrl);
                     return;
@@ -2528,7 +2587,7 @@ function createWindow(options = {}) {
             contents.on('will-redirect', (event, redirectUrl) => {
                 if (isAppProtocolUrl(redirectUrl)) {
                     event.preventDefault();
-                    console.log('[Electron Main] webview will-redirect launching app protocol:', redirectUrl);
+                    debugLog('[Electron Main] webview will-redirect launching app protocol:', redirectUrl);
                     shell.openExternal(redirectUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
                     notifyAppProtocolLaunched(redirectUrl);
                     return;
@@ -2538,7 +2597,7 @@ function createWindow(options = {}) {
                 const targetUrl = event.url;
                 if (isAppProtocolUrl(targetUrl)) {
                     event.preventDefault();
-                    console.log('[Electron Main] webview will-frame-navigate launching app protocol:', targetUrl);
+                    debugLog('[Electron Main] webview will-frame-navigate launching app protocol:', targetUrl);
                     shell.openExternal(targetUrl).catch(e => console.warn('[Main] shell.openExternal failed:', e.message));
                     notifyAppProtocolLaunched(targetUrl);
                     return;
@@ -3337,7 +3396,7 @@ function setupDownloadHandler(sess) {
                     console.warn('[Download Verification] File verification failed for:', savePath, verificationResult.error);
                     finalState = 'interrupted';
                 } else {
-                    console.log(`[Download Verification] Verified: ${fileName} (${verificationResult.size} bytes, SHA-256: ${verificationResult.checksum.slice(0, 12)}...)`);
+                    debugLog(`[Download Verification] Verified: ${fileName} (${verificationResult.size} bytes, SHA-256: ${verificationResult.checksum.slice(0, 12)}...)`);
                 }
             }
 
@@ -3367,6 +3426,22 @@ function isInternalAppShellWebContents(wc) {
         return browserWindows.has(win) || win === mainWindow;
     } catch (_) {
         return false;
+    }
+}
+
+function isTrustedAppShellSender(event) {
+    if (!event || !event.sender) return false;
+    if (!isInternalAppShellWebContents(event.sender)) return false;
+    if (event.senderFrame && event.sender.mainFrame && event.senderFrame !== event.sender.mainFrame) {
+        return false;
+    }
+    return true;
+}
+
+function assertTrustedAppShell(event, channelName = '') {
+    if (!isTrustedAppShellSender(event)) {
+        console.warn(`[Security] Blocked unauthorized IPC call${channelName ? ` (${channelName})` : ''} from non-shell webContents.`);
+        throw new Error('Unauthorized IPC sender');
     }
 }
 
@@ -3740,7 +3815,7 @@ function applyDnsConfiguration(options = {}) {
                     secureDnsServers: []
                 });
             }
-            console.log('[DNS] Host resolver disabled: Mode = OFF (OS Default)');
+            debugLog('[DNS] Host resolver disabled: Mode = OFF (OS Default)');
             return { success: true, mode: 'off', servers: [] };
         }
 
@@ -3765,7 +3840,7 @@ function applyDnsConfiguration(options = {}) {
                 secureDnsServers: servers
             });
         }
-        console.log(`[DNS] Host resolver applied: Mode = ${secureDnsMode}, Server(s) = ${servers.join(', ')}`);
+        debugLog(`[DNS] Host resolver applied: Mode = ${secureDnsMode}, Server(s) = ${servers.join(', ')}`);
         return { success: true, mode: secureDnsMode, servers };
     } catch (err) {
         console.error('[DNS] Failed to configure host resolver:', err);
@@ -3923,7 +3998,13 @@ app.whenReady().then(async () => {
                   headers: request.headers
               });
               const responseHeaders = new Headers(response.headers);
-              responseHeaders.set('Access-Control-Allow-Origin', '*');
+              const reqOrigin = request.headers.get('origin');
+              if (reqOrigin === 'http://localhost:1420' || reqOrigin === 'http://127.0.0.1:1420') {
+                  responseHeaders.set('Access-Control-Allow-Origin', reqOrigin);
+                  responseHeaders.set('Vary', 'Origin');
+              } else {
+                  responseHeaders.delete('Access-Control-Allow-Origin');
+              }
               responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
               return new Response(response.body, {
                   status: response.status,
@@ -3963,7 +4044,7 @@ app.whenReady().then(async () => {
   // 3. Handle screen resolution / DPI changes to keep compositor and window geometry synchronized
   try {
       screen.on('display-metrics-changed', (event, display, changedMetrics) => {
-          console.log('[Display] Screen metrics changed:', changedMetrics);
+          debugLog('[Display] Screen metrics changed:', changedMetrics);
           for (const win of browserWindows) {
               if (win && !win.isDestroyed()) {
                   win.webContents.send('display-metrics-changed', {
@@ -4005,7 +4086,7 @@ app.whenReady().then(async () => {
       try {
           if (components && typeof components.whenReady === 'function') {
               await components.whenReady();
-              console.log('Widevine and components loaded successfully.');
+              debugLog('Widevine and components loaded successfully.');
           }
       } catch(e) {
           console.error('Components failed to load:', e);
@@ -4044,11 +4125,11 @@ app.whenReady().then(async () => {
       };
       setTimeout(() => {
           if (!isAutoUpdateAllowed()) {
-              console.log('[AutoUpdater] Silent startup check skipped (Strict Offline / Auto-Updates disabled).');
+              debugLog('[AutoUpdater] Silent startup check skipped (Strict Offline / Auto-Updates disabled).');
               return;
           }
           performGitHubUpdateCheck({ silent: true, autoDownload: shouldAutoDownloadInBackground() }).catch((err) => {
-              console.log('[AutoUpdater] Silent startup check skipped/failed:', err?.message || err);
+              debugLog('[AutoUpdater] Silent startup check skipped/failed:', err?.message || err);
           });
       }, 6000);
 
@@ -4066,6 +4147,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('open-file', async (event, path) => {
+      assertTrustedAppShell(event, 'open-file');
       try {
           if (path) {
               const res = await shell.openPath(path);
@@ -4173,6 +4255,7 @@ app.whenReady().then(async () => {
   });
   
   ipcMain.handle('show-item-in-folder', async (event, path) => {
+      assertTrustedAppShell(event, 'show-item-in-folder');
       try {
           if (path) {
               shell.showItemInFolder(path);
@@ -4186,10 +4269,12 @@ app.whenReady().then(async () => {
 
   // Download Verification IPC Handlers
   ipcMain.handle('verify-download-file', async (event, filePath) => {
+      assertTrustedAppShell(event, 'verify-download-file');
       return await verifyAndChecksumFile(filePath, 0);
   });
 
   ipcMain.handle('compare-download-checksum', async (event, { filePath, expectedChecksum, algorithm = 'sha256' }) => {
+      assertTrustedAppShell(event, 'compare-download-checksum');
       try {
           if (!filePath || !fsSync.existsSync(filePath)) {
               return { matches: false, error: 'File does not exist' };
@@ -4217,6 +4302,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('get-file-checksum', async (event, { filePath, algorithm = 'sha256' }) => {
+      assertTrustedAppShell(event, 'get-file-checksum');
       try {
           if (!filePath || !fsSync.existsSync(filePath)) {
               return { success: false, error: 'File does not exist' };
@@ -4234,6 +4320,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('delete-download-file', async (event, filePath) => {
+      assertTrustedAppShell(event, 'delete-download-file');
       try {
           if (!filePath || typeof filePath !== 'string') {
               return { success: false, error: 'No path specified' };
@@ -4345,7 +4432,7 @@ ipcMain.on('qbrowse-http-auth-response', (event, { requestId, username, password
 
 // Webview In-Tab JS Dialogs (Alert, Confirm, Prompt) Close Handler
 ipcMain.on('qbrowse-js-dialog-close', (event, { dialogId, accept, promptText }) => {
-    console.log('[Electron Main] qbrowse-js-dialog-close received:', { dialogId, accept, promptText });
+    debugLog('[Electron Main] qbrowse-js-dialog-close received:', { dialogId, accept, promptText });
 
     // 1. Resolve synchronous HTTP bridge dialogs
     const pendingHttp = pendingPromptResponses.get(dialogId);
@@ -4360,7 +4447,7 @@ ipcMain.on('qbrowse-js-dialog-close', (event, { dialogId, accept, promptText }) 
                 cancelled: !accept,
                 value: accept ? (promptText !== undefined ? String(promptText) : '') : null
             }));
-            console.log('[Electron Main] Responded to synchronous HTTP dialog:', dialogId, { accept, promptText });
+            debugLog('[Electron Main] Responded to synchronous HTTP dialog:', dialogId, { accept, promptText });
         } catch (e) {
             console.error('[Electron Main] Error responding to HTTP dialog:', e);
         }
@@ -4373,7 +4460,7 @@ ipcMain.on('qbrowse-js-dialog-close', (event, { dialogId, accept, promptText }) 
         activeWebviewDialogs.delete(dialogId);
         if (typeof dialog.resolve === 'function') {
             dialog.resolve({ response: accept ? 0 : 1, checkboxChecked: false });
-            console.log('[Electron Main] Resolved showMessageBox fallback:', dialogId);
+            debugLog('[Electron Main] Resolved showMessageBox fallback:', dialogId);
         }
         return;
     }
@@ -4490,7 +4577,6 @@ ipcMain.handle('get-hardware-specs', () => {
 // Auto-Updater & GitHub Releases Synchronization Engine
 const https = require('https');
 const updaterHttpsAgent = new https.Agent({
-    rejectUnauthorized: false,
     keepAlive: true
 });
 
@@ -4640,7 +4726,6 @@ function httpGetBuffer(targetUrl, { timeoutMs = 15000, maxRedirects = 5, headers
                     ...headers
                 },
                 agent: parsed.protocol === 'https:' ? updaterHttpsAgent : undefined,
-                rejectUnauthorized: false,
                 timeout: timeoutMs
             }, (res) => {
                 if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -5158,7 +5243,7 @@ async function downloadGitHubUpdateAsset({ silent = false } = {}) {
                 silent
             });
 
-            console.log('[AutoUpdater] Update downloaded and verified at:', finalFilePath);
+            debugLog('[AutoUpdater] Update downloaded and verified at:', finalFilePath);
             return { status: 'downloaded', filePath: finalFilePath, version: updaterState.latestVersion, installCommand: resolvedInstallCommand };
         } catch (err) {
             console.error('[AutoUpdater] Download error:', err);
@@ -5192,7 +5277,6 @@ function streamDownloadToFile(targetUrl, destinationPath, expectedSha512, silent
                     'Accept': 'application/octet-stream, */*'
                 },
                 agent: parsed.protocol === 'https:' ? updaterHttpsAgent : undefined,
-                rejectUnauthorized: false,
                 timeout: 30000
             }, (res) => {
                 if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -5664,11 +5748,8 @@ function wrapMasterKeyForOS(vault, keyBuffer, masterPasswordStr) {
                 wrappedKeyBase64: safeStorage.encryptString(secretJson).toString('base64')
             };
         } else {
-            const machineKey = deriveLegacyKey(os.hostname() + (os.userInfo()?.username || 'user') + 'QBrowseOSKey');
-            vault.osKeyWrap = {
-                useSafeStorage: false,
-                wrappedKeyBase64: Buffer.from(encrypt(secretJson, machineKey), 'utf8').toString('base64')
-            };
+            console.warn('[Vault] OS credential encryption (safeStorage) unavailable; skipping OS key wrapping.');
+            return;
         }
     } catch (err) {
         console.warn('[Vault] Failed to wrap master key for OS:', err);
@@ -5743,6 +5824,7 @@ function tryUnwrapMasterKeyFromOS(vault) {
 }
 
 ipcMain.handle('vault-unlock', async (event, masterPassword) => {
+    assertTrustedAppShell(event, 'vault-unlock');
     try {
         if (!masterPassword || typeof masterPassword !== 'string') {
             return false;
@@ -5763,7 +5845,9 @@ ipcMain.handle('vault-unlock', async (event, masterPassword) => {
             masterKey = key;
             activeMasterPassword = masterPassword;
             healAndDecryptVaultItems(vault, masterKey, [masterPassword]);
-            wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            if (vault.bioConfig?.enabled === true) {
+                wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            }
             writeVaultSync(vault);
             return true;
         }
@@ -5837,7 +5921,9 @@ ipcMain.handle('vault-unlock', async (event, masterPassword) => {
 
             // Heal all legacy items
             healAndDecryptVaultItems(vault, masterKey, [masterPassword]);
-            wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            if (vault.bioConfig?.enabled === true) {
+                wrapMasterKeyForOS(vault, masterKey, activeMasterPassword);
+            }
 
             // If Windows Hello was enabled, refresh wrappedSecretBase64
             if (vault.bioConfig?.enabled) {
@@ -5863,7 +5949,8 @@ ipcMain.handle('vault-unlock', async (event, masterPassword) => {
     }
 });
 
-ipcMain.handle('vault-lock', async () => {
+ipcMain.handle('vault-lock', async (event) => {
+    assertTrustedAppShell(event, 'vault-lock');
     masterKey = null;
     activeMasterPassword = null;
     return true;
@@ -6003,6 +6090,7 @@ ipcMain.handle('vault-cancel-passkey-verification', async (event, { requestId } 
 });
 
 ipcMain.handle('respond-passkey-verification', async (event, payload = {}) => {
+    assertTrustedAppShell(event, 'respond-passkey-verification');
     const requestId = payload?.requestId;
     const approved = Boolean(payload?.approved ?? payload?.verified);
     const fallbackToNative = !approved && Boolean(payload?.fallbackToNative);
@@ -6041,6 +6129,7 @@ ipcMain.handle('vault-is-popup-window', async (event) => {
 });
 
 ipcMain.handle('verify-windows-hello', async (event, message) => {
+    assertTrustedAppShell(event, 'verify-windows-hello');
     const senderWin = BrowserWindow.fromWebContents(event.sender) || mainWindow;
     const verifyRes = await requestWindowsHelloVerification(message || "Verify your identity for QBrowse Passkey", senderWin);
     if (verifyRes && verifyRes.verified) {
@@ -6069,6 +6158,7 @@ ipcMain.handle('verify-windows-hello', async (event, message) => {
 });
 
 ipcMain.handle('vault-check-password', async (event, passwordToCheck) => {
+    assertTrustedAppShell(event, 'vault-check-password');
     try {
         if (!passwordToCheck || typeof passwordToCheck !== 'string') return false;
         await ensureVault();
@@ -6100,6 +6190,7 @@ ipcMain.handle('vault-check-password', async (event, passwordToCheck) => {
 });
 
 ipcMain.handle('vault-setup-pin', async (event, payload) => {
+    assertTrustedAppShell(event, 'vault-setup-pin');
     try {
         const pin = typeof payload === 'object' && payload !== null ? payload.pin : payload;
         const mp = typeof payload === 'object' && payload !== null ? payload.masterPassword : null;
@@ -6150,6 +6241,7 @@ ipcMain.handle('vault-setup-pin', async (event, payload) => {
 });
 
 ipcMain.handle('vault-unlock-pin', async (event, pin) => {
+    assertTrustedAppShell(event, 'vault-unlock-pin');
     try {
         await ensureVault();
         const vault = readVaultSync();
@@ -6207,7 +6299,8 @@ ipcMain.handle('vault-unlock-pin', async (event, pin) => {
     }
 });
 
-ipcMain.handle('vault-remove-pin', async () => {
+ipcMain.handle('vault-remove-pin', async (event) => {
+    assertTrustedAppShell(event, 'vault-remove-pin');
     try {
         await ensureVault();
         const vault = readVaultSync();
@@ -6220,6 +6313,7 @@ ipcMain.handle('vault-remove-pin', async () => {
 });
 
 ipcMain.handle('vault-setup-windows-hello', async (event, payload) => {
+    assertTrustedAppShell(event, 'vault-setup-windows-hello');
     try {
         const enable = typeof payload === 'object' && payload !== null ? Boolean(payload.enable) : Boolean(payload);
         const mp = typeof payload === 'object' && payload !== null ? payload.masterPassword : null;
@@ -6264,6 +6358,10 @@ ipcMain.handle('vault-setup-windows-hello', async (event, payload) => {
             return { success: false, error: 'Unlock vault with Master Password first' };
         }
 
+        if (!(safeStorage && safeStorage.isEncryptionAvailable())) {
+            return { success: false, error: 'OS credential encryption (safeStorage) is unavailable on this system.' };
+        }
+
         const senderWin = BrowserWindow.fromWebContents(event.sender) || mainWindow;
         const verifyRes = await requestWindowsHelloVerification('Confirm your identity to enable Windows Hello for QVault', senderWin);
         if (!verifyRes || !verifyRes.verified) {
@@ -6299,6 +6397,7 @@ ipcMain.handle('vault-setup-windows-hello', async (event, payload) => {
 });
 
 ipcMain.handle('vault-unlock-windows-hello', async (event) => {
+    assertTrustedAppShell(event, 'vault-unlock-windows-hello');
     try {
         await ensureVault();
         const vault = readVaultSync();
@@ -6358,6 +6457,7 @@ ipcMain.handle('vault-unlock-windows-hello', async (event) => {
 });
 
 ipcMain.handle('vault-add-password', async (event, title, url, username, passwordPlaintext) => {
+    assertTrustedAppShell(event, 'vault-add-password');
     await ensureVault();
     const vault = readVaultSync();
 
@@ -6526,6 +6626,7 @@ ipcMain.handle('vault-save-passkey', async (event, data = {}) => {
 });
 
 ipcMain.handle('vault-delete-password', async (event, id) => {
+    assertTrustedAppShell(event, 'vault-delete-password');
     try {
         await ensureVault();
         const vault = readVaultSync();
@@ -6546,6 +6647,7 @@ ipcMain.handle('vault-delete-password', async (event, id) => {
 });
 
 ipcMain.handle('vault-update-password', async (event, id, title, url, username, passwordPlaintext) => {
+    assertTrustedAppShell(event, 'vault-update-password');
     try {
         await ensureVault();
         const vault = readVaultSync();
@@ -6691,7 +6793,8 @@ function domainsMatch(d1, d2) {
     return roots1.some(r => roots2.includes(r));
 }
 
-ipcMain.handle('vault-get-passwords', async () => {
+ipcMain.handle('vault-get-passwords', async (event) => {
+    assertTrustedAppShell(event, 'vault-get-passwords');
     if (!masterKey) {
         return [];
     }
@@ -6793,6 +6896,7 @@ ipcMain.handle('vault-get-matching', async (event, query) => {
 });
 
 ipcMain.handle('vault-change-password', async (event, oldPassword, newPassword) => {
+    assertTrustedAppShell(event, 'vault-change-password');
     try {
         if (!newPassword || typeof newPassword !== 'string') {
             return { success: false, error: 'Invalid new password' };
@@ -6876,7 +6980,8 @@ ipcMain.handle('vault-change-password', async (event, oldPassword, newPassword) 
     }
 });
 
-ipcMain.handle('vault-reset', async () => {
+ipcMain.handle('vault-reset', async (event) => {
+    assertTrustedAppShell(event, 'vault-reset');
     try {
         const vault = { canary: null, vaultSalt: null, passwords: [] };
         masterKey = null;
@@ -6889,6 +6994,7 @@ ipcMain.handle('vault-reset', async () => {
 });
 
 ipcMain.handle('vault-wrap-sync-secret', async (event, secret) => {
+    assertTrustedAppShell(event, 'vault-wrap-sync-secret');
     try {
         if (!secret) return null;
         if (safeStorage && safeStorage.isEncryptionAvailable()) {
@@ -6904,6 +7010,7 @@ ipcMain.handle('vault-wrap-sync-secret', async (event, secret) => {
 });
 
 ipcMain.handle('vault-unwrap-sync-secret', async (event, wrappedBase64) => {
+    assertTrustedAppShell(event, 'vault-unwrap-sync-secret');
     try {
         if (!wrappedBase64) return null;
         if (safeStorage && safeStorage.isEncryptionAvailable()) {
@@ -6954,6 +7061,7 @@ function getSessionByPartition(partition) {
 }
 
 ipcMain.handle('get-cookies', async (event, filter = {}) => {
+    assertTrustedAppShell(event, 'get-cookies');
     try {
         const targetSession = getSessionByPartition(filter.partition);
         const cookieFilter = { ...filter };
@@ -6975,6 +7083,7 @@ ipcMain.handle('get-cookies', async (event, filter = {}) => {
 });
 
 ipcMain.handle('remove-cookie', async (event, url, name, partition) => {
+    assertTrustedAppShell(event, 'remove-cookie');
     try {
         const targetSession = getSessionByPartition(partition);
         await targetSession.cookies.remove(url, name);
@@ -6985,6 +7094,7 @@ ipcMain.handle('remove-cookie', async (event, url, name, partition) => {
 });
 
 ipcMain.handle('clear-site-cookies', async (event, domain, partition) => {
+    assertTrustedAppShell(event, 'clear-site-cookies');
     try {
         const targetSession = getSessionByPartition(partition);
         const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
@@ -7010,6 +7120,7 @@ ipcMain.handle('clear-site-cookies', async (event, domain, partition) => {
 });
 
 ipcMain.handle('clear-all-data', async (event, options = {}) => {
+    assertTrustedAppShell(event, 'clear-all-data');
     try {
         const storages = [];
         if (options.cookies) storages.push('cookies');
@@ -7062,13 +7173,14 @@ ipcMain.handle('get-app-metrics', async () => {
 });
 
 ipcMain.handle('kill-process', async (event, pid) => {
+    assertTrustedAppShell(event, 'kill-process');
     try {
         if (!pid || pid === process.pid) {
             console.warn('[TaskManager] Cannot terminate the main browser process via IPC.');
             return false;
         }
         process.kill(pid);
-        console.log(`[TaskManager] Terminated process ${pid}`);
+        debugLog(`[TaskManager] Terminated process ${pid}`);
         return true;
     } catch (err) {
         console.warn(`[TaskManager] Failed to terminate process ${pid}:`, err);
@@ -7141,7 +7253,7 @@ ipcMain.handle('clear-ghost-session', async () => {
         if (ghostSess) {
             await ghostSess.clearStorageData();
             await ghostSess.clearCache();
-            console.log('[Ghost Mode] In-memory ghost session data and cache cleared.');
+            debugLog('[Ghost Mode] In-memory ghost session data and cache cleared.');
         }
         permissionManager.clearSessionPermissions('ghost');
         return true;
@@ -7157,7 +7269,7 @@ ipcMain.handle('clear-tor-session', async () => {
         if (torSess) {
             await torSess.clearStorageData();
             await torSess.clearCache();
-            console.log('[Tor Mode] In-memory tor session data and cache cleared.');
+            debugLog('[Tor Mode] In-memory tor session data and cache cleared.');
         }
         permissionManager.clearSessionPermissions('tor');
         return true;
@@ -7383,6 +7495,7 @@ app.on('before-quit', () => {
 });
 
 ipcMain.handle('save-setting', (event, data) => {
+    assertTrustedAppShell(event, 'save-setting');
     if (!settingsPath) {
         settingsPath = path.join(app.getPath('userData'), 'settings.json');
     }
@@ -7596,6 +7709,7 @@ ipcMain.handle('import-pick-html-bookmarks', async () => {
 const aiEngine = require('./aiEngine.cjs');
 
 ipcMain.handle('ai-start-server', async (event, options) => {
+    assertTrustedAppShell(event, 'ai-start-server');
     return aiEngine.startLlamaServer(
         options,
         (logLine) => {
@@ -7611,8 +7725,14 @@ ipcMain.handle('ai-start-server', async (event, options) => {
     );
 });
 
-ipcMain.handle('ai-stop-server', async () => {
+ipcMain.handle('ai-stop-server', async (event) => {
+    assertTrustedAppShell(event, 'ai-stop-server');
     return aiEngine.stopLlamaServer();
+});
+
+ipcMain.handle('ai-get-auth-token', (event) => {
+    assertTrustedAppShell(event, 'ai-get-auth-token');
+    return aiEngine.getAiApiToken ? aiEngine.getAiApiToken() : null;
 });
 
 ipcMain.handle('ai-update-engine', async () => {
@@ -7644,6 +7764,7 @@ ipcMain.handle('ai-pick-model-file', async () => {
 });
 
 ipcMain.handle('ai-download-model', async (event, { url, filename }) => {
+    assertTrustedAppShell(event, 'ai-download-model');
     return aiEngine.downloadModel(url, filename, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('ai-download-progress', progress);
@@ -7673,6 +7794,7 @@ ipcMain.handle('ai-generate-completion', async (event, options) => {
 });
 
 ipcMain.handle('ai-parse-file', async (event, filePath) => {
+    assertTrustedAppShell(event, 'ai-parse-file');
     if (!fsSync.existsSync(filePath)) throw new Error('File not found');
     const ext = path.extname(filePath).toLowerCase();
 
@@ -7737,7 +7859,8 @@ ipcMain.handle('tor-get-status', async () => {
     return torEngine.getStatus();
 });
 
-ipcMain.handle('tor-start', async () => {
+ipcMain.handle('tor-start', async (event) => {
+    assertTrustedAppShell(event, 'tor-start');
     try {
         const result = await torEngine.startTor(
             (status) => {
@@ -7770,7 +7893,8 @@ ipcMain.handle('tor-start', async () => {
     }
 });
 
-ipcMain.handle('tor-stop', async () => {
+ipcMain.handle('tor-stop', async (event) => {
+    assertTrustedAppShell(event, 'tor-stop');
     torEngine.stopTor();
     try {
         const torSession = session.fromPartition('tor');
@@ -7830,7 +7954,8 @@ ipcMain.handle('tor-get-circuit', async () => {
     return torEngine.getCircuitStatus();
 });
 
-ipcMain.handle('tor-download-binary', async () => {
+ipcMain.handle('tor-download-binary', async (event) => {
+    assertTrustedAppShell(event, 'tor-download-binary');
     try {
         const res = await torEngine.downloadAndInstallTor((progress) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -8044,8 +8169,8 @@ function registerWindowsBrowser() {
         const tempFile = path.join(app.getPath('temp'), `qbrowse_reg_${Date.now()}.reg`);
         fsSync.writeFileSync(tempFile, regContent, 'utf8');
         try {
-            const { execSync } = require('child_process');
-            execSync(`reg.exe import "${tempFile}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
+            const { execFileSync } = require('child_process');
+            execFileSync('reg.exe', ['import', tempFile], { stdio: ['ignore', 'pipe', 'ignore'] });
         } finally {
             try { fsSync.unlinkSync(tempFile); } catch (_) {}
         }
@@ -8115,8 +8240,8 @@ Exec=${execCmd} --incognito %U
         try { fsSync.chmodSync(desktopFile, 0o755); } catch (_) {}
 
         try {
-            const { execSync } = require('child_process');
-            execSync(`update-desktop-database "${appsDir}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
+            const { execFileSync } = require('child_process');
+            execFileSync('update-desktop-database', [appsDir], { stdio: ['ignore', 'pipe', 'ignore'] });
         } catch (_) {}
 
         return entryState.desktopId;
@@ -8319,7 +8444,8 @@ ipcMain.handle('system-check-default-browser', async (event, options = {}) => {
     }
 });
 
-ipcMain.handle('system-set-default-browser', async () => {
+ipcMain.handle('system-set-default-browser', async (event) => {
+    assertTrustedAppShell(event, 'system-set-default-browser');
     try {
         _cachedDefaultBrowserStatus = null;
         _cachedDefaultBrowserTimestamp = 0;
@@ -8761,6 +8887,7 @@ ipcMain.handle('flags-get', () => {
 });
 
 ipcMain.handle('flags-set', (event, { id, val }) => {
+    assertTrustedAppShell(event, 'flags-set');
     try {
         userFlags[id] = val;
         const flagsPath = path.join(app.getPath('userData'), 'flags.json');
@@ -8771,7 +8898,8 @@ ipcMain.handle('flags-set', (event, { id, val }) => {
     }
 });
 
-ipcMain.handle('flags-reset', () => {
+ipcMain.handle('flags-reset', (event) => {
+    assertTrustedAppShell(event, 'flags-reset');
     try {
         userFlags = {};
         const flagsPath = path.join(app.getPath('userData'), 'flags.json');
@@ -8784,7 +8912,8 @@ ipcMain.handle('flags-reset', () => {
     }
 });
 
-ipcMain.handle('app-relaunch', () => {
+ipcMain.handle('app-relaunch', (event) => {
+    assertTrustedAppShell(event, 'app-relaunch');
     app.relaunch();
     app.exit(0);
 });

@@ -34,6 +34,7 @@ import { isVideoWallpaper, isGifWallpaper, isLiveWallpaper, getWallpaperBadgeLab
 import WallpaperPreviewThumbnail from '../common/WallpaperPreviewThumbnail';
 import { countActiveBackgroundServices } from '../../utils/networkPrivacy';
 import SlidingPillSwitcher from '../common/SlidingPillSwitcher';
+import ColorPalettePicker from '../common/ColorPalettePicker';
 
 const SPACE_ICONS = [
     { id: 'User', label: 'User', icon: User },
@@ -646,6 +647,8 @@ const SettingsModalContent = () => {
 
     const [allPermissions, setAllPermissions] = useState({});
     const [searchFilter, setSearchFilter] = useState('');
+    const [appearanceSubTab, setAppearanceSubTab] = useState('theme');
+    const [layoutSubTab, setLayoutSubTab] = useState('panels');
     const searchInputRef = useRef(null);
     const [bangFilter, setBangFilter] = useState('');
     const [isAddingBang, setIsAddingBang] = useState(false);
@@ -1339,7 +1342,7 @@ const SettingsModalContent = () => {
             category: 'Preferences',
             categoryLabel: t('settings.categories.preferences', null, 'Preferences'),
             localizedKeywords: t('cfg.navKeywords.layout', null, ''),
-            keywords: ['sidebar', 'top bar', 'bottom bar', 'omnibox', 'window controls', 'close minimize maximize', 'tabs', 'tab layout', 'density', 'pills', 'cards', 'ui scale', 'compact', 'toolhub'] 
+            keywords: ['sidebar', 'top bar', 'bottom bar', 'omnibox', 'window controls', 'close minimize maximize', 'tabs', 'tab layout', 'density', 'pills', 'cards', 'ui scale', 'compact', 'toolhub', 'touchpad', 'gesture', 'swipe', 'back', 'forward'] 
         },
         { 
             id: 'typography', 
@@ -1498,6 +1501,29 @@ const SettingsModalContent = () => {
     ];
 
     const trimmedQuery = (searchFilter || '').trim().toLowerCase();
+
+    useEffect(() => {
+        if (!trimmedQuery) return;
+        if (/(wallpaper|video|gif|dimming|backdrop|loop|playback)/.test(trimmedQuery)) {
+            setAppearanceSubTab('wallpaper');
+        } else if (/(smart dark|invert|exclusion|whitelist)/.test(trimmedQuery)) {
+            setAppearanceSubTab('smartDark');
+        } else if (/preset/.test(trimmedQuery)) {
+            setAppearanceSubTab('presets');
+        } else if (/(blur|glass|glow|switcher|translucency|swipe anim)/.test(trimmedQuery)) {
+            setAppearanceSubTab('effects');
+        } else if (/(theme|accent|highlight)/.test(trimmedQuery)) {
+            setAppearanceSubTab('theme');
+        }
+
+        if (/(curvature|omnibox|window control|density|compact|pills|cards|tab presentation|sharp|cohesive)/.test(trimmedQuery)) {
+            setLayoutSubTab('window');
+        } else if (/(touchpad|gesture|swipe|frameless|restore|ctrl\+w|ctrl\+tab|zen|remember open)/.test(trimmedQuery)) {
+            setLayoutSubTab('behavior');
+        } else if (/(sidebar|top bar|bottom bar|toolhub|toolbar|extension hub)/.test(trimmedQuery)) {
+            setLayoutSubTab('panels');
+        }
+    }, [trimmedQuery]);
     const filteredNavTabs = trimmedQuery
         ? navTabs.filter(tab => 
             tab.label.toLowerCase().includes(trimmedQuery) || 
@@ -1729,7 +1755,22 @@ const SettingsModalContent = () => {
                                 </p>
                             </div>
 
+                            <SlidingPillSwitcher
+                                options={[
+                                    { id: 'theme', label: t('cfg.appearance.subTabs.theme', null, 'Theme & Colors'), icon: Palette },
+                                    { id: 'presets', label: t('cfg.appearance.subTabs.presets', null, 'Presets'), icon: Sparkles },
+                                    { id: 'wallpaper', label: t('cfg.appearance.subTabs.wallpaper', null, 'Wallpaper'), icon: ImageIcon },
+                                    { id: 'smartDark', label: t('cfg.appearance.subTabs.smartDark', null, 'Smart Dark'), icon: Moon },
+                                    { id: 'effects', label: t('cfg.appearance.subTabs.effects', null, 'Effects'), icon: Layers }
+                                ]}
+                                value={appearanceSubTab}
+                                onChange={setAppearanceSubTab}
+                                isBright={isBright}
+                                size="sm"
+                            />
+
                             {/* 1. COLOR THEME & ACCENT */}
+                            {appearanceSubTab === 'theme' && (
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Palette}
@@ -1803,26 +1844,13 @@ const SettingsModalContent = () => {
                                             ))}
                                             <div className={`w-px h-5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
 
-                                            <div className={`relative flex items-center border rounded-xl overflow-hidden focus-within:border-accent ${
-                                                isBright ? 'bg-white border-black/[0.08]' : 'bg-black/40 border-white/[0.06]'
-                                            }`}>
-                                                <div className={`pl-2.5 pr-2 py-1.5 border-r ${isBright ? 'border-black/[0.07]' : 'border-white/[0.06]'}`}>
-                                                    <Palette size={13} className={isBright ? 'text-zinc-400' : 'text-white/40'} />
-                                                </div>
-                                                <span className={`pl-2 text-xs font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>#</span>
-                                                <input
-                                                    type="text"
-                                                    value={accentColor.replace('#', '')}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                                                        if (val.length <= 6) setAccentColor('#' + val);
-                                                    }}
-                                                    className={`w-16 bg-transparent border-none text-xs font-mono outline-none py-1.5 uppercase ${
-                                                        isBright ? 'text-zinc-900' : 'text-white'
-                                                    }`}
-                                                    maxLength={6}
-                                                />
-                                            </div>
+                                            <ColorPalettePicker
+                                                value={accentColor}
+                                                onChange={(hex) => setAccentColor(hex)}
+                                                isBright={isBright}
+                                                defaultColor="#d4bc94"
+                                                label={t('cfg.appearance.accentColorTitle', null, 'Accent Color')}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -1900,27 +1928,13 @@ const SettingsModalContent = () => {
                                             );
                                         })}
                                         <div className={`w-px h-5 mx-0.5 ${isBright ? 'bg-black/10' : 'bg-white/10'}`} />
-                                        <div className={`relative flex items-center border rounded-xl overflow-hidden focus-within:border-accent ${
-                                            isBright ? 'bg-white border-black/[0.08]' : 'bg-black/40 border-white/[0.06]'
-                                        }`}>
-                                            <span className={`pl-2 text-xs font-mono ${isBright ? 'text-zinc-400' : 'text-white/40'}`}>#</span>
-                                            <input
-                                                type="text"
-                                                value={(textHighlightColor === 'accent' ? accentColor : normalizeHexColor(textHighlightColor, accentColor)).replace('#', '')}
-                                                onChange={(e) => {
-                                                    const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                                                    if (val.length === 6 || val.length === 3) {
-                                                        setTextHighlightColor('#' + val);
-                                                    } else if (val.length <= 6) {
-                                                        setTextHighlightColor('#' + val);
-                                                    }
-                                                }}
-                                                className={`w-16 bg-transparent border-none text-xs font-mono outline-none py-1.5 uppercase ${
-                                                    isBright ? 'text-zinc-900' : 'text-white'
-                                                }`}
-                                                maxLength={6}
-                                            />
-                                        </div>
+                                        <ColorPalettePicker
+                                            value={textHighlightColor === 'accent' ? accentColor : normalizeHexColor(textHighlightColor, accentColor)}
+                                            onChange={(hex) => setTextHighlightColor(hex)}
+                                            isBright={isBright}
+                                            defaultColor={accentColor}
+                                            label={t('cfg.appearance.textHighlightTitle', null, 'Text Highlight Color & Style')}
+                                        />
                                     </div>
 
                                     {/* Live Selectable Preview */}
@@ -1930,6 +1944,11 @@ const SettingsModalContent = () => {
                                         {t('cfg.appearance.textHighlightPreview', null, 'Drag to select this text and preview your highlight style live.')}
                                     </div>
                                 </div>
+                            </div>
+                            )}
+
+                            {appearanceSubTab === 'smartDark' && (
+                            <div className="space-y-3">
 
                                 <SettingCard
                                     icon={Eye}
@@ -2132,8 +2151,10 @@ const SettingsModalContent = () => {
                                     );
                                 })()}
                             </div>
+                            )}
 
                             {/* 2. QUICK PRESETS */}
+                            {appearanceSubTab === 'presets' && (
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Sparkles}
@@ -2278,8 +2299,11 @@ const SettingsModalContent = () => {
                                     })}
                                 </div>
                             </div>
+                            )}
 
-                            {/* 3. WALLPAPER & BACKDROP */}
+                            {/* 3. WALLPAPER & BACKDROP + 4. LIVE WALLPAPER PLAYBACK */}
+                            {appearanceSubTab === 'wallpaper' && (
+                            <div className="space-y-6">
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={ImageIcon}
@@ -2543,8 +2567,11 @@ const SettingsModalContent = () => {
                                     />
                                 </SettingCard>
                             </div>
+                            </div>
+                            )}
 
                             {/* 5. GLASS & SURFACE EFFECTS */}
+                            {appearanceSubTab === 'effects' && (
                             <div className="space-y-3">
                                 <SectionHeader
                                     icon={Layers}
@@ -2607,6 +2634,7 @@ const SettingsModalContent = () => {
                                     <SettingToggle isChecked={settings.visualTabSwitcher !== false} onToggle={() => toggleSetting('visualTabSwitcher')} />
                                 </SettingCard>
                             </div>
+                            )}
                         </div>
                     )}
 
@@ -2620,7 +2648,21 @@ const SettingsModalContent = () => {
                                 </p>
                             </div>
 
+                            <SlidingPillSwitcher
+                                options={[
+                                    { id: 'panels', label: t('cfg.layout.subTabs.panels', null, 'Panels & Bars'), icon: Layout },
+                                    { id: 'window', label: t('cfg.layout.subTabs.window', null, 'Window & Style'), icon: Monitor },
+                                    { id: 'behavior', label: t('cfg.layout.subTabs.behavior', null, 'Behavior'), icon: Sliders }
+                                ]}
+                                value={layoutSubTab}
+                                onChange={setLayoutSubTab}
+                                isBright={isBright}
+                                size="sm"
+                            />
+
                             {/* Spatial Positioning */}
+                            {layoutSubTab === 'panels' && (
+                            <>
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Compass} 
@@ -2784,8 +2826,11 @@ const SettingsModalContent = () => {
                                             </button>
                                         </div>
                                     </div>
+                            </>
+                            )}
 
-                                    {/* Window & Bar Geometry */}
+                            {/* Window & Bar Geometry */}
+                            {layoutSubTab === 'window' && (
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Laptop} 
@@ -3021,8 +3066,10 @@ const SettingsModalContent = () => {
                                             </div>
                                         </SettingCard>
                                     </div>
+                            )}
 
-                                    {/* Toolbar & Controls */}
+                            {/* Toolbar & Extension Hub Icons (Panels & Bars) */}
+                            {layoutSubTab === 'panels' && (
                                     <div className="space-y-3">
                                         <SectionHeader 
                                             icon={Sliders} 
@@ -3087,7 +3134,11 @@ const SettingsModalContent = () => {
                                                 })}
                                             </div>
                                         </div>
+                                    </div>
+                            )}
 
+                            {layoutSubTab === 'window' && (
+                                    <div className="space-y-3">
                                         <SettingCard icon={Monitor} title={t('cfg.layout.densityTitle', null, 'UI Density & Scale')} description={t('cfg.layout.densityDesc', null, 'Adjust spacing, padding, and tab density across navigation controls and sidebars.')}>
                                             <div className={`relative flex items-center p-1 border rounded-full backdrop-blur-2xl transition-all shadow-xs ${
                                                 isBright 
@@ -3126,6 +3177,21 @@ const SettingsModalContent = () => {
                                                     );
                                                 })}
                                             </div>
+                                        </SettingCard>
+                                    </div>
+                            )}
+
+                            {layoutSubTab === 'behavior' && (
+                                    <div className="space-y-3">
+                                        <SettingCard
+                                            icon={ArrowLeftRight}
+                                            title={t('cfg.layout.touchpadSwipeTitle', null, 'Touchpad Swipe Navigation (Back / Forward)')}
+                                            description={t('cfg.layout.touchpadSwipeDesc', null, 'Swipe left or right with two fingers on your touchpad to navigate back and forward in page history.')}
+                                        >
+                                            <SettingToggle
+                                                isChecked={settings.touchpadSwipeNavigation !== false}
+                                                onToggle={() => toggleSetting('touchpadSwipeNavigation')}
+                                            />
                                         </SettingCard>
 
                                         <SettingCard icon={ArrowLeftRight} title={t('cfg.layout.tabOrderTitle', null, 'Tab Switching Order (Ctrl+Tab)')} description={t('cfg.layout.tabOrderDesc', null, 'Choose whether Ctrl+Tab navigates by most recently used tabs or in sequential sidebar order.')}>
@@ -3187,6 +3253,7 @@ const SettingsModalContent = () => {
                                             />
                                         </SettingCard>
                                     </div>
+                            )}
                         </div>
                     )}
 

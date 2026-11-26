@@ -24,7 +24,8 @@ export default {
         confirm: "Bestätigen",
         all: "Alle",
         enabled: "Aktiviert",
-        disabled: "Deaktiviert"
+        disabled: "Deaktiviert",
+        clearSelection: "Auswahl aufheben (Esc)"
     },
     nav: {
         newTab: "Neuer Tab",
@@ -76,7 +77,8 @@ export default {
             engine: "Engine & Leistung",
             adblock: "Schutz & Werbeblocker",
             about: "Über QBrowse & System",
-            language: "Sprache & Region"
+            language: "Sprache & Region",
+            shortcuts: "Tastenkombinationen"
         },
         categories: {
             preferences: "Einstellungen",

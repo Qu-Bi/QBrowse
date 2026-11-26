@@ -11,6 +11,7 @@ import {
 import useUIStore, { hexToRgbString } from '../../store/useUIStore';
 import useTabStore from '../../store/useTabStore';
 import PresetLayoutWireframe from '../common/PresetLayoutWireframe';
+import ColorPalettePicker from '../common/ColorPalettePicker';
 import { getLiquidGlassInlineStyle, getLiquidGlassSurfaceClasses } from '../common/ContextMenuProvider';
 import { PRESET_FONTS, LETTER_SPACING_OPTIONS, applyAppFont } from '../../utils/appFontManager';
 import { 
@@ -1407,63 +1408,19 @@ export default function PresetStudioModal({ initialPresetId = null }) {
                                             </button>
                                         ))}
 
-                                        {/* Custom Color Input matching SettingsModal */}
+                                        {/* Custom Color Palette Picker matching SettingsModal */}
                                         <div className={`w-px h-6 mx-0.5 ${isSystemBright ? 'bg-black/[0.07]' : 'bg-white/[0.06]'}`} />
-                                        <div className={`relative flex items-center rounded-xl border overflow-hidden transition-colors ${
-                                            isSystemBright 
-                                                ? 'bg-black/[0.02] border-black/[0.07] focus-within:border-accent/50 text-zinc-900' 
-                                                : 'bg-black/40 border-white/[0.06] focus-within:border-accent/50 text-white'
-                                        }`}>
-                                            <button 
-                                                type="button"
-                                                onClick={() => colorInputRef.current?.click()}
-                                                title={t('tools.studio.openColorPickerTitle', null, 'Open System Color Picker')}
-                                                className={`pl-2.5 pr-2 py-1.5 border-r transition cursor-pointer flex items-center justify-center ${
-                                                    isSystemBright 
-                                                        ? 'border-black/[0.07] hover:bg-black/5 text-zinc-500 hover:text-zinc-800' 
-                                                        : 'border-white/[0.06] hover:bg-white/5 text-white/50 hover:text-white'
-                                                }`}
-                                            >
-                                                <Palette 
-                                                    size={13} 
-                                                    className="transition-transform hover:scale-110" 
-                                                    style={{ color: !ACCENT_SWATCHES.some(s => s.hex.toLowerCase() === (draft.accentColor || '').toLowerCase()) ? draft.accentColor : undefined }} 
-                                                />
-                                            </button>
-                                            <span className={`pl-2 text-xs font-mono select-none ${isSystemBright ? 'text-zinc-400' : 'text-white/40'}`}>#</span>
-                                            <input
-                                                type="text"
-                                                value={(draft.accentColor || '').replace('#', '')}
-                                                onChange={(e) => {
-                                                    const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                                                    if (val.length <= 6) {
-                                                        const hex = '#' + val;
-                                                        updateDraft('accentColor', hex);
-                                                        if (val.length === 6 || val.length === 3) {
-                                                            updateDraft('accentRgb', hexToRgbString(hex));
-                                                        }
-                                                    }
-                                                }}
-                                                placeholder="D4BC94"
-                                                className={`w-16 bg-transparent border-none text-xs font-mono outline-none py-1.5 px-1 uppercase ${
-                                                    isSystemBright ? 'text-zinc-900' : 'text-white'
-                                                }`}
-                                                maxLength={6}
-                                            />
-                                            <input 
-                                                ref={colorInputRef}
-                                                type="color" 
-                                                value={draft.accentColor?.startsWith('#') && draft.accentColor.length === 7 ? draft.accentColor : '#d4bc94'}
-                                                onChange={(e) => {
-                                                    const hex = e.target.value;
-                                                    updateDraft('accentColor', hex);
-                                                    updateDraft('accentRgb', hexToRgbString(hex));
-                                                }}
-                                                className="sr-only absolute opacity-0 pointer-events-none"
-                                                aria-hidden="true"
-                                                tabIndex={-1}
-                                            />
-                                        </div>
+                                        <ColorPalettePicker
+                                            value={draft.accentColor || '#d4bc94'}
+                                            onChange={(hex) => {
+                                                updateDraft('accentColor', hex);
+                                                updateDraft('accentRgb', hexToRgbString(hex));
+                                            }}
+                                            isBright={isSystemBright}
+                                            defaultColor="#d4bc94"
+                                            label={t('tools.studio.accentSwatchLabel', null, 'Accent Color Swatch')}
+                                            compact
+                                        />
                                     </div>
                                 </div>
                             </div>

@@ -24,7 +24,8 @@ export default {
         confirm: "Zatwierdź",
         all: "Wszystko",
         enabled: "Włączone",
-        disabled: "Wyłączone"
+        disabled: "Wyłączone",
+        clearSelection: "Wyczyść zaznaczenie (Esc)"
     },
     nav: {
         newTab: "Nowa karta",
@@ -76,7 +77,8 @@ export default {
             engine: "Silnik i wydajność",
             adblock: "Tarcze i blokowanie reklam",
             about: "O programie i system",
-            language: "Język i region"
+            language: "Język i region",
+            shortcuts: "Skróty klawiszowe"
         },
         categories: {
             preferences: "Preferencje",

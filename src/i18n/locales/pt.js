@@ -24,7 +24,8 @@ export default {
         confirm: "Confirmar",
         all: "Tudo",
         enabled: "Ativado",
-        disabled: "Desativado"
+        disabled: "Desativado",
+        clearSelection: "Limpar seleção (Esc)"
     },
     nav: {
         newTab: "Nova Guia",
@@ -76,7 +77,8 @@ export default {
             engine: "Motor e Desempenho",
             adblock: "Proteção e Bloqueador",
             about: "Sobre e Sistema",
-            language: "Idioma e Região"
+            language: "Idioma e Região",
+            shortcuts: "Atalhos de teclado"
         },
         categories: {
             preferences: "Preferências",

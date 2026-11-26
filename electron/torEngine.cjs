@@ -6,8 +6,10 @@ const http = require('http');
 const https = require('https');
 const rustBridge = require('./rustBridge.cjs');
 
+const DEBUG_LOGS = process.env.QBROWSE_DEBUG_LOGS === '1';
+const debugLog = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+
 const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
     keepAlive: true
 });
 
@@ -83,17 +85,50 @@ function getTorDataDir() {
     return dir;
 }
 
+function isRegularFile(filePath) {
+    try {
+        return Boolean(filePath && fs.statSync(filePath).isFile());
+    } catch (_) {
+        return false;
+    }
+}
+
 function findTorExecutable() {
     const isWin = process.platform === 'win32';
     const torBinName = isWin ? 'tor.exe' : 'tor';
 
     // 1. Check QBrowse bin/tor directory
-    const localTorExe = path.join(getTorBinDir(), torBinName);
-    if (fs.existsSync(localTorExe)) return localTorExe;
+    const torBinDir = getTorBinDir();
+    const localTorExe = path.join(torBinDir, torBinName);
+    if (isRegularFile(localTorExe)) return localTorExe;
 
     // Subdirectory extracted from bundle: bin/tor/tor/tor.exe or bin/tor/tor/tor
-    const subTorExe = path.join(getTorBinDir(), 'tor', torBinName);
-    if (fs.existsSync(subTorExe)) return subTorExe;
+    const subTorExe = path.join(torBinDir, 'tor', torBinName);
+    if (isRegularFile(subTorExe)) return subTorExe;
+
+    // Bounded depth-3 recursive scan of getTorBinDir() for a regular file named torBinName
+    const scanDirForTor = (dir, depth) => {
+        if (depth > 3) return null;
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch (_) {
+            return null;
+        }
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.name === torBinName && isRegularFile(fullPath)) {
+                return fullPath;
+            }
+            if (entry.isDirectory()) {
+                const found = scanDirForTor(fullPath, depth + 1);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+    const scannedTorExe = scanDirForTor(torBinDir, 1);
+    if (scannedTorExe) return scannedTorExe;
 
     // 2. Check platform-specific paths
     if (isWin) {
@@ -105,7 +140,7 @@ function findTorExecutable() {
             'C:\\Program Files (x86)\\Tor Browser\\Browser\\TorBrowser\\Tor\\tor.exe'
         ];
         for (const p of possibleTorBrowserPaths) {
-            if (fs.existsSync(p)) return p;
+            if (isRegularFile(p)) return p;
         }
     } else if (process.platform === 'linux') {
         const homeDir = process.env.HOME || '';
@@ -120,7 +155,7 @@ function findTorExecutable() {
             path.join(homeDir, 'tor-browser/Browser/TorBrowser/Tor/tor')
         ];
         for (const p of possibleLinuxPaths) {
-            if (fs.existsSync(p)) return p;
+            if (isRegularFile(p)) return p;
         }
     } else if (process.platform === 'darwin') {
         const possibleMacPaths = [
@@ -130,7 +165,7 @@ function findTorExecutable() {
             '/Applications/Tor Browser.app/Contents/MacOS/Tor/tor'
         ];
         for (const p of possibleMacPaths) {
-            if (fs.existsSync(p)) return p;
+            if (isRegularFile(p)) return p;
         }
     }
 
@@ -139,7 +174,7 @@ function findTorExecutable() {
         const cmd = isWin ? 'where tor.exe' : (process.platform === 'linux' ? 'command -v tor || which tor' : 'which tor');
         const out = execSync(cmd, { stdio: 'pipe', encoding: 'utf8', shell: process.platform === 'win32' ? undefined : '/bin/sh' }).trim();
         const first = out.split(/\r?\n/)[0];
-        if (first && fs.existsSync(first)) return first;
+        if (first && isRegularFile(first)) return first;
     } catch (_) {}
 
     return null;
@@ -230,8 +265,7 @@ function downloadFile(url, destPath, onProgress) {
         const file = fs.createWriteStream(destPath);
         const protocol = url.startsWith('https') ? https : http;
         const reqOptions = {
-            headers: { 'User-Agent': 'QBrowse-Downloader/1.2' },
-            rejectUnauthorized: false
+            headers: { 'User-Agent': 'QBrowse-Downloader/1.2' }
         };
         if (url.startsWith('https')) {
             reqOptions.agent = httpsAgent;
@@ -288,7 +322,7 @@ async function downloadAndInstallTor(onProgress) {
     const mirrors = getTorMirrorUrls();
     for (const url of mirrors) {
         try {
-            console.log(`[TorEngine] Downloading Tor bundle from: ${url}`);
+            debugLog(`[TorEngine] Downloading Tor bundle from: ${url}`);
             await downloadFile(url, tempArchive, onProgress);
             downloaded = true;
             break;
@@ -304,7 +338,7 @@ async function downloadAndInstallTor(onProgress) {
     }
 
     try {
-        console.log(`[TorEngine] Extracting Tor bundle via Rust into: ${binDir}`);
+        debugLog(`[TorEngine] Extracting Tor bundle via Rust into: ${binDir}`);
         await rustBridge.torExtractBundle(tempArchive, binDir);
         try { fs.unlinkSync(tempArchive); } catch (_) {}
 
@@ -356,6 +390,14 @@ function sendTorControlCommand(command) {
         client.setTimeout(2500);
 
         client.connect(activeControlPort, '127.0.0.1', () => {
+            try {
+                const cookiePath = path.join(getTorDataDir(), 'control_auth_cookie');
+                if (fs.existsSync(cookiePath)) {
+                    const cookieHex = fs.readFileSync(cookiePath).toString('hex');
+                    client.write(`AUTHENTICATE ${cookieHex}\r\n`);
+                    return;
+                }
+            } catch (_) {}
             client.write('AUTHENTICATE ""\r\n');
         });
 
@@ -400,7 +442,7 @@ function sendTorControlCommand(command) {
 }
 
 async function requestNewTorCircuit() {
-    console.log('[TorEngine] Requesting new Tor identity/circuit (SIGNAL NEWNYM via Rust)...');
+    debugLog('[TorEngine] Requesting new Tor identity/circuit (SIGNAL NEWNYM via Rust)...');
     try {
         const cookiePath = path.join(getTorDataDir(), 'control_auth_cookie');
         const res = await rustBridge.torSendNewnym(
@@ -525,7 +567,7 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
     // 3. Locate tor.exe
     let torExe = findTorExecutable();
     if (!torExe) {
-        console.log('[TorEngine] tor.exe not found locally. Initiating download...');
+        debugLog('[TorEngine] tor.exe not found locally. Initiating download...');
         if (typeof onStatusChange === 'function') onStatusChange('downloading');
         torExe = await downloadAndInstallTor((pct) => {
             if (typeof onBootstrap === 'function') onBootstrap(pct);
@@ -547,7 +589,7 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
         '--SocksPort', String(activeSocksPort),
         '--ControlPort', String(activeControlPort),
         '--DataDirectory', dataDir,
-        '--CookieAuthentication', '0',
+        '--CookieAuthentication', '1',
         '--Log', 'notice stdout'
     ];
 
@@ -567,31 +609,36 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
         '/var/lib/tor/geoip6'
     ];
     for (const p of possibleGeoIpPaths) {
-        if (fs.existsSync(p)) {
+        if (isRegularFile(p)) {
             args.push('--GeoIPFile', p);
             break;
         }
     }
     for (const p of possibleGeoIp6Paths) {
-        if (fs.existsSync(p)) {
+        if (isRegularFile(p)) {
             args.push('--GeoIPv6File', p);
             break;
         }
     }
 
-    console.log(`[TorEngine] Spawning ${torExe} with SocksPort ${activeSocksPort} and ControlPort ${activeControlPort}...`);
+    debugLog(`[TorEngine] Spawning ${torExe} with SocksPort ${activeSocksPort} and ControlPort ${activeControlPort}...`);
 
     return new Promise((resolve, reject) => {
         let isStarted = false;
         let lastStderrText = '';
 
         try {
+            if (process.platform !== 'win32') {
+                try { fs.chmodSync(torExe, 0o755); } catch (_) {}
+            }
+
             const env = { ...process.env };
             if (process.platform === 'linux') {
-                env.LD_LIBRARY_PATH = [torDir, path.join(torDir, 'lib'), env.LD_LIBRARY_PATH].filter(Boolean).join(':');
+                env.LD_LIBRARY_PATH = [torDir, path.join(torDir, 'lib'), getTorBinDir(), path.join(getTorBinDir(), 'tor'), env.LD_LIBRARY_PATH].filter(Boolean).join(':');
             }
 
             torProcess = spawn(torExe, args, {
+                cwd: torDir,
                 windowsHide: true,
                 env,
                 stdio: ['ignore', 'pipe', 'pipe']
@@ -603,7 +650,7 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
                     lastStderrText = text.trim();
                 }
                 if (text.includes('Bootstrapped') || text.includes('Opening Socks') || text.includes('Opened Socks') || text.includes('warn') || text.includes('err')) {
-                    console.log(`[Tor ${isStderr ? 'stderr' : 'stdout'}] ${text.trim().replace(/\r?\n/g, ' ')}`);
+                    debugLog(`[Tor ${isStderr ? 'stderr' : 'stdout'}] ${text.trim().replace(/\r?\n/g, ' ')}`);
                 }
                 if (typeof onLog === 'function') onLog(text);
 
@@ -640,7 +687,7 @@ async function startTor(onStatusChange, onBootstrap, onLog) {
             });
 
             torProcess.on('exit', (code) => {
-                console.log(`[TorEngine] Tor process exited with code ${code}`);
+                debugLog(`[TorEngine] Tor process exited with code ${code}`);
                 torProcess = null;
                 if (!isStarted && code !== 0) {
                     isStarted = true;

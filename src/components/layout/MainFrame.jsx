@@ -477,9 +477,6 @@ export default function MainFrame() {
     const dateString = currentTime.toLocaleDateString(intlLocale, { weekday: 'long', month: 'long', day: 'numeric' });
     const timeString = currentTime.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // Mock states for UI
-    const [formEmail, setFormEmail] = useState('admin@qbrowse.local');
-    const [formPassword, setFormPassword] = useState('super_secret_password_123');
     const [zenDropdownOpenBySpace, setZenDropdownOpenBySpace] = useState({});
 
     const renderZenDashboard = (spaceName) => {

@@ -24,7 +24,8 @@ export default {
         confirm: "確認",
         all: "すべて",
         enabled: "有効",
-        disabled: "無効"
+        disabled: "無効",
+        clearSelection: "選択を解除 (Esc)"
     },
     nav: {
         newTab: "新しいタブ",
@@ -76,7 +77,8 @@ export default {
             engine: "エンジンとパフォーマンス",
             adblock: "シールドと広告ブロック",
             about: "QBrowseについて",
-            language: "言語と地域"
+            language: "言語と地域",
+            shortcuts: "キーボードショートカット"
         },
         categories: {
             preferences: "基本設定",
