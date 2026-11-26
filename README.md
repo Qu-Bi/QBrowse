@@ -4,7 +4,6 @@
   <p><strong>Privacy-first desktop browser powered by a native Rust core.</strong><br/>Isolated spaces, built-in Tor with live circuit inspection, local multimodal AI, and zero-knowledge sync.</p>
 
   [![Release](https://img.shields.io/badge/Release-v1.5.1-blue.svg)](https://github.com/Qu-Bi/QBrowse/releases/tag/v1.5.1)
-  [![Rust Core](https://img.shields.io/badge/Core-100%25%20Rust%20(napi--rs)-orange.svg)](#powered-by-rust-napi-rs)
   [![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20Linux-lightgrey.svg)](#downloads)
   [![WinGet](https://img.shields.io/badge/WinGet-QuBI.QBrowse-0078D4.svg)](#windows-recommended)
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
